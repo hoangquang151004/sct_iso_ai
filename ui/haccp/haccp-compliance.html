@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HACCP Compliance - SCT-ISO.AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../shared-ui.css" />
+    <style>
+      body {
+        font-family: "Inter", sans-serif;
+        background-color: #f0f4f8;
+      }
+      .header-bg {
+        background-color: #1e8b9b;
+      }
+      .sidebar-item.active {
+        background-color: #1e8b9b;
+        color: white;
+      }
+    </style>
+  </head>
+  <body class="h-screen flex flex-col overflow-hidden app-shell">
+    <!-- Navbar -->
+    <header
+      class="header-bg app-header text-white px-6 py-3 flex items-center justify-between shadow-md z-10"
+    >
+      <a
+        href="../dashboard/dashboard.html"
+        class="text-xl font-bold tracking-wide"
+        >SCT-ISO.AI</a
+      >
+      <nav class="flex space-x-6 text-sm app-nav">
+        <a
+          href="../dashboard/dashboard.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Dashboard</span></a
+        >
+        <a
+          href="../document/document-control.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Documents</span></a
+        >
+        <a
+          href="../haccp/haccp-compliance.html"
+          class="app-nav-link is-active flex items-center space-x-1 border-b-2 border-white pb-1 font-bold"
+          ><span>Risk Assessment</span></a
+        >
+        <a
+          href="../rpr/prp-audit.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Audits</span></a
+        >
+        <a
+          href="../capa/capa-management.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>CAPA</span></a
+        >
+        <a
+          href="../ai_analytics/ai-analytics.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Monitoring</span></a
+        >
+        <a
+          href="../report/reports.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Reports</span></a
+        >
+      </nav>
+      <a
+        href="../user/user-management.html"
+        class="app-avatar w-8 h-8 bg-white rounded-full flex items-center justify-center text-gray-500 hover:opacity-90 transition"
+      >
+        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+          <path
+            fill-rule="evenodd"
+            d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
+            clip-rule="evenodd"
+          ></path>
+        </svg>
+      </a>
+    </header>
+
+    <!-- Sub Header -->
+    <div
+      class="bg-[#1e8b9b] text-white px-6 py-4 flex items-center border-t border-teal-600"
+    >
+      <h1 class="text-2xl font-bold w-48 shrink-0">HACCP</h1>
+      <div class="border-l border-teal-500 pl-6 flex-1">
+        <h2 class="text-xl font-semibold">HACCP Compliance</h2>
+        <p class="text-xs text-teal-100 mt-1">
+          Production of bottled juice » Process Stages
+        </p>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="flex-1 flex overflow-hidden app-content">
+      <!-- Sidebar -->
+      <div
+        class="w-48 bg-white shadow-md z-10 flex flex-col pt-4 border-r border-gray-200"
+      >
+        <a
+          href="#"
+          class="sidebar-item px-6 py-3 flex items-center space-x-3 text-gray-600 hover:bg-gray-50 text-sm font-medium"
+        >
+          <svg
+            class="w-5 h-5 text-teal-500"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            ></path>
+          </svg>
+          <span>Process Flow</span>
+        </a>
+        <a
+          href="#"
+          class="sidebar-item active px-6 py-3 flex items-center space-x-3 text-sm font-medium"
+        >
+          <svg
+            class="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+            ></path>
+          </svg>
+          <span>CCPs & CLs</span>
+        </a>
+        <a
+          href="#"
+          class="sidebar-item px-6 py-3 flex items-center space-x-3 text-gray-600 hover:bg-gray-50 text-sm font-medium"
+        >
+          <svg
+            class="w-5 h-5 text-teal-500"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+            ></path>
+          </svg>
+          <span>Monitoring Plan</span>
+        </a>
+      </div>
+
+      <!-- Scrollable Content -->
+      <div class="flex-1 overflow-auto p-6 bg-white m-4 rounded-xl shadow">
+        <div class="flex gap-8">
+          <!-- Left Content -->
+          <div class="flex-1 space-y-8">
+            <!-- Process Flow -->
+            <div>
+              <h3 class="text-lg font-bold text-gray-800 mb-4">Process Flow</h3>
+              <div class="flex items-center space-x-2">
+                <div
+                  class="bg-blue-50 text-blue-800 px-4 py-2 rounded-lg text-sm border border-blue-100"
+                >
+                  Reception
+                </div>
+                <span class="text-gray-400">→</span>
+                <div
+                  class="bg-blue-50 text-blue-800 px-4 py-2 rounded-lg text-sm border border-blue-100"
+                >
+                  Washing
+                </div>
+                <span class="text-gray-400">→</span>
+                <div
+                  class="bg-blue-50 text-blue-800 px-4 py-2 rounded-lg text-sm border border-blue-100"
+                >
+                  Pasteurization
+                </div>
+                <span class="text-gray-400">→</span>
+                <div class="relative">
+                  <div
+                    class="bg-blue-50 text-blue-800 px-4 py-2 rounded-lg text-sm border border-blue-100"
+                  >
+                    Filing
+                  </div>
+                  <span
+                    class="absolute -bottom-3 -right-2 bg-orange-400 text-white text-[10px] font-bold px-2 py-0.5 rounded"
+                    >CCP1</span
+                  >
+                </div>
+              </div>
+            </div>
+
+            <!-- CCPs Table -->
+            <div>
+              <h3 class="text-lg font-bold text-gray-800 mb-4">
+                CCPs & Critical Limits
+              </h3>
+              <table
+                class="w-full text-sm text-left text-gray-600 border border-gray-100 rounded-lg overflow-hidden"
+              >
+                <thead class="bg-teal-50/50">
+                  <tr>
+                    <th class="py-2 px-3 font-medium">CCP</th>
+                    <th class="py-2 px-3 font-medium">Process Stage</th>
+                    <th class="py-2 px-3 font-medium">Hazard</th>
+                    <th class="py-2 px-3 font-medium">Critical Limit</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                  <tr>
+                    <td class="py-3 px-3">CCP1</td>
+                    <td class="py-3 px-3">Pasteurization</td>
+                    <td class="py-3 px-3 flex items-center">
+                      <div
+                        class="w-3 h-3 rounded-full bg-orange-500 mr-2"
+                      ></div>
+                      Biological
+                    </td>
+                    <td class="py-3 px-3">Verify calibration</td>
+                  </tr>
+                  <tr>
+                    <td class="py-3 px-3">CCP1</td>
+                    <td class="py-3 px-3">Pasteurization</td>
+                    <td class="py-3 px-3 flex items-center">
+                      <div
+                        class="w-3 h-3 rounded-full bg-orange-500 mr-2"
+                      ></div>
+                      Biological
+                    </td>
+                    <td class="py-3 px-3">Review procedures</td>
+                  </tr>
+                  <tr>
+                    <td class="py-3 px-3">CCP1</td>
+                    <td class="py-3 px-3">Pasteurization</td>
+                    <td class="py-3 px-3 flex items-center">
+                      <div class="w-3 h-3 rounded-full bg-teal-500 mr-2"></div>
+                      Training
+                    </td>
+                    <td class="py-3 px-3">Training</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Monitoring Table -->
+            <div>
+              <h3 class="text-lg font-bold text-gray-800 mb-4">
+                Monitoring per Lot
+              </h3>
+              <table
+                class="w-full text-sm text-left text-gray-600 border border-gray-100 rounded-lg overflow-hidden"
+              >
+                <thead class="bg-teal-50/50">
+                  <tr>
+                    <th class="py-2 px-3 font-medium">Lot ID</th>
+                    <th class="py-2 px-3 font-medium">Date</th>
+                    <th class="py-2 px-3 font-medium">Time</th>
+                    <th class="py-2 px-3 font-medium text-right">
+                      Pasteurization
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="py-3 px-3">001</td>
+                    <td class="py-3 px-3">Dec 03, 2023</td>
+                    <td class="py-3 px-3">10:15 AM</td>
+                    <td class="py-3 px-3 text-right">162,1 °F</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Right Content -->
+          <div class="w-72 space-y-8">
+            <!-- Hazard Analysis Chart -->
+            <div>
+              <h3 class="text-lg font-bold text-gray-800 mb-4">
+                Hazard Analysis
+              </h3>
+              <div
+                class="relative w-full aspect-square border-l border-b border-gray-200 p-2 text-xs text-gray-500"
+              >
+                <!-- Y axis labels -->
+                <div
+                  class="absolute -left-8 top-0 h-full flex flex-col justify-between items-end pr-2"
+                >
+                  <span>High</span>
+                  <span
+                    class="transform -rotate-90 origin-right whitespace-nowrap -translate-x-1/2 mt-12"
+                    >Likelihood</span
+                  >
+                  <span>Low</span>
+                </div>
+
+                <!-- Grid lines -->
+                <div class="absolute inset-0 grid grid-cols-4 grid-rows-4 p-2">
+                  <div class="border-b border-r border-gray-100"></div>
+                  <div class="border-b border-r border-gray-100"></div>
+                  <div class="border-b border-r border-gray-100"></div>
+                  <div class="border-b border-gray-100"></div>
+                  <div class="border-b border-r border-gray-100"></div>
+                  <div class="border-b border-r border-gray-100"></div>
+                  <div class="border-b border-r border-gray-100"></div>
+                  <div class="border-b border-gray-100"></div>
+                  <div class="border-b border-r border-gray-100"></div>
+                  <div class="border-b border-r border-gray-100"></div>
+                  <div class="border-b border-r border-gray-100"></div>
+                  <div class="border-b border-gray-100"></div>
+                  <div class="border-r border-gray-100"></div>
+                  <div class="border-r border-gray-100"></div>
+                  <div class="border-r border-gray-100"></div>
+                  <div></div>
+                </div>
+
+                <!-- Points -->
+                <div
+                  class="absolute w-3 h-3 bg-orange-500 rounded-full"
+                  style="top: 20%; left: 75%"
+                ></div>
+                <span
+                  class="absolute text-sm font-medium text-gray-700"
+                  style="top: 18%; left: 82%"
+                  >Biological</span
+                >
+
+                <div
+                  class="absolute w-3 h-3 bg-teal-500 rounded-full"
+                  style="top: 45%; left: 60%"
+                ></div>
+                <span
+                  class="absolute text-sm font-medium text-gray-700"
+                  style="top: 43%; left: 67%"
+                  >Chemical</span
+                >
+
+                <div
+                  class="absolute w-3 h-3 bg-blue-500 rounded-full"
+                  style="top: 60%; left: 25%"
+                ></div>
+                <span
+                  class="absolute text-sm font-medium text-gray-700"
+                  style="top: 58%; left: 32%"
+                  >Physical</span
+                >
+
+                <!-- X axis labels -->
+                <div
+                  class="absolute -bottom-8 left-0 w-full flex justify-between pt-2"
+                >
+                  <span>Low</span>
+                  <span class="font-bold text-gray-800">Likelihood</span>
+                  <span>High</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Monitoring right table -->
+            <div class="mt-12">
+              <h3 class="text-lg font-bold text-gray-800 mb-4">
+                Monitoring per Lot
+              </h3>
+              <table
+                class="w-full text-xs text-left text-gray-600 border border-gray-100 rounded-lg overflow-hidden"
+              >
+                <thead class="bg-teal-50/50">
+                  <tr>
+                    <th class="py-2 px-2 font-medium">Lot ID</th>
+                    <th class="py-2 px-2 font-medium">Date</th>
+                    <th class="py-2 px-2 font-medium">Time</th>
+                    <th class="py-2 px-2 font-medium">Pasteurization</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                  <tr>
+                    <td class="py-2 px-2">001</td>
+                    <td class="py-2 px-2">Dec 03, 2022</td>
+                    <td class="py-2 px-2">10:15 AM</td>
+                    <td class="py-2 px-2">162.1 °F</td>
+                  </tr>
+                  <tr>
+                    <td class="py-2 px-2">002</td>
+                    <td class="py-2 px-2">Dec 04, 2025</td>
+                    <td class="py-2 px-2">02:30 PM</td>
+                    <td class="py-2 px-2">159.8 °F</td>
+                  </tr>
+                  <tr>
+                    <td class="py-2 px-2">003</td>
+                    <td class="py-2 px-2">Dec 05, 2023</td>
+                    <td class="py-2 px-2">09:50 AM</td>
+                    <td class="py-2 px-2">161.9 °F</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

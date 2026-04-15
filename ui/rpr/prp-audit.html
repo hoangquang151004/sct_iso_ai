@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PRP Audit - SCT-ISO.AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../shared-ui.css" />
+    <style>
+      body {
+        font-family: "Inter", sans-serif;
+        background-color: #f0f4f8;
+      }
+      .header-bg {
+        background-color: #1e8b9b;
+      }
+    </style>
+  </head>
+  <body class="h-screen flex flex-col overflow-hidden app-shell">
+    <!-- Navbar -->
+    <header
+      class="header-bg app-header text-white px-6 py-3 flex items-center justify-between shadow-md z-10"
+    >
+      <a
+        href="../dashboard/dashboard.html"
+        class="text-xl font-bold tracking-wide"
+        >SCT-ISO.AI</a
+      >
+      <nav class="flex space-x-6 text-sm app-nav">
+        <a
+          href="../dashboard/dashboard.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Dashboard</span></a
+        >
+        <a
+          href="../document/document-control.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Documents</span></a
+        >
+        <a
+          href="../haccp/haccp-compliance.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Risk Assessment</span></a
+        >
+        <a
+          href="../rpr/prp-audit.html"
+          class="app-nav-link is-active flex items-center space-x-1 border-b-2 border-white pb-1 font-bold"
+          ><span>Audits</span></a
+        >
+        <a
+          href="../capa/capa-management.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>CAPA</span></a
+        >
+        <a
+          href="../ai_analytics/ai-analytics.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Monitoring</span></a
+        >
+        <a
+          href="../report/reports.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Reports</span></a
+        >
+      </nav>
+      <a
+        href="../user/user-management.html"
+        class="app-avatar w-8 h-8 bg-white rounded-full flex items-center justify-center text-gray-500 hover:opacity-90 transition"
+      >
+        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+          <path
+            fill-rule="evenodd"
+            d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
+            clip-rule="evenodd"
+          ></path>
+        </svg>
+      </a>
+    </header>
+
+    <!-- Main Content -->
+    <div class="flex-1 overflow-auto p-6 max-w-7xl mx-auto w-full app-content">
+      <!-- Header area -->
+      <h1 class="text-2xl font-bold text-gray-800 mb-4">PRP Audit</h1>
+      <div class="flex space-x-4 mb-6">
+        <select
+          class="border border-gray-300 text-gray-700 text-sm rounded-lg focus:ring-teal-500 focus:border-teal-500 block p-2"
+        >
+          <option>Zone</option>
+        </select>
+        <select
+          class="border border-gray-300 text-gray-700 text-sm rounded-lg focus:ring-teal-500 focus:border-teal-500 block p-2"
+        >
+          <option>October 2023</option>
+        </select>
+      </div>
+
+      <div class="flex gap-6">
+        <!-- Left Column -->
+        <div class="w-64 flex flex-col space-y-6">
+          <!-- Score Card -->
+          <div
+            class="bg-white p-6 rounded-xl shadow text-center flex flex-col items-center justify-center min-h-[220px]"
+          >
+            <h3 class="font-bold text-gray-800 self-start mb-2">Score</h3>
+            <div class="relative w-32 h-32">
+              <svg viewBox="0 0 36 36" class="w-full h-full">
+                <path
+                  class="text-gray-100"
+                  stroke-width="4"
+                  stroke="currentColor"
+                  fill="none"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+                <path
+                  class="text-green-500"
+                  stroke-width="4"
+                  stroke-dasharray="75, 100"
+                  stroke="currentColor"
+                  fill="none"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+                <path
+                  class="text-orange-400"
+                  stroke-width="4"
+                  stroke-dasharray="20, 100"
+                  stroke-dashoffset="-75"
+                  stroke="currentColor"
+                  fill="none"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+              </svg>
+              <div
+                class="absolute inset-0 flex items-center justify-center text-3xl font-bold text-gray-800"
+              >
+                95
+              </div>
+            </div>
+          </div>
+
+          <!-- Score text card -->
+          <div class="bg-white p-6 rounded-xl shadow">
+            <h3 class="font-bold text-gray-800 mb-2">Score</h3>
+            <div class="text-4xl font-bold text-[#1e8b9b]">#95</div>
+          </div>
+
+          <!-- Checklist summary -->
+          <div class="bg-white p-6 rounded-xl shadow">
+            <h3 class="font-bold text-gray-800 mb-4">Checklist</h3>
+            <ul class="space-y-3 text-sm text-gray-600">
+              <li class="flex items-center justify-between">
+                <span>Cleallinness</span>
+                <svg
+                  class="w-4 h-4 text-green-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M5 13l4 4L19 7"
+                  ></path>
+                </svg>
+              </li>
+              <li class="flex items-center justify-between">
+                <span>Pest Control</span>
+                <svg
+                  class="w-4 h-4 text-green-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M5 13l4 4L19 7"
+                  ></path>
+                </svg>
+              </li>
+              <li class="flex items-center justify-between">
+                <span>Warehouses Condition</span>
+                <svg
+                  class="w-4 h-4 text-green-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M5 13l4 4L19 7"
+                  ></path>
+                </svg>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Middle Column -->
+        <div class="flex-1 bg-white p-6 rounded-xl shadow">
+          <h3 class="font-bold text-gray-800 mb-4 text-lg">Checklist</h3>
+          <table class="w-full text-sm text-left text-gray-700">
+            <thead class="bg-blue-50/50">
+              <tr>
+                <th class="py-3 px-2 font-medium w-8">#</th>
+                <th class="py-3 px-2 font-medium">Checklist Item</th>
+                <th class="py-3 px-2 font-medium text-center">Rating</th>
+                <th class="py-3 px-2 font-medium">Note</th>
+                <th class="py-3 px-2 font-medium">Photo</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <tr>
+                <td class="py-3 px-2">
+                  <svg
+                    class="w-5 h-5 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                    ></path>
+                  </svg>
+                </td>
+                <td class="py-3 px-2 font-medium">Cleanliness</td>
+                <td class="py-3 px-2 text-center text-green-500 font-bold">
+                  ✓
+                </td>
+                <td class="py-3 px-2">Multiple files ob-</td>
+                <td class="py-3 px-2">
+                  <div class="w-12 h-8 bg-gray-200 rounded overflow-hidden">
+                    <div
+                      class="w-full h-full bg-cover bg-center"
+                      style="
+                        background-image: url(&quot;data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%23ccc%22/></svg>&quot;);
+                      "
+                    ></div>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="py-3 px-2">
+                  <svg
+                    class="w-5 h-5 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
+                    ></path>
+                  </svg>
+                </td>
+                <td class="py-3 px-2 font-medium">Pest Control</td>
+                <td class="py-3 px-2 text-center text-orange-400 font-bold">
+                  —
+                </td>
+                <td class="py-3 px-2">Multiple files</td>
+                <td class="py-3 px-2">
+                  <div class="w-12 h-8 bg-gray-200 rounded"></div>
+                </td>
+              </tr>
+              <tr>
+                <td class="py-3 px-2">
+                  <svg
+                    class="w-5 h-5 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                    ></path>
+                  </svg>
+                </td>
+                <td class="py-3 px-2 font-medium">Warehouse Condition</td>
+                <td
+                  class="py-3 px-2 text-center text-orange-400 font-bold"
+                  colspan="2"
+                >
+                  Multiple flysabserved
+                </td>
+                <td class="py-3 px-2">
+                  <div class="w-12 h-8 bg-gray-200 rounded"></div>
+                </td>
+              </tr>
+              <tr>
+                <td class="py-3 px-2">
+                  <svg
+                    class="w-5 h-5 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                    ></path>
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                    ></path>
+                  </svg>
+                </td>
+                <td class="py-3 px-2 font-medium">Equipment Maintenance</td>
+                <td class="py-3 px-2 text-center text-green-500 font-bold">
+                  ✓
+                </td>
+                <td class="py-3 px-2">Restroon lacks soap</td>
+                <td class="py-3 px-2">
+                  <div
+                    class="w-12 h-8 bg-red-100 rounded flex items-center justify-center text-[8px] text-red-500 font-bold"
+                  >
+                    PHOTO
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="py-3 px-2">
+                  <svg
+                    class="w-5 h-5 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                    ></path>
+                  </svg>
+                </td>
+                <td class="py-3 px-2 font-medium">Employee Hygiene</td>
+                <td
+                  class="py-3 px-2 text-center text-red-500 font-bold text-lg"
+                >
+                  ×
+                </td>
+                <td class="py-3 px-2">Restroon lacks soap</td>
+                <td class="py-3 px-2">
+                  <div class="w-12 h-8 bg-gray-200 rounded"></div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Right Column -->
+        <div class="w-64 flex flex-col space-y-6">
+          <!-- Non-Conformities -->
+          <div class="bg-[#1e8b9b] text-white p-5 rounded-xl shadow">
+            <h3 class="font-bold mb-3">Non-Conformities</h3>
+            <ul class="list-disc pl-4 space-y-2 text-sm text-teal-50">
+              <li>Restroom lacks soap</li>
+              <li>Empty all trash cans</li>
+            </ul>
+          </div>
+
+          <!-- Upcoming Audits 1 -->
+          <div class="bg-white p-5 rounded-xl shadow">
+            <h3 class="font-bold text-gray-800 mb-3">Upcoming Audits</h3>
+            <ul class="space-y-2 text-sm text-gray-600">
+              <li
+                class="flex items-center before:content-[''] before:w-1.5 before:h-1.5 before:bg-teal-500 before:rounded-full before:mr-2"
+              >
+                Zone B (Oct 31, 2023)
+              </li>
+              <li
+                class="flex items-center before:content-[''] before:w-1.5 before:h-1.5 before:bg-teal-500 before:rounded-full before:mr-2"
+              >
+                Zone C (Nov 09, 2023)
+              </li>
+            </ul>
+          </div>
+
+          <!-- Upcoming Audits 2 -->
+          <div class="bg-white p-5 rounded-xl shadow">
+            <h3 class="font-bold text-gray-800 mb-3">Upcoming Audits</h3>
+            <p class="text-sm text-gray-600">7 canoes to verify CAPAs)</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

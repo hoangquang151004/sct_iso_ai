@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Data Analytics - SCT-ISO.AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../shared-ui.css" />
+    <style>
+      body {
+        font-family: "Inter", sans-serif;
+        background-color: #f0f4f8;
+      }
+      .header-bg {
+        background-color: #2694a5;
+      }
+      .panel-teal {
+        background-color: #2a94a5;
+      }
+    </style>
+  </head>
+  <body class="h-screen flex flex-col overflow-hidden app-shell">
+    <!-- Navbar -->
+    <header
+      class="header-bg app-header text-white px-6 py-3 flex items-center justify-between shadow-md z-10"
+    >
+      <a
+        href="../dashboard/dashboard.html"
+        class="text-xl font-bold tracking-wide"
+        >SCT-ISO.AI</a
+      >
+      <nav class="flex space-x-6 text-sm app-nav">
+        <a
+          href="../dashboard/dashboard.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+        >
+          <svg
+            class="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
+            ></path>
+          </svg>
+          <span>Dashboard</span>
+        </a>
+        <a
+          href="../document/document-control.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+        >
+          <svg
+            class="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+            ></path>
+          </svg>
+          <span>Documents</span>
+        </a>
+        <a
+          href="../haccp/haccp-compliance.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+        >
+          <span>Risk Assessment</span>
+        </a>
+        <a
+          href="../rpr/prp-audit.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+        >
+          <span>Audits</span>
+        </a>
+        <a
+          href="../capa/capa-management.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+        >
+          <span>CAPA</span>
+        </a>
+        <a
+          href="../ai_analytics/ai-analytics.html"
+          class="app-nav-link is-active flex items-center space-x-1 border-b-2 border-white pb-1 font-bold"
+        >
+          <span>Monitoring</span>
+        </a>
+        <a
+          href="../report/reports.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+        >
+          <span>Reports</span>
+        </a>
+      </nav>
+      <a
+        href="../user/user-management.html"
+        class="app-avatar w-8 h-8 bg-white rounded-full flex items-center justify-center text-gray-500 hover:opacity-90 transition"
+      >
+        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+          <path
+            fill-rule="evenodd"
+            d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
+            clip-rule="evenodd"
+          ></path>
+        </svg>
+      </a>
+    </header>
+
+    <!-- Main Content -->
+    <div class="flex-1 flex overflow-hidden p-6 gap-6 app-content">
+      <!-- Sidebar -->
+      <div class="w-48 flex flex-col space-y-2">
+        <button
+          class="bg-[#38a0b3] text-white text-sm font-medium py-2 px-4 rounded shadow"
+        >
+          AI Data Analytics
+        </button>
+        <button
+          class="text-gray-700 text-sm font-medium py-2 px-4 rounded hover:bg-white hover:shadow text-left"
+        >
+          IoT Integration
+        </button>
+      </div>
+
+      <!-- Center Column -->
+      <div class="flex-1 flex flex-col space-y-6 overflow-y-auto pr-2">
+        <!-- Chart Card -->
+        <div class="bg-white rounded-xl shadow p-6 relative">
+          <h2 class="text-lg font-bold text-gray-800 mb-4">
+            Anomaly Detection
+          </h2>
+          <div class="h-64 w-full relative">
+            <!-- Fake Y Axis -->
+            <div
+              class="absolute left-0 top-0 h-full flex flex-col justify-between text-xs text-gray-500 pb-6"
+            >
+              <span>34</span><span>32</span><span>30</span><span>28</span
+              ><span>26</span><span>24</span><span>22</span>
+            </div>
+            <!-- Chart Area -->
+            <div class="ml-6 h-full relative border-l border-b border-gray-200">
+              <div class="absolute inset-0 flex flex-col justify-between pb-6">
+                <div class="border-t border-gray-100 w-full h-0"></div>
+                <div class="border-t border-gray-100 w-full h-0"></div>
+                <div class="border-t border-gray-100 w-full h-0"></div>
+                <div class="border-t border-gray-100 w-full h-0"></div>
+                <div class="border-t border-gray-100 w-full h-0"></div>
+                <div class="border-t border-gray-100 w-full h-0"></div>
+              </div>
+
+              <!-- Forecast Area Highlight -->
+              <div
+                class="absolute right-0 top-0 w-1/4 h-full bg-blue-50 bg-opacity-50 border-l border-blue-100 flex items-start justify-center pt-8 z-0"
+              >
+                <span class="text-xs text-gray-600 font-medium">Forecast</span>
+              </div>
+
+              <!-- SVG Line -->
+              <svg
+                class="absolute inset-0 w-full h-full z-10"
+                preserveAspectRatio="none"
+                viewBox="0 0 100 100"
+              >
+                <path
+                  d="M 0,70 Q 15,50 20,40 T 40,40 T 50,60 T 60,20 T 75,50 L 80,50"
+                  fill="none"
+                  stroke="#f59e0b"
+                  stroke-width="1.5"
+                ></path>
+                <path
+                  d="M 0,70 Q 15,50 20,40 T 40,40 T 50,60 T 60,20 T 75,50 L 80,50 L 80,100 L 0,100 Z"
+                  fill="rgba(245, 158, 11, 0.1)"
+                  stroke="none"
+                ></path>
+                <!-- Forecast Line -->
+                <path
+                  d="M 80,70 Q 90,50 100,30"
+                  fill="none"
+                  stroke="#3b82f6"
+                  stroke-width="1.5"
+                ></path>
+                <!-- Threshold Line -->
+                <line
+                  x1="0"
+                  y1="75"
+                  x2="100"
+                  y2="75"
+                  stroke="#3b82f6"
+                  stroke-width="1"
+                  stroke-dasharray="2,2"
+                ></line>
+              </svg>
+            </div>
+            <!-- Fake X Axis -->
+            <div
+              class="absolute bottom-0 left-6 w-[calc(100%-1.5rem)] flex justify-between text-xs text-gray-500 mt-2"
+            >
+              <span>00:00</span><span>0:00</span><span>0:05</span
+              ><span>0:00</span><span>1:00</span><span>8:00</span
+              ><span>15:00</span>
+            </div>
+          </div>
+          <div
+            class="absolute bottom-6 right-6 text-xs text-blue-600 font-medium cursor-pointer"
+          >
+            Adjust setpoint
+          </div>
+        </div>
+
+        <!-- Alerts Card -->
+        <div class="bg-white rounded-xl shadow p-6">
+          <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center">
+            Threshold Alert
+            <span class="text-xs font-normal text-gray-400 ml-2"
+              >| Just now</span
+            >
+          </h2>
+
+          <div
+            class="border border-gray-100 rounded-lg p-4 mb-3 flex items-start space-x-3"
+          >
+            <div class="text-orange-500 mt-1">
+              <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                  fill-rule="evenodd"
+                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                  clip-rule="evenodd"
+                ></path>
+              </svg>
+            </div>
+            <div>
+              <h3 class="font-bold text-gray-800">Setpoint out of range</h3>
+              <p class="text-sm text-gray-600 mt-1">
+                Temperature range 32.4 °C — Setpoint 26-30 °C
+              </p>
+            </div>
+          </div>
+
+          <div
+            class="border border-gray-100 rounded-lg p-4 flex items-start space-x-3"
+          >
+            <div class="text-blue-500 mt-1">
+              <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                  fill-rule="evenodd"
+                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                  clip-rule="evenodd"
+                ></path>
+              </svg>
+            </div>
+            <div>
+              <h3 class="font-bold text-gray-800">Suggestion</h3>
+              <p class="text-sm text-gray-600 mt-1 flex items-center">
+                <span class="text-blue-500 font-bold mr-1">>></span> New
+                catering stall Heart real time
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column -->
+      <div class="w-64 flex flex-col space-y-6">
+        <!-- Sensors Panel -->
+        <div
+          class="panel-teal rounded-xl shadow text-white p-6 flex flex-col space-y-6"
+        >
+          <div
+            class="flex items-center space-x-4 border-b border-white/20 pb-4"
+          >
+            <svg
+              class="w-10 h-10 opacity-80"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.5"
+                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+              ></path>
+            </svg>
+            <div>
+              <div class="text-sm opacity-90">Temperature</div>
+              <div class="text-3xl font-light">
+                7,5<span class="text-lg">°C</span>
+              </div>
+            </div>
+          </div>
+
+          <div
+            class="flex items-center space-x-4 border-b border-white/20 pb-4"
+          >
+            <svg
+              class="w-10 h-10 opacity-80"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.5"
+                d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"
+              ></path>
+            </svg>
+            <div>
+              <div class="text-sm opacity-90">Humidity</div>
+              <div class="text-3xl font-light">
+                71<span class="text-lg">%</span>
+              </div>
+            </div>
+          </div>
+
+          <div
+            class="flex items-center space-x-4 border-b border-white/20 pb-4"
+          >
+            <div class="text-2xl font-bold opacity-80 w-10 text-center">pH</div>
+            <div>
+              <div class="text-sm opacity-90">pH</div>
+              <div class="text-3xl font-light">6,9</div>
+            </div>
+          </div>
+
+          <div class="flex items-center space-x-4">
+            <svg
+              class="w-10 h-10 opacity-80"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.5"
+                d="M13 10V3L4 14h7v7l9-11h-7z"
+              ></path>
+            </svg>
+            <div>
+              <div class="text-sm opacity-90">Pressure</div>
+              <div class="text-3xl font-light">
+                1,2<span class="text-lg"> bar</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mini Card -->
+        <div class="bg-white rounded-xl shadow p-6">
+          <h3 class="font-bold text-gray-800 mb-4">IoT Integration</h3>
+          <div class="flex items-center space-x-4 text-gray-700">
+            <svg
+              class="w-8 h-8 text-[#2a94a5]"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.5"
+                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+              ></path>
+            </svg>
+            <div>
+              <div class="text-sm font-medium">Temperature</div>
+              <div class="text-2xl font-bold">7,5°C</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

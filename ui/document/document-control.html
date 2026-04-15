@@ -1,309 +1,653 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="vi">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Document Control – SCT-ISO.AI</title>
-  <meta name="description" content="SCT-ISO.AI – Quản lý tài liệu kiểm soát ISO, HACCP, CAPA" />
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: { sans: ['Inter', 'sans-serif'] },
-          colors: {
-            teal: {
-              DEFAULT: '#1a9b8c',
-              dark:    '#167a6e',
-              light:   '#e8f7f5',
-            }
-          }
-        }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document Control – SCT-ISO.AI</title>
+    <meta
+      name="description"
+      content="SCT-ISO.AI – Quản lý tài liệu kiểm soát ISO, HACCP, CAPA"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../shared-ui.css" />
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: { sans: ["Inter", "sans-serif"] },
+            colors: {
+              teal: {
+                DEFAULT: "#1a9b8c",
+                dark: "#167a6e",
+                light: "#e8f7f5",
+              },
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      body {
+        background: #f0f4f8;
       }
-    }
-  </script>
-  <style>
-    body { background: #f0f4f8; }
 
-    /* Scrollbar */
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #f1f5f9; }
-    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+      /* Scrollbar */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #f1f5f9;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 3px;
+      }
 
-    /* Table row hover */
-    .doc-row { transition: background 0.15s; }
-    .doc-row:hover { background: #f8fbfa; }
+      /* Table row hover */
+      .doc-row {
+        transition: background 0.15s;
+      }
+      .doc-row:hover {
+        background: #f8fbfa;
+      }
 
-    /* Status badges */
-    .badge-approved     { color: #16a34a; }
-    .badge-under-review { color: #d97706; }
-    .badge-rejected     { color: #dc2626; }
+      /* Status badges */
+      .badge-approved {
+        color: #16a34a;
+      }
+      .badge-under-review {
+        color: #d97706;
+      }
+      .badge-rejected {
+        color: #dc2626;
+      }
 
-    /* Nav link */
-    .nav-link { transition: color 0.15s, background 0.15s; }
-    .nav-link:hover { color: #1a9b8c; background: #e8f7f5; }
-    .nav-link.active { color: #1a9b8c; background: #e8f7f5; font-weight: 600; }
+      /* Nav link */
+      .nav-link {
+        transition:
+          color 0.15s,
+          background 0.15s;
+      }
+      .nav-link:hover {
+        color: #1a9b8c;
+        background: #e8f7f5;
+      }
+      .nav-link.active {
+        color: #1a9b8c;
+        background: #e8f7f5;
+        font-weight: 600;
+      }
 
-    /* Dropdown */
-    #filterDropdown { display: none; }
-    #filterDropdown.open { display: block; }
+      /* Dropdown */
+      #filterDropdown {
+        display: none;
+      }
+      #filterDropdown.open {
+        display: block;
+      }
 
-    /* Sort icons */
-    th { user-select: none; }
-    th:hover { color: #1a9b8c; cursor: pointer; }
-  </style>
-</head>
-<body class="min-h-screen font-sans">
-
-  <!-- ═══════════════════════ HEADER ═══════════════════════ -->
-  <header class="bg-white border-b border-gray-200 sticky top-0 z-50">
-    <div class="max-w-screen-xl mx-auto px-6 py-3 flex items-center justify-between">
-
-      <!-- Logo -->
-      <span class="text-xl font-extrabold text-teal tracking-tight select-none">SCT-ISO.AI</span>
-
-      <!-- Nav -->
-      <nav class="flex items-center gap-0.5 text-sm font-medium text-gray-600">
-
-        <a href="../dashboard.html" class="nav-link flex items-center gap-1.5 px-3 py-2 rounded-lg">
-          <!-- grid icon -->
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
-          Dashboard
-        </a>
-
-        <a href="#" class="nav-link active flex items-center gap-1.5 px-3 py-2 rounded-lg">
-          <!-- document icon -->
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-          Documents
-        </a>
-
-        <a href="#" class="nav-link flex items-center gap-1.5 px-3 py-2 rounded-lg">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-          Risk Assessment
-        </a>
-
-        <a href="#" class="nav-link flex items-center gap-1.5 px-3 py-2 rounded-lg">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-          Audits
-        </a>
-
-        <a href="#" class="nav-link flex items-center gap-1.5 px-3 py-2 rounded-lg">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m0 14v1m8-8h-1M5 12H4m13.657-6.343l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707"/><circle cx="12" cy="12" r="4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
-          CAPA
-        </a>
-
-        <a href="#" class="nav-link flex items-center gap-1.5 px-3 py-2 rounded-lg">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-          Monitoring
-        </a>
-
-        <a href="#" class="nav-link flex items-center gap-1.5 px-3 py-2 rounded-lg">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-          Reports
-        </a>
-      </nav>
-
-      <!-- Avatar -->
-      <div id="avatarBtn" class="w-9 h-9 rounded-full bg-teal flex items-center justify-center cursor-pointer hover:opacity-90 transition">
-        <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
-      </div>
-    </div>
-  </header>
-
-  <!-- ═══════════════════════ MAIN ═══════════════════════ -->
-  <main class="max-w-screen-xl mx-auto px-6 py-8">
-
-    <!-- Page Header -->
-    <div class="flex items-center justify-between mb-6">
-      <h1 class="text-3xl font-extrabold text-gray-800 tracking-tight">Document Control</h1>
-      <button
-        id="newDocBtn"
-        class="flex items-center gap-2 bg-teal hover:bg-teal-dark text-white text-sm font-semibold px-5 py-2.5 rounded-lg shadow transition"
+      /* Sort icons */
+      th {
+        user-select: none;
+      }
+      th:hover {
+        color: #1a9b8c;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen font-sans app-shell">
+    <!-- ═══════════════════════ HEADER ═══════════════════════ -->
+    <header
+      class="header-bg app-header text-white px-6 py-3 flex items-center justify-between shadow-md z-10"
+    >
+      <a
+        href="../dashboard/dashboard.html"
+        class="text-xl font-bold tracking-wide"
+        >SCT-ISO.AI</a
       >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
-        New Document
-      </button>
-    </div>
-
-    <!-- Toolbar: Filter + Search -->
-    <div class="flex items-center justify-between mb-4 gap-4">
-
-      <!-- Filter Dropdown -->
-      <div class="relative">
-        <button
-          id="filterBtn"
-          class="flex items-center gap-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 px-4 py-2 rounded-lg hover:border-teal hover:text-teal transition shadow-sm"
+      <nav class="flex space-x-6 text-sm app-nav">
+        <a
+          href="../dashboard/dashboard.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Dashboard</span></a
         >
-          All Documents
-          <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-        </button>
-        <div
-          id="filterDropdown"
-          class="absolute left-0 mt-1 w-52 bg-white border border-gray-200 rounded-xl shadow-lg z-20 py-1 text-sm text-gray-700"
+        <a
+          href="../document/document-control.html"
+          class="app-nav-link is-active flex items-center space-x-1 border-b-2 border-white pb-1 font-bold"
+          ><span>Documents</span></a
         >
-          <button class="w-full text-left px-4 py-2.5 hover:bg-teal-light hover:text-teal font-medium" onclick="filterDocuments('all')">All Documents</button>
-          <button class="w-full text-left px-4 py-2.5 hover:bg-teal-light hover:text-teal" onclick="filterDocuments('approved')">Approved</button>
-          <button class="w-full text-left px-4 py-2.5 hover:bg-teal-light hover:text-teal" onclick="filterDocuments('under-review')">Under Review</button>
-          <button class="w-full text-left px-4 py-2.5 hover:bg-teal-light hover:text-teal" onclick="filterDocuments('rejected')">Rejected</button>
-        </div>
-      </div>
+        <a
+          href="../haccp/haccp-compliance.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Risk Assessment</span></a
+        >
+        <a
+          href="../rpr/prp-audit.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Audits</span></a
+        >
+        <a
+          href="../capa/capa-management.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>CAPA</span></a
+        >
+        <a
+          href="../ai_analytics/ai-analytics.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Monitoring</span></a
+        >
+        <a
+          href="../report/reports.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Reports</span></a
+        >
+      </nav>
+      <a
+        href="../user/user-management.html"
+        id="avatarBtn"
+        class="app-avatar w-8 h-8 bg-white rounded-full flex items-center justify-center text-gray-500 hover:opacity-90 transition"
+      >
+        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+          <path
+            fill-rule="evenodd"
+            d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
+            clip-rule="evenodd"
+          ></path>
+        </svg>
+      </a>
+    </header>
 
-      <!-- Search + Icons -->
-      <div class="flex items-center gap-2">
-        <!-- Search -->
-        <div class="relative">
-          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35"/></svg>
-          <input
-            id="searchInput"
-            type="text"
-            placeholder="Search..."
-            class="pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg w-56 focus:outline-none focus:ring-2 focus:ring-teal/40 focus:border-teal bg-white shadow-sm transition"
-          />
-        </div>
-
-        <!-- Filter icon -->
-        <button class="w-9 h-9 flex items-center justify-center border border-gray-200 rounded-lg bg-white hover:border-teal hover:text-teal text-gray-500 shadow-sm transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z"/></svg>
-        </button>
-
-        <!-- Columns icon -->
-        <button class="w-9 h-9 flex items-center justify-center border border-gray-200 rounded-lg bg-white hover:border-teal hover:text-teal text-gray-500 shadow-sm transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h2m4-16h2a2 2 0 012 2v12a2 2 0 01-2 2h-2m-4 0V5"/></svg>
-        </button>
-      </div>
-    </div>
-
-    <!-- ─── TABLE ─── -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <table class="w-full text-sm" id="docTable">
-        <thead>
-          <tr class="border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-            <th class="text-left px-5 py-3.5 w-8">
-              <input type="checkbox" id="selectAll" class="accent-teal w-4 h-4 rounded cursor-pointer" />
-            </th>
-            <th class="text-left px-4 py-3.5 cursor-pointer hover:text-teal" onclick="sortTable('name')">
-              Name
-              <svg class="inline w-3.5 h-3.5 ml-0.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l4-4 4 4M16 15l-4 4-4-4"/></svg>
-            </th>
-            <th class="text-left px-4 py-3.5 cursor-pointer hover:text-teal" onclick="sortTable('type')">Type</th>
-            <th class="text-left px-4 py-3.5 cursor-pointer hover:text-teal" onclick="sortTable('department')">Department</th>
-            <th class="text-left px-4 py-3.5 cursor-pointer hover:text-teal" onclick="sortTable('standard')">Standard</th>
-            <th class="text-left px-4 py-3.5 cursor-pointer hover:text-teal" onclick="sortTable('version')">Version</th>
-            <th class="text-left px-4 py-3.5 cursor-pointer hover:text-teal" onclick="sortTable('status')">Status</th>
-            <th class="text-left px-4 py-3.5 cursor-pointer hover:text-teal" onclick="sortTable('modified')">Last Modified</th>
-            <th class="text-left px-4 py-3.5 w-10"></th>
-          </tr>
-        </thead>
-        <tbody id="docBody" class="divide-y divide-gray-50">
-          <!-- Populated by JS -->
-        </tbody>
-      </table>
-
-      <!-- Pagination -->
-      <div class="flex items-center justify-between px-5 py-3.5 border-t border-gray-100 text-sm text-gray-500">
-        <span id="paginationInfo">1–8 of 68</span>
-        <div class="flex items-center gap-1">
-          <button id="prevBtn" onclick="changePage(-1)" class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 hover:border-teal hover:text-teal transition disabled:opacity-40" disabled>
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-          </button>
-          <button id="nextBtn" onclick="changePage(1)" class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 hover:border-teal hover:text-teal transition">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-          </button>
-        </div>
-      </div>
-    </div>
-  </main>
-
-  <!-- ═══════════════════════ NEW DOCUMENT MODAL ═══════════════════════ -->
-  <div id="modalOverlay" class="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 hidden flex items-center justify-center">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-7">
+    <!-- ═══════════════════════ MAIN ═══════════════════════ -->
+    <main class="max-w-screen-xl mx-auto px-6 py-8 app-content">
+      <!-- Page Header -->
       <div class="flex items-center justify-between mb-6">
-        <h2 class="text-xl font-bold text-gray-800">New Document</h2>
-        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 transition">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        <h1 class="text-3xl font-extrabold text-gray-800 tracking-tight">
+          Document Control
+        </h1>
+        <button
+          id="newDocBtn"
+          class="flex items-center gap-2 bg-teal hover:bg-teal-dark text-white text-sm font-semibold px-5 py-2.5 rounded-lg shadow transition"
+        >
+          <svg
+            class="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2.5"
+              d="M12 4v16m8-8H4"
+            />
+          </svg>
+          New Document
         </button>
       </div>
-      <div class="space-y-4">
-        <div>
-          <label class="text-sm font-semibold text-gray-600 block mb-1">Document Name</label>
-          <input type="text" placeholder="e.g. SOP-015 Pest Control" class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal/40 focus:border-teal" />
+
+      <!-- Toolbar: Filter + Search -->
+      <div class="flex items-center justify-between mb-4 gap-4">
+        <!-- Filter Dropdown -->
+        <div class="relative">
+          <button
+            id="filterBtn"
+            class="flex items-center gap-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 px-4 py-2 rounded-lg hover:border-teal hover:text-teal transition shadow-sm"
+          >
+            All Documents
+            <svg
+              class="w-4 h-4 text-gray-500"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+          </button>
+          <div
+            id="filterDropdown"
+            class="absolute left-0 mt-1 w-52 bg-white border border-gray-200 rounded-xl shadow-lg z-20 py-1 text-sm text-gray-700"
+          >
+            <button
+              class="w-full text-left px-4 py-2.5 hover:bg-teal-light hover:text-teal font-medium"
+              onclick="filterDocuments('all')"
+            >
+              All Documents
+            </button>
+            <button
+              class="w-full text-left px-4 py-2.5 hover:bg-teal-light hover:text-teal"
+              onclick="filterDocuments('approved')"
+            >
+              Approved
+            </button>
+            <button
+              class="w-full text-left px-4 py-2.5 hover:bg-teal-light hover:text-teal"
+              onclick="filterDocuments('under-review')"
+            >
+              Under Review
+            </button>
+            <button
+              class="w-full text-left px-4 py-2.5 hover:bg-teal-light hover:text-teal"
+              onclick="filterDocuments('rejected')"
+            >
+              Rejected
+            </button>
+          </div>
         </div>
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="text-sm font-semibold text-gray-600 block mb-1">Type</label>
-            <select class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal/40 focus:border-teal bg-white">
-              <option>Quality Manual</option>
-              <option>SOP</option>
-              <option>Work Instruction</option>
-              <option>Form</option>
-              <option>Checklist</option>
-            </select>
+
+        <!-- Search + Icons -->
+        <div class="flex items-center gap-2">
+          <!-- Search -->
+          <div class="relative">
+            <svg
+              class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M21 21l-4.35-4.35"
+              />
+            </svg>
+            <input
+              id="searchInput"
+              type="text"
+              placeholder="Search..."
+              class="pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg w-56 focus:outline-none focus:ring-2 focus:ring-teal/40 focus:border-teal bg-white shadow-sm transition"
+            />
           </div>
-          <div>
-            <label class="text-sm font-semibold text-gray-600 block mb-1">Department</label>
-            <select class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal/40 focus:border-teal bg-white">
-              <option>Quality Assurance</option>
-              <option>Production</option>
-              <option>Maintenance</option>
-              <option>Sanitation</option>
-              <option>Warehouse</option>
-            </select>
-          </div>
+
+          <!-- Filter icon -->
+          <button
+            class="w-9 h-9 flex items-center justify-center border border-gray-200 rounded-lg bg-white hover:border-teal hover:text-teal text-gray-500 shadow-sm transition"
+          >
+            <svg
+              class="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z"
+              />
+            </svg>
+          </button>
+
+          <!-- Columns icon -->
+          <button
+            class="w-9 h-9 flex items-center justify-center border border-gray-200 rounded-lg bg-white hover:border-teal hover:text-teal text-gray-500 shadow-sm transition"
+          >
+            <svg
+              class="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h2m4-16h2a2 2 0 012 2v12a2 2 0 01-2 2h-2m-4 0V5"
+              />
+            </svg>
+          </button>
         </div>
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="text-sm font-semibold text-gray-600 block mb-1">Standard</label>
-            <input type="text" value="ISO 22000:2018" class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal/40" />
-          </div>
-          <div>
-            <label class="text-sm font-semibold text-gray-600 block mb-1">Version</label>
-            <input type="text" value="1.0" class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal/40" />
+      </div>
+
+      <!-- ─── TABLE ─── -->
+      <div
+        class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden"
+      >
+        <table class="w-full text-sm" id="docTable">
+          <thead>
+            <tr
+              class="border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+            >
+              <th class="text-left px-5 py-3.5 w-8">
+                <input
+                  type="checkbox"
+                  id="selectAll"
+                  class="accent-teal w-4 h-4 rounded cursor-pointer"
+                />
+              </th>
+              <th
+                class="text-left px-4 py-3.5 cursor-pointer hover:text-teal"
+                onclick="sortTable('name')"
+              >
+                Name
+                <svg
+                  class="inline w-3.5 h-3.5 ml-0.5 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M8 9l4-4 4 4M16 15l-4 4-4-4"
+                  />
+                </svg>
+              </th>
+              <th
+                class="text-left px-4 py-3.5 cursor-pointer hover:text-teal"
+                onclick="sortTable('type')"
+              >
+                Type
+              </th>
+              <th
+                class="text-left px-4 py-3.5 cursor-pointer hover:text-teal"
+                onclick="sortTable('department')"
+              >
+                Department
+              </th>
+              <th
+                class="text-left px-4 py-3.5 cursor-pointer hover:text-teal"
+                onclick="sortTable('standard')"
+              >
+                Standard
+              </th>
+              <th
+                class="text-left px-4 py-3.5 cursor-pointer hover:text-teal"
+                onclick="sortTable('version')"
+              >
+                Version
+              </th>
+              <th
+                class="text-left px-4 py-3.5 cursor-pointer hover:text-teal"
+                onclick="sortTable('status')"
+              >
+                Status
+              </th>
+              <th
+                class="text-left px-4 py-3.5 cursor-pointer hover:text-teal"
+                onclick="sortTable('modified')"
+              >
+                Last Modified
+              </th>
+              <th class="text-left px-4 py-3.5 w-10"></th>
+            </tr>
+          </thead>
+          <tbody id="docBody" class="divide-y divide-gray-50">
+            <!-- Populated by JS -->
+          </tbody>
+        </table>
+
+        <!-- Pagination -->
+        <div
+          class="flex items-center justify-between px-5 py-3.5 border-t border-gray-100 text-sm text-gray-500"
+        >
+          <span id="paginationInfo">1–8 of 68</span>
+          <div class="flex items-center gap-1">
+            <button
+              id="prevBtn"
+              onclick="changePage(-1)"
+              class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 hover:border-teal hover:text-teal transition disabled:opacity-40"
+              disabled
+            >
+              <svg
+                class="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M15 19l-7-7 7-7"
+                />
+              </svg>
+            </button>
+            <button
+              id="nextBtn"
+              onclick="changePage(1)"
+              class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 hover:border-teal hover:text-teal transition"
+            >
+              <svg
+                class="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M9 5l7 7-7 7"
+                />
+              </svg>
+            </button>
           </div>
         </div>
       </div>
-      <div class="flex gap-3 justify-end mt-7">
-        <button onclick="closeModal()" class="px-5 py-2.5 text-sm font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition">Cancel</button>
-        <button class="px-5 py-2.5 text-sm font-semibold text-white bg-teal hover:bg-teal-dark rounded-lg shadow transition">Create Document</button>
+    </main>
+
+    <!-- ═══════════════════════ NEW DOCUMENT MODAL ═══════════════════════ -->
+    <div
+      id="modalOverlay"
+      class="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 hidden flex items-center justify-center"
+    >
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-7">
+        <div class="flex items-center justify-between mb-6">
+          <h2 class="text-xl font-bold text-gray-800">New Document</h2>
+          <button
+            onclick="closeModal()"
+            class="text-gray-400 hover:text-gray-600 transition"
+          >
+            <svg
+              class="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+        </div>
+        <div class="space-y-4">
+          <div>
+            <label class="text-sm font-semibold text-gray-600 block mb-1"
+              >Document Name</label
+            >
+            <input
+              type="text"
+              placeholder="e.g. SOP-015 Pest Control"
+              class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal/40 focus:border-teal"
+            />
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="text-sm font-semibold text-gray-600 block mb-1"
+                >Type</label
+              >
+              <select
+                class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal/40 focus:border-teal bg-white"
+              >
+                <option>Quality Manual</option>
+                <option>SOP</option>
+                <option>Work Instruction</option>
+                <option>Form</option>
+                <option>Checklist</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-sm font-semibold text-gray-600 block mb-1"
+                >Department</label
+              >
+              <select
+                class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal/40 focus:border-teal bg-white"
+              >
+                <option>Quality Assurance</option>
+                <option>Production</option>
+                <option>Maintenance</option>
+                <option>Sanitation</option>
+                <option>Warehouse</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="text-sm font-semibold text-gray-600 block mb-1"
+                >Standard</label
+              >
+              <input
+                type="text"
+                value="ISO 22000:2018"
+                class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal/40"
+              />
+            </div>
+            <div>
+              <label class="text-sm font-semibold text-gray-600 block mb-1"
+                >Version</label
+              >
+              <input
+                type="text"
+                value="1.0"
+                class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal/40"
+              />
+            </div>
+          </div>
+        </div>
+        <div class="flex gap-3 justify-end mt-7">
+          <button
+            onclick="closeModal()"
+            class="px-5 py-2.5 text-sm font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition"
+          >
+            Cancel
+          </button>
+          <button
+            class="px-5 py-2.5 text-sm font-semibold text-white bg-teal hover:bg-teal-dark rounded-lg shadow transition"
+          >
+            Create Document
+          </button>
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- ═══════════════════════ SCRIPTS ═══════════════════════ -->
-  <script>
-    // ── Data ──────────────────────────────────────────────────────
-    const allDocuments = [
-      { name: 'QM-001 Quality Manual',        type: 'Quality Manual',   department: 'Quality Assurance', standard: 'ISO 22000:2018', version: '1.0', status: 'approved',     modified: 'Alice Brown'  },
-      { name: 'SOP-005 Sanitation Procedure', type: 'SOP',              department: 'Production',        standard: 'ISO 22000:2018', version: '2.0', status: 'approved',     modified: 'John Doe'     },
-      { name: 'WI-004 Metal Detection',        type: 'SOP',              department: 'Maintenance',       standard: 'ISO 22000:2018', version: '1.0', status: 'under-review', modified: 'David Wilson' },
-      { name: 'SOP-002 Calibration Process',  type: 'Work Instruction', department: 'Sanitation',        standard: 'ISO 22000:2018', version: '1.0', status: 'approved',     modified: 'Emily White'  },
-      { name: 'SOP-007 Pest Control',          type: 'Form',             department: 'Warehouse',         standard: 'ISO 22000:2018', version: '2.0', status: 'approved',     modified: 'Jamal Khan'   },
-      { name: 'FORM-009 Glass Inspection',     type: 'Checklist',        department: 'Production',        standard: 'ISO 22000',      version: '3.0', status: 'approved',     modified: 'Claire Lewis' },
-      { name: 'WI-015 Allergen Control',       type: 'Allergen Co',      department: 'Warehouse',         standard: 'ISO 22000:2018', version: '2.0', status: 'approved',     modified: 'Claire Lewis' },
-      { name: 'SOP-010 Cleaning Schedule',     type: 'Form',             department: 'Sanitation',        standard: 'ISO 22000:2018', version: '1.0', status: 'approved',     modified: 'Gdrle Awarn'  },
-    ];
+    <!-- ═══════════════════════ SCRIPTS ═══════════════════════ -->
+    <script>
+      // ── Data ──────────────────────────────────────────────────────
+      const allDocuments = [
+        {
+          name: "QM-001 Quality Manual",
+          type: "Quality Manual",
+          department: "Quality Assurance",
+          standard: "ISO 22000:2018",
+          version: "1.0",
+          status: "approved",
+          modified: "Alice Brown",
+        },
+        {
+          name: "SOP-005 Sanitation Procedure",
+          type: "SOP",
+          department: "Production",
+          standard: "ISO 22000:2018",
+          version: "2.0",
+          status: "approved",
+          modified: "John Doe",
+        },
+        {
+          name: "WI-004 Metal Detection",
+          type: "SOP",
+          department: "Maintenance",
+          standard: "ISO 22000:2018",
+          version: "1.0",
+          status: "under-review",
+          modified: "David Wilson",
+        },
+        {
+          name: "SOP-002 Calibration Process",
+          type: "Work Instruction",
+          department: "Sanitation",
+          standard: "ISO 22000:2018",
+          version: "1.0",
+          status: "approved",
+          modified: "Emily White",
+        },
+        {
+          name: "SOP-007 Pest Control",
+          type: "Form",
+          department: "Warehouse",
+          standard: "ISO 22000:2018",
+          version: "2.0",
+          status: "approved",
+          modified: "Jamal Khan",
+        },
+        {
+          name: "FORM-009 Glass Inspection",
+          type: "Checklist",
+          department: "Production",
+          standard: "ISO 22000",
+          version: "3.0",
+          status: "approved",
+          modified: "Claire Lewis",
+        },
+        {
+          name: "WI-015 Allergen Control",
+          type: "Allergen Co",
+          department: "Warehouse",
+          standard: "ISO 22000:2018",
+          version: "2.0",
+          status: "approved",
+          modified: "Claire Lewis",
+        },
+        {
+          name: "SOP-010 Cleaning Schedule",
+          type: "Form",
+          department: "Sanitation",
+          standard: "ISO 22000:2018",
+          version: "1.0",
+          status: "approved",
+          modified: "Gdrle Awarn",
+        },
+      ];
 
-    const PAGE_SIZE = 8;
-    let currentPage = 1;
-    let currentFilter = 'all';
-    let searchQuery = '';
-    let sortKey = '';
-    let sortAsc = true;
+      const PAGE_SIZE = 8;
+      let currentPage = 1;
+      let currentFilter = "all";
+      let searchQuery = "";
+      let sortKey = "";
+      let sortAsc = true;
 
-    // ── Helpers ───────────────────────────────────────────────────
-    function statusBadge(s) {
-      if (s === 'approved')     return `<span class="badge-approved flex items-center gap-1 font-semibold"><span class="w-2 h-2 rounded-full bg-green-500 inline-block"></span>Approved</span>`;
-      if (s === 'under-review') return `<span class="badge-under-review flex items-center gap-1 font-semibold"><span class="w-2 h-2 rounded-full bg-yellow-400 inline-block"></span>Under Review</span>`;
-      return `<span class="badge-rejected flex items-center gap-1 font-semibold"><span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span>Rejected</span>`;
-    }
+      // ── Helpers ───────────────────────────────────────────────────
+      function statusBadge(s) {
+        if (s === "approved")
+          return `<span class="badge-approved flex items-center gap-1 font-semibold"><span class="w-2 h-2 rounded-full bg-green-500 inline-block"></span>Approved</span>`;
+        if (s === "under-review")
+          return `<span class="badge-under-review flex items-center gap-1 font-semibold"><span class="w-2 h-2 rounded-full bg-yellow-400 inline-block"></span>Under Review</span>`;
+        return `<span class="badge-rejected flex items-center gap-1 font-semibold"><span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span>Rejected</span>`;
+      }
 
-    function docIcon() {
-      return `<svg class="w-5 h-5 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>`;
-    }
+      function docIcon() {
+        return `<svg class="w-5 h-5 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>`;
+      }
 
-    function actionMenu(idx) {
-      return `
+      function actionMenu(idx) {
+        return `
         <div class="relative group">
           <button class="text-gray-400 hover:text-gray-600 p-1 rounded transition" data-idx="${idx}">
             <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
@@ -314,36 +658,45 @@
             <button class="w-full text-left px-4 py-2 hover:bg-red-50 hover:text-red-600">Delete</button>
           </div>
         </div>`;
-    }
+      }
 
-    // ── Render ────────────────────────────────────────────────────
-    function getFiltered() {
-      return allDocuments.filter(d => {
-        const matchFilter = currentFilter === 'all' || d.status === currentFilter;
-        const q = searchQuery.toLowerCase();
-        const matchSearch = !q || d.name.toLowerCase().includes(q) || d.type.toLowerCase().includes(q) || d.department.toLowerCase().includes(q);
-        return matchFilter && matchSearch;
-      });
-    }
-
-    function render() {
-      let data = getFiltered();
-
-      if (sortKey) {
-        data.sort((a, b) => {
-          const av = a[sortKey] || '', bv = b[sortKey] || '';
-          return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+      // ── Render ────────────────────────────────────────────────────
+      function getFiltered() {
+        return allDocuments.filter((d) => {
+          const matchFilter =
+            currentFilter === "all" || d.status === currentFilter;
+          const q = searchQuery.toLowerCase();
+          const matchSearch =
+            !q ||
+            d.name.toLowerCase().includes(q) ||
+            d.type.toLowerCase().includes(q) ||
+            d.department.toLowerCase().includes(q);
+          return matchFilter && matchSearch;
         });
       }
 
-      const total = data.length;
-      const start = (currentPage - 1) * PAGE_SIZE;
-      const page  = data.slice(start, start + PAGE_SIZE);
+      function render() {
+        let data = getFiltered();
 
-      const tbody = document.getElementById('docBody');
-      tbody.innerHTML = page.length === 0
-        ? `<tr><td colspan="9" class="text-center py-10 text-gray-400">No documents found</td></tr>`
-        : page.map((d, i) => `
+        if (sortKey) {
+          data.sort((a, b) => {
+            const av = a[sortKey] || "",
+              bv = b[sortKey] || "";
+            return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+          });
+        }
+
+        const total = data.length;
+        const start = (currentPage - 1) * PAGE_SIZE;
+        const page = data.slice(start, start + PAGE_SIZE);
+
+        const tbody = document.getElementById("docBody");
+        tbody.innerHTML =
+          page.length === 0
+            ? `<tr><td colspan="9" class="text-center py-10 text-gray-400">No documents found</td></tr>`
+            : page
+                .map(
+                  (d, i) => `
             <tr class="doc-row">
               <td class="px-5 py-3.5">
                 <input type="checkbox" class="accent-teal w-4 h-4 rounded cursor-pointer" />
@@ -361,76 +714,94 @@
               <td class="px-4 py-3.5">${statusBadge(d.status)}</td>
               <td class="px-4 py-3.5 text-gray-500">${d.modified}</td>
               <td class="px-4 py-3.5">${actionMenu(start + i)}</td>
-            </tr>`).join('');
+            </tr>`,
+                )
+                .join("");
 
-      document.getElementById('paginationInfo').textContent =
-        total === 0 ? '0 results' : `${start + 1}–${Math.min(start + PAGE_SIZE, total)} of ${total}`;
+        document.getElementById("paginationInfo").textContent =
+          total === 0
+            ? "0 results"
+            : `${start + 1}–${Math.min(start + PAGE_SIZE, total)} of ${total}`;
 
-      document.getElementById('prevBtn').disabled = currentPage === 1;
-      document.getElementById('nextBtn').disabled = start + PAGE_SIZE >= total;
-      document.getElementById('prevBtn').classList.toggle('opacity-40', currentPage === 1);
-      document.getElementById('nextBtn').classList.toggle('opacity-40', start + PAGE_SIZE >= total);
-    }
+        document.getElementById("prevBtn").disabled = currentPage === 1;
+        document.getElementById("nextBtn").disabled =
+          start + PAGE_SIZE >= total;
+        document
+          .getElementById("prevBtn")
+          .classList.toggle("opacity-40", currentPage === 1);
+        document
+          .getElementById("nextBtn")
+          .classList.toggle("opacity-40", start + PAGE_SIZE >= total);
+      }
 
-    // ── Controls ──────────────────────────────────────────────────
-    function filterDocuments(f) {
-      currentFilter = f;
-      currentPage = 1;
-      document.getElementById('filterBtn').firstChild.textContent =
-        f === 'all' ? 'All Documents' :
-        f === 'approved' ? 'Approved' :
-        f === 'under-review' ? 'Under Review' : 'Rejected';
-      document.getElementById('filterDropdown').classList.remove('open');
+      // ── Controls ──────────────────────────────────────────────────
+      function filterDocuments(f) {
+        currentFilter = f;
+        currentPage = 1;
+        document.getElementById("filterBtn").firstChild.textContent =
+          f === "all"
+            ? "All Documents"
+            : f === "approved"
+              ? "Approved"
+              : f === "under-review"
+                ? "Under Review"
+                : "Rejected";
+        document.getElementById("filterDropdown").classList.remove("open");
+        render();
+      }
+
+      function changePage(dir) {
+        currentPage += dir;
+        render();
+      }
+
+      function sortTable(key) {
+        if (sortKey === key) sortAsc = !sortAsc;
+        else {
+          sortKey = key;
+          sortAsc = true;
+        }
+        render();
+      }
+
+      // ── Events ────────────────────────────────────────────────────
+
+      // Filter toggle
+      document.getElementById("filterBtn").addEventListener("click", () => {
+        document.getElementById("filterDropdown").classList.toggle("open");
+      });
+      document.addEventListener("click", (e) => {
+        if (!document.getElementById("filterBtn").contains(e.target))
+          document.getElementById("filterDropdown").classList.remove("open");
+      });
+
+      // Search
+      document.getElementById("searchInput").addEventListener("input", (e) => {
+        searchQuery = e.target.value;
+        currentPage = 1;
+        render();
+      });
+
+      // Select all checkbox
+      document.getElementById("selectAll").addEventListener("change", (e) => {
+        document
+          .querySelectorAll("#docBody input[type=checkbox]")
+          .forEach((cb) => (cb.checked = e.target.checked));
+      });
+
+      // New Document modal
+      function closeModal() {
+        document.getElementById("modalOverlay").classList.add("hidden");
+      }
+      document.getElementById("newDocBtn").addEventListener("click", () => {
+        document.getElementById("modalOverlay").classList.remove("hidden");
+      });
+      document.getElementById("modalOverlay").addEventListener("click", (e) => {
+        if (e.target === document.getElementById("modalOverlay")) closeModal();
+      });
+
+      // Init
       render();
-    }
-
-    function changePage(dir) {
-      currentPage += dir;
-      render();
-    }
-
-    function sortTable(key) {
-      if (sortKey === key) sortAsc = !sortAsc;
-      else { sortKey = key; sortAsc = true; }
-      render();
-    }
-
-    // ── Events ────────────────────────────────────────────────────
-
-    // Filter toggle
-    document.getElementById('filterBtn').addEventListener('click', () => {
-      document.getElementById('filterDropdown').classList.toggle('open');
-    });
-    document.addEventListener('click', e => {
-      if (!document.getElementById('filterBtn').contains(e.target))
-        document.getElementById('filterDropdown').classList.remove('open');
-    });
-
-    // Search
-    document.getElementById('searchInput').addEventListener('input', e => {
-      searchQuery = e.target.value;
-      currentPage = 1;
-      render();
-    });
-
-    // Select all checkbox
-    document.getElementById('selectAll').addEventListener('change', e => {
-      document.querySelectorAll('#docBody input[type=checkbox]').forEach(cb => cb.checked = e.target.checked);
-    });
-
-    // New Document modal
-    function closeModal() {
-      document.getElementById('modalOverlay').classList.add('hidden');
-    }
-    document.getElementById('newDocBtn').addEventListener('click', () => {
-      document.getElementById('modalOverlay').classList.remove('hidden');
-    });
-    document.getElementById('modalOverlay').addEventListener('click', e => {
-      if (e.target === document.getElementById('modalOverlay')) closeModal();
-    });
-
-    // Init
-    render();
-  </script>
-</body>
+    </script>
+  </body>
 </html>

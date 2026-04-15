@@ -1,376 +1,564 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="vi">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SCT-ISO.AI Dashboard</title>
-  <meta name="description" content="SCT-ISO.AI - Hệ thống quản lý tuân thủ ISO, HACCP và CAPA thông minh" />
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: { sans: ['Inter', 'sans-serif'] },
-          colors: {
-            brand: {
-              teal: '#1a9b8c',
-              'teal-dark': '#167a6e',
-              'teal-light': '#e8f7f5',
-              blue: '#2563eb',
-              'blue-light': '#eff6ff',
-              navy: '#1e3a5f',
-            }
-          }
-        }
-      }
-    }
-  </script>
-  <style>
-    body { background: linear-gradient(135deg, #1a9b8c 0%, #167a6e 50%, #0f5c52 100%); }
-    .card { background: #ffffff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-    .nav-link { transition: color 0.2s; }
-    .nav-link:hover { color: #1a9b8c; }
-    .iot-card { background: linear-gradient(145deg, #1e6677 0%, #145566 100%); }
-    .pulse-dot { animation: pulse 2s infinite; }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
-    }
-    .badge-alert { background: #fbbf24; color: #78350f; font-size: 10px; padding: 1px 6px; border-radius: 4px; font-weight: 700; }
-  </style>
-</head>
-<body class="min-h-screen font-sans">
-
-  <!-- ===================== HEADER ===================== -->
-  <header class="bg-white shadow-sm sticky top-0 z-50">
-    <div class="max-w-screen-xl mx-auto px-6 py-3 flex items-center justify-between">
-      <!-- Logo -->
-      <div class="flex items-center gap-2">
-        <span class="text-xl font-extrabold text-brand-teal tracking-tight">SCT-ISO.AI</span>
-      </div>
-
-      <!-- Navigation -->
-      <nav class="flex items-center gap-1 text-sm font-medium text-gray-600">
-        <a href="#" class="nav-link flex items-center gap-1.5 px-3 py-2 rounded-lg text-brand-teal bg-brand-teal-light font-semibold">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
-          Dashboard
-        </a>
-        <a href="#" class="nav-link flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-gray-100">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-          Documents
-        </a>
-        <a href="#" class="nav-link flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-gray-100">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-          Risk Assessment
-        </a>
-        <a href="#" class="nav-link flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-gray-100">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-          Audits
-        </a>
-        <a href="#" class="nav-link flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-gray-100">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-          CAPA
-        </a>
-        <a href="#" class="nav-link flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-gray-100">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-          Monitoring
-        </a>
-        <a href="#" class="nav-link flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-gray-100">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-          Reports
-        </a>
-      </nav>
-
-      <!-- Avatar -->
-      <div class="w-9 h-9 rounded-full bg-brand-teal flex items-center justify-center cursor-pointer hover:opacity-90 transition">
-        <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
-      </div>
-    </div>
-  </header>
-
-  <!-- ===================== MAIN CONTENT ===================== -->
-  <main class="max-w-screen-xl mx-auto px-6 py-6 space-y-5">
-
-    <!-- ---- ROW 1: KPI Cards + IoT Panel ---- -->
-    <div class="grid grid-cols-12 gap-5">
-
-      <!-- PRP Card -->
-      <div class="card col-span-3 p-5 flex flex-col gap-2">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
-            <svg class="w-6 h-6 text-green-500" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-          </div>
-          <div>
-            <p class="text-sm font-medium text-gray-500">PRP</p>
-            <p class="text-xs text-gray-400">Compliance</p>
-          </div>
-        </div>
-        <p class="text-5xl font-extrabold text-gray-800 mt-1">98 <span class="text-3xl font-bold text-gray-500">%</span></p>
-      </div>
-
-      <!-- HACCP Card -->
-      <div class="card col-span-3 p-5 flex flex-col gap-2">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
-            <svg class="w-6 h-6 text-green-500" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-          </div>
-          <div>
-            <p class="text-sm font-medium text-gray-500">HACCP</p>
-            <p class="text-xs text-gray-400">Compliance</p>
-          </div>
-        </div>
-        <p class="text-5xl font-extrabold text-gray-800 mt-1">98 <span class="text-3xl font-bold text-gray-500">%</span></p>
-      </div>
-
-      <!-- CAPA Card -->
-      <div class="card col-span-3 p-5 flex flex-col gap-2">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
-            <svg class="w-6 h-6 text-purple-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          </div>
-          <div>
-            <p class="text-sm font-medium text-gray-500">CAPA</p>
-            <p class="text-xs text-gray-400">On Time</p>
-          </div>
-        </div>
-        <p class="text-5xl font-extrabold text-gray-800 mt-1">92 <span class="text-3xl font-bold text-gray-500">%</span></p>
-      </div>
-
-      <!-- IoT Monitoring Panel -->
-      <div class="iot-card col-span-3 rounded-xl p-5 text-white space-y-3">
-        <p class="text-sm font-semibold text-cyan-200 mb-1">IoT Monitoring</p>
-
-        <!-- Temperature -->
-        <div class="flex items-center gap-3">
-          <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
-            <svg class="w-5 h-5 text-orange-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"/></svg>
-          </div>
-          <div>
-            <p class="text-xs text-cyan-200">Temperature</p>
-            <p class="text-xl font-bold">7.5 <span class="text-sm font-medium">°C</span></p>
-          </div>
-        </div>
-
-        <div class="border-t border-white/10"></div>
-
-        <!-- Humidity -->
-        <div class="flex items-center gap-3">
-          <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
-            <svg class="w-5 h-5 text-blue-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0z"/></svg>
-          </div>
-          <div>
-            <p class="text-xs text-cyan-200">Humidity</p>
-            <p class="text-xl font-bold">72 <span class="text-sm font-medium">%</span></p>
-          </div>
-        </div>
-
-        <div class="border-t border-white/10"></div>
-
-        <!-- pH -->
-        <div class="flex items-center gap-3">
-          <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
-            <span class="text-xs font-bold text-green-300">pH</span>
-          </div>
-          <div>
-            <p class="text-xs text-cyan-200">pH</p>
-            <p class="text-xl font-bold">6.9</p>
-          </div>
-        </div>
-
-        <div class="border-t border-white/10"></div>
-
-        <!-- Pressure -->
-        <div class="flex items-center gap-3">
-          <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
-            <svg class="w-5 h-5 text-yellow-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6M12 16v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6M4.93 19.07l4.24-4.24M14.83 9.17l4.24-4.24"/></svg>
-          </div>
-          <div>
-            <p class="text-xs text-cyan-200">Pressure</p>
-            <p class="text-xl font-bold">1.2 <span class="text-sm font-medium">bar</span></p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ---- ROW 2: Charts ---- -->
-    <div class="grid grid-cols-12 gap-5">
-
-      <!-- Incident Trends - Line Chart -->
-      <div class="card col-span-7 p-5">
-        <h2 class="text-base font-semibold text-gray-700 mb-4">Incident Trends</h2>
-        <div class="relative h-48">
-          <canvas id="incidentChart"></canvas>
-        </div>
-      </div>
-
-      <!-- Deviation by CCP - Donut Chart -->
-      <div class="card col-span-5 p-5">
-        <h2 class="text-base font-semibold text-gray-700 mb-4">Deviation by CCP</h2>
-        <div class="flex items-center justify-center gap-6">
-          <div class="relative w-44 h-44">
-            <canvas id="ccpChart"></canvas>
-            <div class="absolute inset-0 flex items-center justify-center">
-              <span class="text-2xl font-extrabold text-gray-700">50%</span>
-            </div>
-          </div>
-          <div class="space-y-2 text-sm">
-            <div class="flex items-center gap-2">
-              <span class="w-3 h-3 rounded-full bg-yellow-400 inline-block"></span>
-              <span class="text-gray-600">CCP1</span>
-              <span class="ml-auto font-semibold text-gray-700 pl-4">25%</span>
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="w-3 h-3 rounded-full bg-brand-teal inline-block"></span>
-              <span class="text-gray-600">CCP2</span>
-              <span class="ml-auto font-semibold text-gray-700 pl-4">50%</span>
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="w-3 h-3 rounded-full bg-blue-500 inline-block"></span>
-              <span class="text-gray-600">CCP3</span>
-              <span class="ml-auto font-semibold text-gray-700 pl-4">25%</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ---- ROW 3: Tasks + Alerts ---- -->
-    <div class="grid grid-cols-12 gap-5">
-
-      <!-- Upcoming Tasks -->
-      <div class="card col-span-7 p-5">
-        <h2 class="text-base font-semibold text-gray-700 mb-4">Upcoming Tasks</h2>
-        <div class="space-y-3">
-
-          <!-- Task Row -->
-          <div class="flex items-center justify-between py-2 border-b border-gray-100">
-            <div class="flex items-center gap-3">
-              <span class="w-2.5 h-2.5 rounded-full bg-brand-teal pulse-dot flex-shrink-0"></span>
-              <span class="text-sm font-medium text-gray-700">PRP Audit</span>
-            </div>
-            <span class="text-sm text-gray-400">Nov 30, 2023</span>
-            <span class="text-sm font-semibold text-brand-teal">Status</span>
-          </div>
-
-          <div class="flex items-center justify-between py-2 border-b border-gray-100">
-            <div class="flex items-center gap-3">
-              <span class="w-2.5 h-2.5 rounded-full bg-green-400 flex-shrink-0"></span>
-              <span class="text-sm font-medium text-gray-700">HACCP Review</span>
-            </div>
-            <span class="text-sm text-gray-400">Dec 05, 2023</span>
-            <span class="text-sm font-semibold text-green-500">Scheduled</span>
-          </div>
-
-          <div class="flex items-center justify-between py-2">
-            <div class="flex items-center gap-3">
-              <span class="w-2.5 h-2.5 rounded-full bg-green-400 flex-shrink-0"></span>
-              <span class="text-sm font-medium text-gray-700">Equipment Calibration</span>
-            </div>
-            <span class="text-sm text-gray-400">Dec 07, 2023</span>
-            <span class="text-sm font-semibold text-green-500">Scheduled</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Recent Alerts -->
-      <div class="card col-span-5 p-5">
-        <h2 class="text-base font-semibold text-gray-700 mb-4">Recent Alerts</h2>
-        <div class="space-y-3">
-
-          <!-- Alert 1 -->
-          <div class="flex gap-3 pb-3 border-b border-gray-100">
-            <span class="w-2.5 h-2.5 rounded-full bg-red-400 mt-1 flex-shrink-0 pulse-dot"></span>
-            <div class="flex-1">
-              <div class="flex items-center justify-between mb-1">
-                <span class="text-xs text-gray-400">Just now</span>
-                <span class="badge-alert">ALERT</span>
-              </div>
-              <p class="text-sm text-gray-700 font-medium">CCP1 temperature out of range</p>
-            </div>
-          </div>
-
-          <!-- Alert 2 -->
-          <div class="flex gap-3">
-            <span class="w-2.5 h-2.5 rounded-full bg-orange-400 mt-1 flex-shrink-0"></span>
-            <div class="flex-1">
-              <span class="text-xs text-gray-400 block mb-1">3h ago</span>
-              <p class="text-sm text-gray-700 font-medium">New non-conformance detected</p>
-            </div>
-          </div>
-
-        </div>
-      </div>
-    </div>
-
-  </main>
-
-  <!-- ===================== SCRIPTS ===================== -->
-  <script>
-    // --- Incident Trends Line Chart ---
-    const incidentCtx = document.getElementById('incidentChart').getContext('2d');
-    new Chart(incidentCtx, {
-      type: 'line',
-      data: {
-        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Nov', 'Dec'],
-        datasets: [{
-          data: [4, 6, 5, 8, 7, 9, 11, 8, 13, 10, 14],
-          borderColor: '#f97316',
-          backgroundColor: 'rgba(249,115,22,0.10)',
-          borderWidth: 2.5,
-          pointBackgroundColor: '#f97316',
-          pointRadius: 4,
-          pointHoverRadius: 6,
-          tension: 0.35,
-          fill: true,
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
-        scales: {
-          x: {
-            grid: { display: false },
-            ticks: { font: { size: 11 }, color: '#9ca3af' }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SCT-ISO.AI Dashboard</title>
+    <meta
+      name="description"
+      content="SCT-ISO.AI - Hệ thống quản lý tuân thủ ISO, HACCP và CAPA thông minh"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../shared-ui.css" />
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: { sans: ["Inter", "sans-serif"] },
+            colors: {
+              brand: {
+                teal: "#1a9b8c",
+                "teal-dark": "#167a6e",
+                "teal-light": "#e8f7f5",
+                blue: "#2563eb",
+                "blue-light": "#eff6ff",
+                navy: "#1e3a5f",
+              },
+            },
           },
-          y: {
-            min: 0,
-            max: 16,
-            ticks: { stepSize: 4, font: { size: 11 }, color: '#9ca3af' },
-            grid: { color: '#f3f4f6' }
-          }
+        },
+      };
+    </script>
+    <style>
+      body {
+        background: linear-gradient(
+          135deg,
+          #1a9b8c 0%,
+          #167a6e 50%,
+          #0f5c52 100%
+        );
+      }
+      .card {
+        background: #ffffff;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      }
+      .nav-link {
+        transition: color 0.2s;
+      }
+      .nav-link:hover {
+        color: #1a9b8c;
+      }
+      .iot-card {
+        background: linear-gradient(145deg, #1e6677 0%, #145566 100%);
+      }
+      .pulse-dot {
+        animation: pulse 2s infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
         }
       }
-    });
+      .badge-alert {
+        background: #fbbf24;
+        color: #78350f;
+        font-size: 10px;
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen font-sans app-shell">
+    <!-- ===================== HEADER ===================== -->
+    <header
+      class="header-bg app-header text-white px-6 py-3 flex items-center justify-between shadow-md z-10"
+    >
+      <a
+        href="../dashboard/dashboard.html"
+        class="text-xl font-bold tracking-wide"
+        >SCT-ISO.AI</a
+      >
+      <nav class="flex space-x-6 text-sm app-nav">
+        <a
+          href="../dashboard/dashboard.html"
+          class="app-nav-link is-active flex items-center space-x-1 border-b-2 border-white pb-1 font-bold"
+          ><span>Dashboard</span></a
+        >
+        <a
+          href="../document/document-control.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Documents</span></a
+        >
+        <a
+          href="../haccp/haccp-compliance.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Risk Assessment</span></a
+        >
+        <a
+          href="../rpr/prp-audit.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Audits</span></a
+        >
+        <a
+          href="../capa/capa-management.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>CAPA</span></a
+        >
+        <a
+          href="../ai_analytics/ai-analytics.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Monitoring</span></a
+        >
+        <a
+          href="../report/reports.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Reports</span></a
+        >
+      </nav>
+      <a
+        href="../user/user-management.html"
+        class="app-avatar w-8 h-8 bg-white rounded-full flex items-center justify-center text-gray-500 hover:opacity-90 transition"
+      >
+        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+          <path
+            fill-rule="evenodd"
+            d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
+            clip-rule="evenodd"
+          ></path>
+        </svg>
+      </a>
+    </header>
 
-    // --- Deviation by CCP Donut Chart ---
-    const ccpCtx = document.getElementById('ccpChart').getContext('2d');
-    new Chart(ccpCtx, {
-      type: 'doughnut',
-      data: {
-        labels: ['CCP1', 'CCP2', 'CCP3'],
-        datasets: [{
-          data: [25, 50, 25],
-          backgroundColor: ['#fbbf24', '#1a9b8c', '#3b82f6'],
-          borderWidth: 0,
-          hoverOffset: 6
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        cutout: '68%',
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed}%` }
-          }
-        }
-      }
-    });
-  </script>
-</body>
+    <!-- ===================== MAIN CONTENT ===================== -->
+    <main class="max-w-screen-xl mx-auto px-6 py-6 space-y-5 app-content">
+      <!-- ---- ROW 1: KPI Cards + IoT Panel ---- -->
+      <div class="grid grid-cols-12 gap-5">
+        <!-- PRP Card -->
+        <div class="card col-span-3 p-5 flex flex-col gap-2">
+          <div class="flex items-center gap-3">
+            <div
+              class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0"
+            >
+              <svg
+                class="w-6 h-6 text-green-500"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path
+                  d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"
+                />
+              </svg>
+            </div>
+            <div>
+              <p class="text-sm font-medium text-gray-500">PRP</p>
+              <p class="text-xs text-gray-400">Compliance</p>
+            </div>
+          </div>
+          <p class="text-5xl font-extrabold text-gray-800 mt-1">
+            98 <span class="text-3xl font-bold text-gray-500">%</span>
+          </p>
+        </div>
+
+        <!-- HACCP Card -->
+        <div class="card col-span-3 p-5 flex flex-col gap-2">
+          <div class="flex items-center gap-3">
+            <div
+              class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0"
+            >
+              <svg
+                class="w-6 h-6 text-green-500"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path
+                  d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"
+                />
+              </svg>
+            </div>
+            <div>
+              <p class="text-sm font-medium text-gray-500">HACCP</p>
+              <p class="text-xs text-gray-400">Compliance</p>
+            </div>
+          </div>
+          <p class="text-5xl font-extrabold text-gray-800 mt-1">
+            98 <span class="text-3xl font-bold text-gray-500">%</span>
+          </p>
+        </div>
+
+        <!-- CAPA Card -->
+        <div class="card col-span-3 p-5 flex flex-col gap-2">
+          <div class="flex items-center gap-3">
+            <div
+              class="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0"
+            >
+              <svg
+                class="w-6 h-6 text-purple-500"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+            </div>
+            <div>
+              <p class="text-sm font-medium text-gray-500">CAPA</p>
+              <p class="text-xs text-gray-400">On Time</p>
+            </div>
+          </div>
+          <p class="text-5xl font-extrabold text-gray-800 mt-1">
+            92 <span class="text-3xl font-bold text-gray-500">%</span>
+          </p>
+        </div>
+
+        <!-- IoT Monitoring Panel -->
+        <div class="iot-card col-span-3 rounded-xl p-5 text-white space-y-3">
+          <p class="text-sm font-semibold text-cyan-200 mb-1">IoT Monitoring</p>
+
+          <!-- Temperature -->
+          <div class="flex items-center gap-3">
+            <div
+              class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0"
+            >
+              <svg
+                class="w-5 h-5 text-orange-300"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"
+                />
+              </svg>
+            </div>
+            <div>
+              <p class="text-xs text-cyan-200">Temperature</p>
+              <p class="text-xl font-bold">
+                7.5 <span class="text-sm font-medium">°C</span>
+              </p>
+            </div>
+          </div>
+
+          <div class="border-t border-white/10"></div>
+
+          <!-- Humidity -->
+          <div class="flex items-center gap-3">
+            <div
+              class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0"
+            >
+              <svg
+                class="w-5 h-5 text-blue-300"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0z" />
+              </svg>
+            </div>
+            <div>
+              <p class="text-xs text-cyan-200">Humidity</p>
+              <p class="text-xl font-bold">
+                72 <span class="text-sm font-medium">%</span>
+              </p>
+            </div>
+          </div>
+
+          <div class="border-t border-white/10"></div>
+
+          <!-- pH -->
+          <div class="flex items-center gap-3">
+            <div
+              class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0"
+            >
+              <span class="text-xs font-bold text-green-300">pH</span>
+            </div>
+            <div>
+              <p class="text-xs text-cyan-200">pH</p>
+              <p class="text-xl font-bold">6.9</p>
+            </div>
+          </div>
+
+          <div class="border-t border-white/10"></div>
+
+          <!-- Pressure -->
+          <div class="flex items-center gap-3">
+            <div
+              class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0"
+            >
+              <svg
+                class="w-5 h-5 text-yellow-300"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  d="M12 2v6M12 16v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6M4.93 19.07l4.24-4.24M14.83 9.17l4.24-4.24"
+                />
+              </svg>
+            </div>
+            <div>
+              <p class="text-xs text-cyan-200">Pressure</p>
+              <p class="text-xl font-bold">
+                1.2 <span class="text-sm font-medium">bar</span>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---- ROW 2: Charts ---- -->
+      <div class="grid grid-cols-12 gap-5">
+        <!-- Incident Trends - Line Chart -->
+        <div class="card col-span-7 p-5">
+          <h2 class="text-base font-semibold text-gray-700 mb-4">
+            Incident Trends
+          </h2>
+          <div class="relative h-48">
+            <canvas id="incidentChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Deviation by CCP - Donut Chart -->
+        <div class="card col-span-5 p-5">
+          <h2 class="text-base font-semibold text-gray-700 mb-4">
+            Deviation by CCP
+          </h2>
+          <div class="flex items-center justify-center gap-6">
+            <div class="relative w-44 h-44">
+              <canvas id="ccpChart"></canvas>
+              <div class="absolute inset-0 flex items-center justify-center">
+                <span class="text-2xl font-extrabold text-gray-700">50%</span>
+              </div>
+            </div>
+            <div class="space-y-2 text-sm">
+              <div class="flex items-center gap-2">
+                <span
+                  class="w-3 h-3 rounded-full bg-yellow-400 inline-block"
+                ></span>
+                <span class="text-gray-600">CCP1</span>
+                <span class="ml-auto font-semibold text-gray-700 pl-4"
+                  >25%</span
+                >
+              </div>
+              <div class="flex items-center gap-2">
+                <span
+                  class="w-3 h-3 rounded-full bg-brand-teal inline-block"
+                ></span>
+                <span class="text-gray-600">CCP2</span>
+                <span class="ml-auto font-semibold text-gray-700 pl-4"
+                  >50%</span
+                >
+              </div>
+              <div class="flex items-center gap-2">
+                <span
+                  class="w-3 h-3 rounded-full bg-blue-500 inline-block"
+                ></span>
+                <span class="text-gray-600">CCP3</span>
+                <span class="ml-auto font-semibold text-gray-700 pl-4"
+                  >25%</span
+                >
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---- ROW 3: Tasks + Alerts ---- -->
+      <div class="grid grid-cols-12 gap-5">
+        <!-- Upcoming Tasks -->
+        <div class="card col-span-7 p-5">
+          <h2 class="text-base font-semibold text-gray-700 mb-4">
+            Upcoming Tasks
+          </h2>
+          <div class="space-y-3">
+            <!-- Task Row -->
+            <div
+              class="flex items-center justify-between py-2 border-b border-gray-100"
+            >
+              <div class="flex items-center gap-3">
+                <span
+                  class="w-2.5 h-2.5 rounded-full bg-brand-teal pulse-dot flex-shrink-0"
+                ></span>
+                <span class="text-sm font-medium text-gray-700">PRP Audit</span>
+              </div>
+              <span class="text-sm text-gray-400">Nov 30, 2023</span>
+              <span class="text-sm font-semibold text-brand-teal">Status</span>
+            </div>
+
+            <div
+              class="flex items-center justify-between py-2 border-b border-gray-100"
+            >
+              <div class="flex items-center gap-3">
+                <span
+                  class="w-2.5 h-2.5 rounded-full bg-green-400 flex-shrink-0"
+                ></span>
+                <span class="text-sm font-medium text-gray-700"
+                  >HACCP Review</span
+                >
+              </div>
+              <span class="text-sm text-gray-400">Dec 05, 2023</span>
+              <span class="text-sm font-semibold text-green-500"
+                >Scheduled</span
+              >
+            </div>
+
+            <div class="flex items-center justify-between py-2">
+              <div class="flex items-center gap-3">
+                <span
+                  class="w-2.5 h-2.5 rounded-full bg-green-400 flex-shrink-0"
+                ></span>
+                <span class="text-sm font-medium text-gray-700"
+                  >Equipment Calibration</span
+                >
+              </div>
+              <span class="text-sm text-gray-400">Dec 07, 2023</span>
+              <span class="text-sm font-semibold text-green-500"
+                >Scheduled</span
+              >
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Alerts -->
+        <div class="card col-span-5 p-5">
+          <h2 class="text-base font-semibold text-gray-700 mb-4">
+            Recent Alerts
+          </h2>
+          <div class="space-y-3">
+            <!-- Alert 1 -->
+            <div class="flex gap-3 pb-3 border-b border-gray-100">
+              <span
+                class="w-2.5 h-2.5 rounded-full bg-red-400 mt-1 flex-shrink-0 pulse-dot"
+              ></span>
+              <div class="flex-1">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-xs text-gray-400">Just now</span>
+                  <span class="badge-alert">ALERT</span>
+                </div>
+                <p class="text-sm text-gray-700 font-medium">
+                  CCP1 temperature out of range
+                </p>
+              </div>
+            </div>
+
+            <!-- Alert 2 -->
+            <div class="flex gap-3">
+              <span
+                class="w-2.5 h-2.5 rounded-full bg-orange-400 mt-1 flex-shrink-0"
+              ></span>
+              <div class="flex-1">
+                <span class="text-xs text-gray-400 block mb-1">3h ago</span>
+                <p class="text-sm text-gray-700 font-medium">
+                  New non-conformance detected
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ===================== SCRIPTS ===================== -->
+    <script>
+      // --- Incident Trends Line Chart ---
+      const incidentCtx = document
+        .getElementById("incidentChart")
+        .getContext("2d");
+      new Chart(incidentCtx, {
+        type: "line",
+        data: {
+          labels: [
+            "Jan",
+            "Feb",
+            "Mar",
+            "Apr",
+            "Mai",
+            "Jun",
+            "Jul",
+            "Aug",
+            "Sep",
+            "Nov",
+            "Dec",
+          ],
+          datasets: [
+            {
+              data: [4, 6, 5, 8, 7, 9, 11, 8, 13, 10, 14],
+              borderColor: "#f97316",
+              backgroundColor: "rgba(249,115,22,0.10)",
+              borderWidth: 2.5,
+              pointBackgroundColor: "#f97316",
+              pointRadius: 4,
+              pointHoverRadius: 6,
+              tension: 0.35,
+              fill: true,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: { mode: "index", intersect: false },
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: { font: { size: 11 }, color: "#9ca3af" },
+            },
+            y: {
+              min: 0,
+              max: 16,
+              ticks: { stepSize: 4, font: { size: 11 }, color: "#9ca3af" },
+              grid: { color: "#f3f4f6" },
+            },
+          },
+        },
+      });
+
+      // --- Deviation by CCP Donut Chart ---
+      const ccpCtx = document.getElementById("ccpChart").getContext("2d");
+      new Chart(ccpCtx, {
+        type: "doughnut",
+        data: {
+          labels: ["CCP1", "CCP2", "CCP3"],
+          datasets: [
+            {
+              data: [25, 50, 25],
+              backgroundColor: ["#fbbf24", "#1a9b8c", "#3b82f6"],
+              borderWidth: 0,
+              hoverOffset: 6,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: "68%",
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: { label: (ctx) => ` ${ctx.label}: ${ctx.parsed}%` },
+            },
+          },
+        },
+      });
+    </script>
+  </body>
 </html>

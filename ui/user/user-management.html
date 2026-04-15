@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>User Management - SCT-ISO.AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../shared-ui.css" />
+    <style>
+      body {
+        font-family: "Inter", sans-serif;
+        background-color: #f0f4f8;
+      }
+      .header-bg {
+        background-color: #1e8b9b;
+      }
+      .alert-bg {
+        background-color: #d1f4f9;
+        color: #0c6b7a;
+      }
+      .timeline-line::before {
+        content: "";
+        position: absolute;
+        left: 11px;
+        top: 24px;
+        bottom: -8px;
+        width: 2px;
+        background-color: #e2e8f0;
+      }
+      .timeline-item:last-child .timeline-line::before {
+        display: none;
+      }
+    </style>
+  </head>
+  <body class="h-screen flex flex-col overflow-hidden app-shell">
+    <!-- Navbar -->
+    <header
+      class="header-bg app-header text-white px-6 py-3 flex items-center justify-between shadow-md z-10"
+    >
+      <a
+        href="../dashboard/dashboard.html"
+        class="text-xl font-bold tracking-wide"
+        >SCT-ISO.AI</a
+      >
+      <nav class="flex space-x-6 text-sm app-nav">
+        <a
+          href="../dashboard/dashboard.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Dashboard</span></a
+        >
+        <a
+          href="../document/document-control.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Documents</span></a
+        >
+        <a
+          href="../haccp/haccp-compliance.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Risk Assessment</span></a
+        >
+        <a
+          href="../rpr/prp-audit.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Audits</span></a
+        >
+        <a
+          href="../capa/capa-management.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>CAPA</span></a
+        >
+        <a
+          href="../ai_analytics/ai-analytics.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Monitoring</span></a
+        >
+        <a
+          href="../report/reports.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Reports</span></a
+        >
+      </nav>
+      <a
+        href="../user/user-management.html"
+        class="app-avatar app-nav-link is-active w-8 h-8 bg-white rounded-full flex items-center justify-center text-gray-500 hover:opacity-90 transition"
+      >
+        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+          <path
+            fill-rule="evenodd"
+            d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
+            clip-rule="evenodd"
+          ></path>
+        </svg>
+      </a>
+    </header>
+
+    <!-- Main Content -->
+    <div class="flex-1 overflow-auto p-6 max-w-6xl mx-auto w-full app-content">
+      <!-- Main Panel -->
+      <div class="bg-white rounded-xl shadow-lg p-8 min-h-[600px]">
+        <h1 class="text-2xl font-bold text-gray-800 text-center mb-6">
+          User Management & Security
+        </h1>
+
+        <!-- Alert Banner -->
+        <div class="alert-bg p-3 rounded-lg flex items-center space-x-3 mb-8">
+          <svg
+            class="w-5 h-5 flex-shrink-0"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+              clip-rule="evenodd"
+            ></path>
+          </svg>
+          <span class="text-sm font-medium"
+            >Users will be deactivated after 90 days of inactivity</span
+          >
+        </div>
+
+        <!-- Top Cards -->
+        <div class="grid grid-cols-4 gap-6 mb-8">
+          <!-- RBAC -->
+          <div
+            class="border border-gray-100 rounded-xl p-4 shadow-sm hover:shadow transition-shadow"
+          >
+            <div class="flex items-center space-x-2 mb-3">
+              <svg
+                class="w-6 h-6 text-blue-500"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"
+                ></path>
+              </svg>
+              <h3 class="font-bold text-gray-800 text-lg">RBAC</h3>
+            </div>
+            <ul class="text-sm text-gray-600 space-y-1 list-disc pl-4">
+              <li>Minimum length: 8 characters</li>
+            </ul>
+          </div>
+
+          <!-- 2FA/MFA -->
+          <div
+            class="border border-gray-100 rounded-xl p-4 shadow-sm hover:shadow transition-shadow"
+          >
+            <div class="flex items-center space-x-2 mb-3">
+              <svg
+                class="w-6 h-6 text-teal-500"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                  clip-rule="evenodd"
+                ></path>
+              </svg>
+              <h3 class="font-bold text-gray-800 text-lg">2FA/MFA</h3>
+            </div>
+            <ul class="text-sm text-gray-600 space-y-1 list-disc pl-4">
+              <li>Include uppersale letter</li>
+              <li>Include number</li>
+            </ul>
+          </div>
+
+          <!-- Audit Log -->
+          <div
+            class="border border-gray-100 rounded-xl p-4 shadow-sm hover:shadow transition-shadow"
+          >
+            <div class="flex items-center space-x-2 mb-3">
+              <svg
+                class="w-6 h-6 text-blue-400"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
+                  clip-rule="evenodd"
+                ></path>
+              </svg>
+              <h3 class="font-bold text-gray-800 text-lg">Audit Log</h3>
+            </div>
+            <ul class="text-sm text-gray-600 space-y-1 list-disc pl-4">
+              <li>Activated new user profile</li>
+            </ul>
+          </div>
+
+          <!-- Encryption -->
+          <div
+            class="border border-gray-100 rounded-xl p-4 shadow-sm hover:shadow transition-shadow flex flex-col items-center justify-center"
+          >
+            <div class="flex items-center space-x-2 mb-3 w-full justify-start">
+              <div
+                class="bg-blue-500 text-white text-xs font-bold px-2 py-1 rounded"
+              >
+                TLS
+              </div>
+              <h3 class="font-bold text-gray-800 text-lg">Encryption</h3>
+            </div>
+            <div class="flex space-x-2 w-full pl-2">
+              <div
+                class="w-8 h-8 rounded-full bg-blue-400 text-white flex items-center justify-center text-[10px] font-bold shadow"
+              >
+                TLS
+              </div>
+              <div
+                class="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-[10px] font-bold shadow flex-col leading-none"
+              >
+                <span>TLS</span
+                ><span class="text-[8px] opacity-75 mt-0.5">...</span>
+              </div>
+              <div
+                class="w-8 h-8 rounded-full bg-blue-300 text-white flex items-center justify-center text-[10px] font-bold shadow"
+              >
+                At Rest
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex gap-8">
+          <!-- Bottom Left: Policies -->
+          <div class="flex-1 space-y-8">
+            <!-- Password Policy -->
+            <div class="border border-gray-100 rounded-xl p-5 shadow-sm">
+              <div class="flex justify-between items-center mb-4">
+                <h3 class="font-bold text-gray-800 text-lg">Password Policy</h3>
+                <!-- Toggle switch -->
+                <div
+                  class="w-10 h-6 bg-teal-500 rounded-full relative cursor-pointer"
+                >
+                  <div
+                    class="w-4 h-4 bg-white rounded-full absolute right-1 top-1"
+                  ></div>
+                </div>
+              </div>
+              <ul class="text-sm text-gray-600 space-y-2 list-disc pl-4">
+                <li>Minimum length: 8 characters</li>
+                <li>Include uppercase letter</li>
+              </ul>
+            </div>
+
+            <!-- Role Management -->
+            <div>
+              <table class="w-full text-sm text-left text-gray-700">
+                <thead>
+                  <tr>
+                    <th class="py-2 font-bold text-gray-800 text-base">
+                      Role Management
+                    </th>
+                    <th class="py-2 font-medium text-center">Administrator</th>
+                    <th class="py-2 font-medium text-center">ISO Manager</th>
+                    <th class="py-2 font-medium text-center">QA/QC</th>
+                    <th class="py-2 font-medium text-center">User</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-50">
+                  <tr>
+                    <td class="py-3">View</td>
+                    <td
+                      class="py-3 text-center text-teal-500 font-bold text-lg"
+                    >
+                      ✓
+                    </td>
+                    <td
+                      class="py-3 text-center text-teal-500 font-bold text-lg"
+                    >
+                      ✓
+                    </td>
+                    <td
+                      class="py-3 text-center text-teal-500 font-bold text-lg"
+                    >
+                      ✓
+                    </td>
+                    <td
+                      class="py-3 text-center text-teal-500 font-bold text-lg"
+                    >
+                      ✓
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="py-3">Edit</td>
+                    <td
+                      class="py-3 text-center text-teal-500 font-bold text-lg"
+                    >
+                      ✓
+                    </td>
+                    <td
+                      class="py-3 text-center text-teal-500 font-bold text-lg"
+                    >
+                      ✓
+                    </td>
+                    <td
+                      class="py-3 text-center text-teal-500 font-bold text-lg"
+                    >
+                      ✓
+                    </td>
+                    <td class="py-3"></td>
+                  </tr>
+                  <tr>
+                    <td class="py-3">Delete</td>
+                    <td
+                      class="py-3 text-center text-teal-500 font-bold text-lg"
+                    >
+                      ✓
+                    </td>
+                    <td
+                      class="py-3 text-center text-teal-500 font-bold text-lg"
+                    >
+                      ✓
+                    </td>
+                    <td class="py-3"></td>
+                    <td class="py-3"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Bottom Right: Audit Log Timeline -->
+          <div class="w-72 border border-gray-100 rounded-xl p-5 shadow-sm">
+            <h3 class="font-bold text-gray-800 mb-6 text-lg">Audit Log</h3>
+
+            <div class="space-y-6 relative pl-2">
+              <!-- Timeline Item -->
+              <div
+                class="relative timeline-item timeline-line flex items-start space-x-3"
+              >
+                <div
+                  class="w-6 h-6 bg-blue-500 rounded flex items-center justify-center text-white z-10 shrink-0 mt-0.5"
+                >
+                  <svg
+                    class="w-3.5 h-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M4 6h16M4 10h16M4 14h16M4 18h16"
+                    ></path>
+                  </svg>
+                </div>
+                <div>
+                  <p class="text-sm text-gray-800 font-medium">
+                    Updated document QP-102
+                  </p>
+                  <p class="text-xs text-blue-500 mt-1">6 hours ago</p>
+                </div>
+              </div>
+
+              <!-- Timeline Item -->
+              <div
+                class="relative timeline-item timeline-line flex items-start space-x-3"
+              >
+                <div
+                  class="w-6 h-6 bg-blue-500 rounded flex items-center justify-center text-white z-10 shrink-0 mt-0.5"
+                >
+                  <svg
+                    class="w-3.5 h-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M4 6h16M4 10h16M4 14h16M4 18h16"
+                    ></path>
+                  </svg>
+                </div>
+                <div>
+                  <p class="text-sm text-gray-800 font-medium">
+                    Audit log exported
+                  </p>
+                  <p class="text-xs text-blue-500 mt-1">Yesterday</p>
+                </div>
+              </div>
+
+              <!-- Timeline Item -->
+              <div
+                class="relative timeline-item timeline-line flex items-start space-x-3"
+              >
+                <div
+                  class="w-6 h-6 bg-blue-500 rounded flex items-center justify-center text-white z-10 shrink-0 mt-0.5"
+                >
+                  <svg
+                    class="w-3.5 h-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M4 6h16M4 10h16M4 14h16M4 18h16"
+                    ></path>
+                  </svg>
+                </div>
+                <div>
+                  <p class="text-sm text-gray-800 font-medium">
+                    Activated new user profile
+                  </p>
+                  <p class="text-xs text-blue-500 mt-1">Apr 11, 2024</p>
+                </div>
+              </div>
+
+              <!-- Timeline Item -->
+              <div class="relative timeline-item flex items-start space-x-3">
+                <div
+                  class="w-6 h-6 bg-blue-500 rounded flex items-center justify-center text-white z-10 shrink-0 mt-0.5"
+                >
+                  <svg
+                    class="w-3.5 h-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M4 6h16M4 10h16M4 14h16M4 18h16"
+                    ></path>
+                  </svg>
+                </div>
+                <div>
+                  <p class="text-sm text-gray-800 font-medium">
+                    Changed password policy
+                  </p>
+                  <p class="text-xs text-blue-500 mt-1">Apr 09, 2024</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

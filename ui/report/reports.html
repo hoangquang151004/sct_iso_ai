@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reports - SCT-ISO.AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../shared-ui.css" />
+    <style>
+      body {
+        font-family: "Inter", sans-serif;
+        background-color: #3194a5;
+      } /* teal background */
+      .card {
+        background-color: #f7f9fc;
+      }
+    </style>
+  </head>
+  <body class="h-screen flex flex-col overflow-hidden text-gray-800 app-shell">
+    <!-- Navbar -->
+    <header
+      class="bg-[#3194a5] app-header text-white px-6 py-3 flex items-center justify-between z-10"
+    >
+      <a
+        href="../dashboard/dashboard.html"
+        class="text-xl font-bold tracking-wide"
+        >SCT-ISO.AI</a
+      >
+      <nav class="flex space-x-6 text-sm app-nav">
+        <a
+          href="../dashboard/dashboard.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+        >
+          <svg
+            class="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4 6h16M4 12h16M4 18h16"
+            ></path>
+          </svg>
+          <span>Dashboard</span>
+        </a>
+        <a
+          href="../document/document-control.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+        >
+          <svg
+            class="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+            ></path>
+          </svg>
+          <span>Documents</span>
+        </a>
+        <a
+          href="../haccp/haccp-compliance.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Risk Assessment</span></a
+        >
+        <a
+          href="../rpr/prp-audit.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Audits</span></a
+        >
+        <a
+          href="../capa/capa-management.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>CAPA</span></a
+        >
+        <a
+          href="../ai_analytics/ai-analytics.html"
+          class="app-nav-link flex items-center space-x-1 opacity-80 hover:opacity-100"
+          ><span>Monitoring</span></a
+        >
+        <a
+          href="../report/reports.html"
+          class="app-nav-link is-active flex items-center space-x-1 border-b-2 border-white pb-1 font-bold"
+          ><span>Reports</span></a
+        >
+      </nav>
+      <a
+        href="../user/user-management.html"
+        class="app-avatar w-8 h-8 bg-white rounded-full flex items-center justify-center text-gray-500 hover:opacity-90 transition"
+      >
+        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+          <path
+            fill-rule="evenodd"
+            d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
+            clip-rule="evenodd"
+          ></path>
+        </svg>
+      </a>
+    </header>
+
+    <!-- Main Content Panel -->
+    <div
+      class="flex-1 card m-4 rounded-xl shadow-lg p-6 overflow-auto flex flex-col gap-6 app-content"
+    >
+      <!-- Top Row: KPIs -->
+      <div class="grid grid-cols-4 gap-4">
+        <!-- PRP Compliance -->
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+          <div class="flex items-center space-x-3 mb-2">
+            <div class="bg-green-100 p-2 rounded-full text-green-500">
+              <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                  fill-rule="evenodd"
+                  d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
+                  clip-rule="evenodd"
+                ></path>
+              </svg>
+            </div>
+            <div>
+              <h3 class="font-bold text-gray-800 text-sm">PRP</h3>
+              <p class="text-xs text-gray-500">Compliance</p>
+            </div>
+          </div>
+          <div class="text-3xl font-bold text-gray-800">
+            98 <span class="text-xl font-normal text-gray-500">%</span>
+          </div>
+        </div>
+
+        <!-- HACCP Compliance -->
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+          <div class="flex items-center space-x-3 mb-2">
+            <div class="bg-green-100 p-2 rounded-full text-green-500">
+              <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                  fill-rule="evenodd"
+                  d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
+                  clip-rule="evenodd"
+                ></path>
+              </svg>
+            </div>
+            <div>
+              <h3 class="font-bold text-gray-800 text-sm">HACCP</h3>
+              <p class="text-xs text-gray-500">Compliance</p>
+            </div>
+          </div>
+          <div class="text-3xl font-bold text-gray-800">
+            98 <span class="text-xl font-normal text-gray-500">%</span>
+          </div>
+        </div>
+
+        <!-- CAPA On Time -->
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+          <div class="flex items-center space-x-3 mb-2">
+            <div class="bg-blue-100 p-2 rounded-full text-blue-400">
+              <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                  fill-rule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
+                  clip-rule="evenodd"
+                ></path>
+              </svg>
+            </div>
+            <div>
+              <h3 class="font-bold text-gray-800 text-sm">CAPA</h3>
+              <p class="text-xs text-gray-500">On Time</p>
+            </div>
+          </div>
+          <div class="text-3xl font-bold text-gray-800">
+            92 <span class="text-xl font-normal text-gray-500">%</span>
+          </div>
+        </div>
+
+        <!-- Sparkline Chart Mock -->
+        <div
+          class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-end justify-between px-6"
+        >
+          <div class="w-2 bg-blue-400 rounded-t h-8"></div>
+          <div class="w-2 bg-blue-400 rounded-t h-12"></div>
+          <div class="w-2 bg-blue-400 rounded-t h-6"></div>
+          <div class="w-2 bg-blue-400 rounded-t h-16"></div>
+          <div class="w-2 bg-blue-400 rounded-t h-10"></div>
+          <div class="w-2 bg-blue-400 rounded-t h-4"></div>
+          <div class="w-2 bg-blue-400 rounded-t h-14"></div>
+        </div>
+      </div>
+
+      <!-- Middle Row: Charts -->
+      <div class="flex gap-4">
+        <!-- Left Chart: OEE & Quality Yield -->
+        <div
+          class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 w-1/3"
+        >
+          <h3 class="font-bold text-gray-800 mb-6">OEE & Quality Yield</h3>
+          <div class="flex items-end h-40 space-x-8 px-4 relative">
+            <!-- Y Axis -->
+            <div
+              class="absolute left-0 top-0 h-full flex flex-col justify-between text-[10px] text-gray-400 pb-8"
+            >
+              <span>75</span><span>90</span><span>85</span><span>20</span>
+            </div>
+            <!-- Grid lines -->
+            <div
+              class="absolute inset-0 ml-6 flex flex-col justify-between pb-8 z-0"
+            >
+              <div class="border-t border-gray-100 w-full"></div>
+              <div class="border-t border-gray-100 w-full"></div>
+              <div class="border-t border-gray-100 w-full"></div>
+              <div class="border-t border-gray-100 w-full"></div>
+            </div>
+
+            <!-- Bars -->
+            <div
+              class="w-16 bg-teal-500 relative flex flex-col justify-end items-center z-10"
+              style="height: 60%"
+            >
+              <span class="text-white font-bold text-sm mb-2">75 %</span>
+              <div
+                class="absolute -bottom-6 text-xs text-gray-600 font-bold whitespace-nowrap"
+              >
+                OEE
+              </div>
+            </div>
+            <div
+              class="w-16 bg-[#2694a5] relative flex flex-col justify-end items-center z-10"
+              style="height: 90%"
+            >
+              <span class="text-white font-bold text-sm mb-2">91 %</span>
+              <div
+                class="absolute -bottom-6 text-xs text-gray-600 font-bold whitespace-nowrap"
+              >
+                Quality Yield
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Chart: Internal Audit Reports -->
+        <div
+          class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex-1"
+        >
+          <div class="flex justify-between items-center mb-6">
+            <h3 class="font-bold text-gray-800">Internal Audit Reports</h3>
+            <span class="text-sm font-bold text-gray-800">0 Audits</span>
+          </div>
+
+          <div class="flex items-end justify-between h-40 px-2 relative">
+            <!-- Grid lines -->
+            <div
+              class="absolute inset-0 flex flex-col justify-between pb-6 z-0"
+            >
+              <div class="border-t border-gray-50 w-full"></div>
+              <div class="border-t border-gray-50 w-full"></div>
+              <div class="border-t border-gray-50 w-full"></div>
+              <div class="border-t border-gray-100 w-full"></div>
+            </div>
+
+            <!-- Bars -->
+            <div
+              class="w-6 bg-[#2694a5] relative rounded-t z-10"
+              style="height: 20%"
+            >
+              <div
+                class="absolute -bottom-6 w-full text-center text-xs text-gray-500"
+              >
+                Jan
+              </div>
+            </div>
+            <div
+              class="w-6 bg-[#2694a5] relative rounded-t z-10"
+              style="height: 45%"
+            >
+              <div
+                class="absolute -bottom-6 w-full text-center text-xs text-gray-500"
+              >
+                Feb
+              </div>
+            </div>
+            <div
+              class="w-6 bg-[#2694a5] relative rounded-t z-10"
+              style="height: 35%"
+            >
+              <div
+                class="absolute -bottom-6 w-full text-center text-xs text-gray-500"
+              >
+                Mar
+              </div>
+            </div>
+            <div
+              class="w-6 bg-[#2694a5] relative rounded-t z-10"
+              style="height: 45%"
+            >
+              <div
+                class="absolute -bottom-6 w-full text-center text-xs text-gray-500"
+              >
+                Apr
+              </div>
+            </div>
+            <div
+              class="w-6 bg-[#2694a5] relative rounded-t z-10"
+              style="height: 55%"
+            >
+              <div
+                class="absolute -bottom-6 w-full text-center text-xs text-gray-500"
+              >
+                Mai
+              </div>
+            </div>
+            <div
+              class="w-6 bg-[#2694a5] relative rounded-t z-10"
+              style="height: 40%"
+            >
+              <div
+                class="absolute -bottom-6 w-full text-center text-xs text-gray-500"
+              >
+                Jun
+              </div>
+            </div>
+            <div
+              class="w-6 bg-[#2694a5] relative rounded-t z-10"
+              style="height: 60%"
+            >
+              <div
+                class="absolute -bottom-6 w-full text-center text-xs text-gray-500"
+              >
+                Jul
+              </div>
+            </div>
+            <div
+              class="w-6 bg-[#2694a5] relative rounded-t z-10"
+              style="height: 35%"
+            >
+              <div
+                class="absolute -bottom-6 w-full text-center text-xs text-gray-500"
+              >
+                Aug
+              </div>
+            </div>
+            <div
+              class="w-6 bg-[#2694a5] relative rounded-t z-10"
+              style="height: 40%"
+            >
+              <div
+                class="absolute -bottom-6 w-full text-center text-xs text-gray-500"
+              >
+                Sep
+              </div>
+            </div>
+            <div
+              class="w-6 bg-[#2694a5] relative rounded-t z-10"
+              style="height: 80%"
+            >
+              <div
+                class="absolute -bottom-6 w-full text-center text-xs text-gray-500"
+              >
+                Oct
+              </div>
+            </div>
+            <div
+              class="w-6 bg-[#2694a5] relative rounded-t z-10"
+              style="height: 50%"
+            >
+              <div
+                class="absolute -bottom-6 w-full text-center text-xs text-gray-500"
+              >
+                Sep
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Row -->
+      <div class="flex gap-4 h-full">
+        <!-- Export Schedule Table -->
+        <div
+          class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex-1"
+        >
+          <h3 class="font-bold text-gray-800 mb-4">Export Schedule</h3>
+          <table class="w-full text-sm text-left">
+            <thead class="text-gray-500 font-normal border-b border-gray-100">
+              <tr>
+                <th class="py-2 font-medium">Report</th>
+                <th class="py-2 font-medium">Format</th>
+                <th class="py-2 font-medium">Next Export</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-50">
+              <tr>
+                <td class="py-3 text-gray-800">Compliance KPIs</td>
+                <td class="py-3 text-gray-600">PDF</td>
+                <td class="py-3 text-green-500">Daily</td>
+              </tr>
+              <tr>
+                <td class="py-3 text-gray-800">OEE & Quality</td>
+                <td class="py-3 text-gray-600">Excel</td>
+                <td class="py-3 text-green-500">Weekly</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Export Button Area -->
+        <div
+          class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 w-1/3 flex items-center justify-center"
+        >
+          <button
+            class="bg-[#2694a5] hover:bg-teal-600 text-white font-medium py-3 px-12 rounded-lg text-lg transition-colors"
+          >
+            Export
+          </button>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
