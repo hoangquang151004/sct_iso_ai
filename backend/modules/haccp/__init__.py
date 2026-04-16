@@ -1,1 +1,0 @@
-"""HACCP management module."""
