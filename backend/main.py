@@ -3,6 +3,7 @@ from fastapi.responses import Response
 
 from modules.documents.router import router as documents_router
 from modules.reports.router import router as reports_router
+from modules.users.router import router as users_router
 
 app = FastAPI(
     title="SCT-ISO.AI Backend",
@@ -12,6 +13,7 @@ app = FastAPI(
 
 app.include_router(documents_router)
 app.include_router(reports_router)
+app.include_router(users_router)
 
 
 @app.get("/", tags=["Root"])
