@@ -7,17 +7,26 @@ from datetime import date, datetime, timedelta
 from uuid import UUID, uuid4
 from typing import List, Optional
 
-from modules.scheduling.schemas import (
+from .schemas import (
     # Calendar Events
-    CalendarEventCreate, CalendarEventUpdate, CalendarEventResponse,
-    CalendarEventFilter, CalendarEventSummary,
+    CalendarEventCreate,
+    CalendarEventUpdate,
+    CalendarEventResponse,
+    CalendarEventFilter,
+    CalendarEventSummary,
     # Reminders
-    ReminderConfigCreate, ReminderConfigUpdate, ReminderConfigResponse,
+    ReminderConfigCreate,
+    ReminderConfigUpdate,
+    ReminderConfigResponse,
     # Notifications
-    NotificationLogCreate, NotificationLogUpdate, NotificationLogResponse,
+    NotificationLogCreate,
+    NotificationLogUpdate,
+    NotificationLogResponse,
     NotificationUnreadCount,
     # PRP Audit Schedules
-    PRPAuditScheduleCreate, PRPAuditScheduleUpdate, PRPAuditScheduleResponse,
+    PRPAuditScheduleCreate,
+    PRPAuditScheduleUpdate,
+    PRPAuditScheduleResponse,
 )
 
 
@@ -83,7 +92,9 @@ class CalendarEventService:
         return None
 
     @staticmethod
-    def update_event(event_id: UUID, payload: CalendarEventUpdate) -> CalendarEventResponse | None:
+    def update_event(
+        event_id: UUID, payload: CalendarEventUpdate
+    ) -> CalendarEventResponse | None:
         """Update a calendar event."""
         # TODO: Validate event exists
         # TODO: If status changed to COMPLETED, update completed_at
@@ -130,7 +141,9 @@ class CalendarEventService:
         )
 
     @staticmethod
-    def get_event_summary(org_id: UUID, user_id: UUID | None = None) -> CalendarEventSummary:
+    def get_event_summary(
+        org_id: UUID, user_id: UUID | None = None
+    ) -> CalendarEventSummary:
         """Get calendar event summary for dashboard."""
         # TODO: Calculate counts from database
         today = date.today()
@@ -163,7 +176,9 @@ class CalendarEventService:
         return []
 
     @staticmethod
-    def create_recurring_instances(event_id: UUID, until: date | None = None) -> List[CalendarEventResponse]:
+    def create_recurring_instances(
+        event_id: UUID, until: date | None = None
+    ) -> List[CalendarEventResponse]:
         """Create instances of a recurring event."""
         # TODO: Parse RRULE and generate instances
         return []
@@ -203,7 +218,9 @@ class ReminderConfigService:
         return None
 
     @staticmethod
-    def update_reminder(reminder_id: UUID, payload: ReminderConfigUpdate) -> ReminderConfigResponse | None:
+    def update_reminder(
+        reminder_id: UUID, payload: ReminderConfigUpdate
+    ) -> ReminderConfigResponse | None:
         """Update a reminder config."""
         # TODO: Reset is_sent if remind_before/remind_unit changed
         return None
@@ -382,7 +399,9 @@ class PRPAuditScheduleService:
         return None
 
     @staticmethod
-    def update_schedule(schedule_id: UUID, payload: PRPAuditScheduleUpdate) -> PRPAuditScheduleResponse | None:
+    def update_schedule(
+        schedule_id: UUID, payload: PRPAuditScheduleUpdate
+    ) -> PRPAuditScheduleResponse | None:
         """Update a PRP audit schedule."""
         # TODO: Update associated calendar event if exists
         return None

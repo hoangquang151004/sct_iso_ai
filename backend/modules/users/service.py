@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
 
-from modules.users.schemas import UserCreate, UserResponse
+from .schemas import UserCreate, UserResponse
 
 
 class UserService:
@@ -13,15 +13,22 @@ class UserService:
     def _get_user_or_404(self, user_id: UUID) -> UserResponse:
         result = self._users.get(user_id)
         if result is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+            )
         return result
 
     def _ensure_unique_fields(self, payload: UserCreate) -> None:
         for item in self._users.values():
             if item.email.lower() == payload.email.lower():
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT, detail="Email already exists"
+                )
             if item.username.lower() == payload.username.lower():
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists")
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Username already exists",
+                )
 
     def create_user(self, payload: UserCreate) -> UserResponse:
         self._ensure_unique_fields(payload)

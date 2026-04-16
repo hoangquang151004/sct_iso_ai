@@ -8,21 +8,35 @@ from datetime import date, datetime, timedelta
 from uuid import UUID, uuid4
 from typing import List, Optional
 
-from modules.haccp.schemas import (
+from .schemas import (
     # Product
-    ProductCreate, ProductUpdate, ProductResponse,
+    ProductCreate,
+    ProductUpdate,
+    ProductResponse,
     # HACCP Plan
-    HaccpPlanCreate, HaccpPlanUpdate, HaccpPlanResponse,
+    HaccpPlanCreate,
+    HaccpPlanUpdate,
+    HaccpPlanResponse,
     # Process Step
-    ProcessStepCreate, ProcessStepUpdate, ProcessStepResponse,
+    ProcessStepCreate,
+    ProcessStepUpdate,
+    ProcessStepResponse,
     # Hazard Analysis
-    HazardAnalysisCreate, HazardAnalysisUpdate, HazardAnalysisResponse,
+    HazardAnalysisCreate,
+    HazardAnalysisUpdate,
+    HazardAnalysisResponse,
     # CCP
-    CCPCreate, CCPUpdate, CCPResponse,
+    CCPCreate,
+    CCPUpdate,
+    CCPResponse,
     # CCP Monitoring
-    CCPMonitoringLogCreate, CCPMonitoringLogUpdate, CCPMonitoringLogResponse,
+    CCPMonitoringLogCreate,
+    CCPMonitoringLogUpdate,
+    CCPMonitoringLogResponse,
     # Verification
-    HaccpVerificationCreate, HaccpVerificationUpdate, HaccpVerificationResponse,
+    HaccpVerificationCreate,
+    HaccpVerificationUpdate,
+    HaccpVerificationResponse,
 )
 
 
@@ -66,7 +80,9 @@ class ProductService:
         return None
 
     @staticmethod
-    def update_product(product_id: UUID, payload: ProductUpdate) -> ProductResponse | None:
+    def update_product(
+        product_id: UUID, payload: ProductUpdate
+    ) -> ProductResponse | None:
         """Update a product."""
         # TODO: Validate product exists
         # TODO: Validate unique code if code is being changed
@@ -81,7 +97,9 @@ class ProductService:
         return True
 
     @staticmethod
-    def validate_product_code(org_id: UUID, code: str, exclude_id: UUID | None = None) -> bool:
+    def validate_product_code(
+        org_id: UUID, code: str, exclude_id: UUID | None = None
+    ) -> bool:
         """Validate that product code is unique within organization."""
         # TODO: Query database to check uniqueness
         return True
@@ -132,7 +150,9 @@ class HaccpPlanService:
         return None
 
     @staticmethod
-    def update_haccp_plan(plan_id: UUID, payload: HaccpPlanUpdate) -> HaccpPlanResponse | None:
+    def update_haccp_plan(
+        plan_id: UUID, payload: HaccpPlanUpdate
+    ) -> HaccpPlanResponse | None:
         """Update a HACCP plan."""
         # TODO: Validate plan exists and is in DRAFT status
         # TODO: Prevent version change if plan is ACTIVE
@@ -147,7 +167,9 @@ class HaccpPlanService:
         return True
 
     @staticmethod
-    def approve_haccp_plan(plan_id: UUID, approved_by: UUID) -> HaccpPlanResponse | None:
+    def approve_haccp_plan(
+        plan_id: UUID, approved_by: UUID
+    ) -> HaccpPlanResponse | None:
         """Approve a HACCP plan."""
         # TODO: Validate plan exists and is in DRAFT status
         # TODO: Validate user has approval permission
@@ -176,7 +198,9 @@ class HaccpPlanService:
         return None
 
     @staticmethod
-    def duplicate_haccp_plan(plan_id: UUID, new_version: str, created_by: UUID) -> HaccpPlanResponse:
+    def duplicate_haccp_plan(
+        plan_id: UUID, new_version: str, created_by: UUID
+    ) -> HaccpPlanResponse:
         """Duplicate an existing HACCP plan with new version."""
         # TODO: Copy plan, steps, hazards, CCPs
         # TODO: Create new plan with DRAFT status
@@ -233,7 +257,9 @@ class ProcessStepService:
         return None
 
     @staticmethod
-    def update_process_step(step_id: UUID, payload: ProcessStepUpdate) -> ProcessStepResponse | None:
+    def update_process_step(
+        step_id: UUID, payload: ProcessStepUpdate
+    ) -> ProcessStepResponse | None:
         """Update a process step."""
         # TODO: Validate step exists
         # TODO: If is_ccp changed to False, check for related CCPs
@@ -247,7 +273,9 @@ class ProcessStepService:
         return True
 
     @staticmethod
-    def reorder_steps(plan_id: UUID, step_orders: dict[UUID, int]) -> List[ProcessStepResponse]:
+    def reorder_steps(
+        plan_id: UUID, step_orders: dict[UUID, int]
+    ) -> List[ProcessStepResponse]:
         """Reorder process steps within a plan."""
         # TODO: Validate all steps belong to plan
         # TODO: Update step_order for each step
@@ -282,7 +310,8 @@ class HazardAnalysisService:
             severity=payload.severity,
             risk_score=payload.likelihood * payload.severity,
             control_measure=payload.control_measure,
-            is_significant=payload.is_significant or (payload.likelihood * payload.severity >= 12),
+            is_significant=payload.is_significant
+            or (payload.likelihood * payload.severity >= 12),
             ai_suggestion=payload.ai_suggestion,
             created_at=datetime.utcnow(),
         )
@@ -293,7 +322,9 @@ class HazardAnalysisService:
         return None
 
     @staticmethod
-    def update_hazard(hazard_id: UUID, payload: HazardAnalysisUpdate) -> HazardAnalysisResponse | None:
+    def update_hazard(
+        hazard_id: UUID, payload: HazardAnalysisUpdate
+    ) -> HazardAnalysisResponse | None:
         """Update a hazard analysis."""
         # TODO: Recalculate risk_score if likelihood or severity changed
         return None
@@ -370,7 +401,9 @@ class CCPService:
         return True
 
     @staticmethod
-    def validate_ccp_code(haccp_plan_id: UUID, ccp_code: str, exclude_id: UUID | None = None) -> bool:
+    def validate_ccp_code(
+        haccp_plan_id: UUID, ccp_code: str, exclude_id: UUID | None = None
+    ) -> bool:
         """Validate that CCP code is unique within HACCP plan."""
         return True
 
@@ -426,7 +459,9 @@ class CCPMonitoringLogService:
         return None
 
     @staticmethod
-    def update_ccp_log(log_id: UUID, payload: CCPMonitoringLogUpdate) -> CCPMonitoringLogResponse | None:
+    def update_ccp_log(
+        log_id: UUID, payload: CCPMonitoringLogUpdate
+    ) -> CCPMonitoringLogResponse | None:
         """Update a CCP monitoring log."""
         # TODO: Set verified_at if verified_by is provided
         return None
@@ -453,7 +488,9 @@ class CCPMonitoringLogService:
         }
 
     @staticmethod
-    def auto_verify_from_iot(log_id: UUID, iot_device_id: str) -> CCPMonitoringLogResponse | None:
+    def auto_verify_from_iot(
+        log_id: UUID, iot_device_id: str
+    ) -> CCPMonitoringLogResponse | None:
         """Auto-verify a log entry from trusted IoT device."""
         # TODO: Mark as verified if device is trusted
         return None
@@ -471,7 +508,9 @@ class HaccpVerificationService:
         return []
 
     @staticmethod
-    def create_verification(payload: HaccpVerificationCreate) -> HaccpVerificationResponse:
+    def create_verification(
+        payload: HaccpVerificationCreate,
+    ) -> HaccpVerificationResponse:
         """Create a new HACCP verification."""
         # TODO: Validate haccp_plan_id exists
         # TODO: Validate conducted_by user exists
@@ -495,7 +534,9 @@ class HaccpVerificationService:
         return None
 
     @staticmethod
-    def update_verification(verification_id: UUID, payload: HaccpVerificationUpdate) -> HaccpVerificationResponse | None:
+    def update_verification(
+        verification_id: UUID, payload: HaccpVerificationUpdate
+    ) -> HaccpVerificationResponse | None:
         """Update a HACCP verification."""
         return None
 

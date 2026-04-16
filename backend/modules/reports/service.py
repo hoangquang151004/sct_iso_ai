@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
 
-from modules.reports.schemas import (
+from .schemas import (
     KpiSnapshotCreate,
     KpiSnapshotResponse,
     ReportConfigCreate,
@@ -23,7 +23,9 @@ class ReportService:
     def _get_report_config_or_404(self, config_id: UUID) -> ReportConfigResponse:
         result = self._report_configs.get(config_id)
         if result is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report config not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Report config not found"
+            )
         return result
 
     def create_report_config(self, payload: ReportConfigCreate) -> ReportConfigResponse:
@@ -67,13 +69,17 @@ class ReportService:
         result = self._get_report_config_or_404(config_id)
         return result
 
-    def update_report_config(self, config_id: UUID, payload: ReportConfigUpdate) -> ReportConfigResponse:
+    def update_report_config(
+        self, config_id: UUID, payload: ReportConfigUpdate
+    ) -> ReportConfigResponse:
         current = self._get_report_config_or_404(config_id)
         result = current.model_copy(update=payload.model_dump(exclude_unset=True))
         self._report_configs[config_id] = result
         return result
 
-    def create_report_history(self, config_id: UUID, payload: ReportHistoryCreate) -> ReportHistoryResponse:
+    def create_report_history(
+        self, config_id: UUID, payload: ReportHistoryCreate
+    ) -> ReportHistoryResponse:
         config = self._get_report_config_or_404(config_id)
         result = ReportHistoryResponse(
             id=uuid4(),
@@ -122,7 +128,9 @@ class ReportService:
         self._kpi_snapshots.setdefault(payload.org_id, []).append(result)
         return result
 
-    def list_kpi_snapshots(self, org_id: UUID, period_type: str | None = None) -> list[KpiSnapshotResponse]:
+    def list_kpi_snapshots(
+        self, org_id: UUID, period_type: str | None = None
+    ) -> list[KpiSnapshotResponse]:
         result = self._kpi_snapshots.get(org_id, [])
         if period_type is not None:
             result = [item for item in result if item.period_type == period_type]

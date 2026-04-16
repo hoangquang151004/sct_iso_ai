@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
 
-from modules.documents.schemas import (
+from .schemas import (
     DocumentApprovalCreate,
     DocumentApprovalResponse,
     DocumentCategoryCreate,
@@ -29,10 +29,14 @@ class DocumentService:
     def _get_document_or_404(self, document_id: UUID) -> DocumentResponse:
         result = self._documents.get(document_id)
         if result is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
+            )
         return result
 
-    def create_category(self, payload: DocumentCategoryCreate) -> DocumentCategoryResponse:
+    def create_category(
+        self, payload: DocumentCategoryCreate
+    ) -> DocumentCategoryResponse:
         result = DocumentCategoryResponse(
             id=uuid4(),
             org_id=payload.org_id,
@@ -47,7 +51,9 @@ class DocumentService:
         self._categories[result.id] = result
         return result
 
-    def list_categories(self, org_id: UUID | None = None) -> list[DocumentCategoryResponse]:
+    def list_categories(
+        self, org_id: UUID | None = None
+    ) -> list[DocumentCategoryResponse]:
         result = list(self._categories.values())
         if org_id is not None:
             result = [item for item in result if item.org_id == org_id]
@@ -104,14 +110,18 @@ class DocumentService:
         result = self._get_document_or_404(document_id)
         return result
 
-    def update_document(self, document_id: UUID, payload: DocumentUpdate) -> DocumentResponse:
+    def update_document(
+        self, document_id: UUID, payload: DocumentUpdate
+    ) -> DocumentResponse:
         current = self._get_document_or_404(document_id)
         result = current.model_copy(update=payload.model_dump(exclude_unset=True))
         result.updated_at = datetime.utcnow()
         self._documents[document_id] = result
         return result
 
-    def create_document_version(self, document_id: UUID, payload: DocumentVersionCreate) -> DocumentVersionResponse:
+    def create_document_version(
+        self, document_id: UUID, payload: DocumentVersionCreate
+    ) -> DocumentVersionResponse:
         current = self._get_document_or_404(document_id)
         now = datetime.utcnow()
         result = DocumentVersionResponse(
@@ -132,7 +142,9 @@ class DocumentService:
         )
         return result
 
-    def list_document_versions(self, document_id: UUID) -> list[DocumentVersionResponse]:
+    def list_document_versions(
+        self, document_id: UUID
+    ) -> list[DocumentVersionResponse]:
         self._get_document_or_404(document_id)
         result = self._versions.get(document_id, [])
         return result
@@ -155,7 +167,9 @@ class DocumentService:
         self._approvals.setdefault(document_id, []).append(result)
         return result
 
-    def list_document_approvals(self, document_id: UUID) -> list[DocumentApprovalResponse]:
+    def list_document_approvals(
+        self, document_id: UUID
+    ) -> list[DocumentApprovalResponse]:
         self._get_document_or_404(document_id)
         result = self._approvals.get(document_id, [])
         return result
@@ -178,7 +192,9 @@ class DocumentService:
         self._change_logs.setdefault(document_id, []).append(result)
         return result
 
-    def list_document_change_logs(self, document_id: UUID) -> list[DocumentChangeLogResponse]:
+    def list_document_change_logs(
+        self, document_id: UUID
+    ) -> list[DocumentChangeLogResponse]:
         self._get_document_or_404(document_id)
         result = self._change_logs.get(document_id, [])
         return result

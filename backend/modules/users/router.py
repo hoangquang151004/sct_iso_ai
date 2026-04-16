@@ -2,19 +2,19 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, status
 
-from modules.users.schemas import UserCreate, UserResponse
-from modules.users.service import user_service
+from .schemas import UserCreate, UserResponse
+from .service import user_service
 
-router = APIRouter(prefix="/users", tags=["Users"])
+users_router = APIRouter(prefix="/users", tags=["Users"])
 
 
-@router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@users_router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def create_user(payload: UserCreate) -> UserResponse:
     result = user_service.create_user(payload)
     return result
 
 
-@router.get("", response_model=list[UserResponse])
+@users_router.get("", response_model=list[UserResponse])
 def list_users(
     org_id: UUID | None = Query(default=None),
     role_id: UUID | None = Query(default=None),
@@ -30,7 +30,7 @@ def list_users(
     return result
 
 
-@router.get("/{user_id}", response_model=UserResponse)
+@users_router.get("/{user_id}", response_model=UserResponse)
 def get_user(user_id: UUID) -> UserResponse:
     result = user_service.get_user(user_id)
     return result
