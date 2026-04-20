@@ -1,139 +1,83 @@
 # Security Rules - SCT-ISO.AI
 
-Tài liệu này phân tách rõ:
+Ngày cập nhật: 2026-04-20.
 
-- Trạng thái bảo mật hiện tại trong repository.
-- Quy tắc bắt buộc khi viết mới.
-- Mục tiêu bảo mật cho giai đoạn roadmap.
+## 1) Trạng thái đã triển khai
+- Auth API thật: `/auth/login`, `/auth/me`, `/auth/refresh`, `/auth/logout`.
+- Refresh token dùng cookie `httpOnly`, `path=/auth`, `secure/samesite` theo config.
+- RBAC theo permission guard `require_permissions`.
+- Rate limit đã bật cho `login` và `refresh`.
+- Audit log đã có (`audit_log` + `GET /audit/logs`).
+- Token invalidation theo `users.token_version` + claim `tv`.
+- Session theo thiết bị đã có (`/auth/sessions/*` và admin revoke-all).
+- Frontend có middleware guard cookie + modal session expired.
 
-Ngày cập nhật: 2026-04-16.
+## 2) Quy tắc bắt buộc
+1. Không log dữ liệu nhạy cảm (password, raw token, secret).
+2. Không hardcode secret; đọc từ biến môi trường qua `backend/core/config.py`.
+3. Mọi endpoint nhạy cảm phải có guard permission và kiểm soát `org_id`.
+4. Mọi lỗi API trả theo envelope chuẩn + `error_code`.
+5. Frontend route guard phải map theo permission `*.read` cho từng module trang chính.
 
----
+## 3) Cookie/Session rules
+- Refresh cookie:
+  - `HttpOnly=true`
+  - `Path=/auth`
+  - `Secure` theo `REFRESH_COOKIE_SECURE`
+  - `SameSite` theo `REFRESH_COOKIE_SAMESITE`
+- Bắt buộc:
+  - `APP_ENV in {staging, prod}` => `REFRESH_COOKIE_SECURE=true`
+  - `REFRESH_COOKIE_SAMESITE=none` => `REFRESH_COOKIE_SECURE=true`
+- Session management:
+  - User tự xem/revoke session qua `/auth/sessions`.
+  - Admin revoke toàn bộ session user qua `/users/{id}/sessions/revoke-all`.
 
-## 1. Trạng thái hiện tại
+## 4) Rate limit rules
+- `POST /auth/login`: mặc định `10/minute`.
+- `POST /auth/refresh`: mặc định `30/minute`.
+- `APP_ENV=test`: ngưỡng nâng cao (mặc định `1000/minute`) để tránh làm hỏng CI.
+- Khi vượt ngưỡng trả `429` với `error_code=RATE_LIMITED`.
 
-Theo code backend và frontend hiện tại:
+## 5) Password policy và reset flow
+- Password policy:
+  - >= 8 ký tự
+  - có ít nhất 1 chữ và 1 số
+  - không có khoảng trắng đầu/cuối
+- Lỗi policy dùng `USER_PASSWORD_WEAK` (422).
+- Admin reset password:
+  - có thể sinh `temporary_password`
+  - set `must_change_password=true`
+  - revoke session + bump token version
+- User đổi mật khẩu:
+  - cần `current_password` đúng
+  - endpoint `POST /users/me/change-password` chỉ yêu cầu bearer token hợp lệ (không yêu cầu `users.read`)
+  - set `must_change_password=false`
+  - revoke session trừ session hiện tại
 
-- Chưa có endpoint xác thực đăng nhập theo JWT.
-- Chưa có middleware xác thực, phân quyền vai trò, giới hạn tốc độ.
-- Chưa có luồng lưu trữ token vì frontend vẫn dùng dữ liệu mô phỏng.
-- Chưa có lớp cấu hình môi trường tập trung trong backend.
+## 6) Audit log rules
+- Ghi các action nhạy cảm:
+  - `auth.login.success/fail`
+  - `auth.refresh.success/fail`
+  - `auth.logout`
+  - `auth.session.revoke.self/admin`
+  - `users.create/update/role.assign`
+  - `user.soft_delete`, `user.reset_password`, `user.change_password`
+  - `rbac.role.create/update/delete/permissions.update`
+- Không ghi password hoặc token gốc vào payload audit.
 
-Vì vậy, các quy tắc ở mục roadmap là mục tiêu triển khai, chưa phải hành vi đang chạy thực tế.
+## 7) Token invalidation
+- Access token có claim `tv` (token_version).
+- Mỗi request bearer so sánh `tv` với `users.token_version` trong DB (cache in-proc TTL 30s).
+- Nếu token cũ hơn => trả `401 UNAUTHORIZED`.
+- Long-term roadmap: chuyển cache Redis để đồng bộ multi-worker.
 
----
-
-## 2. Quy tắc bắt buộc áp dụng ngay
-
-### 2.1 Không lộ dữ liệu nhạy cảm
-
-Không ghi log các dữ liệu sau:
-
-- Mật khẩu gốc hoặc mật khẩu băm.
-- Mã OTP, token, khóa bí mật.
-- Thông tin cá nhân không cần thiết trong log nghiệp vụ.
-
-### 2.2 Không hardcode cấu hình bí mật
-
-- Không ghi trực tiếp secret, key, mật khẩu vào mã nguồn.
-- Mọi giá trị nhạy cảm phải lấy từ biến môi trường.
-
-### 2.3 Bảo vệ truy vấn dữ liệu theo tổ chức
-
-- Khi bổ sung truy vấn DB thật, phải luôn ràng buộc theo khóa tổ chức.
-- Trong codebase hiện tại, khóa tổ chức đang dùng là `org_id`.
-
-### 2.4 Kiểm tra dữ liệu đầu vào
-
-- Dùng Pydantic schema để xác thực request body.
-- Không nhận dữ liệu tự do rồi ánh xạ trực tiếp vào model DB.
-
-### 2.5 Mật khẩu
-
-- Khi triển khai luồng người dùng thật, mật khẩu bắt buộc phải băm bằng bcrypt.
-- Tuyệt đối không lưu mật khẩu dạng rõ trong bất kỳ bảng nào.
-
----
-
-## 3. Mục tiêu triển khai bảo mật (roadmap)
-
-### 3.1 Xác thực
-
-- Áp dụng JWT access token và refresh token.
-- Thiết lập thời hạn sống rõ ràng cho từng loại token.
-- Payload token chỉ chứa thông tin định danh tối thiểu.
-
-### 3.2 Phân quyền
-
-- Bổ sung cơ chế RBAC theo module và hành động.
-- Chặn truy cập trái quyền ở tầng dependency hoặc middleware.
-
-### 3.3 Giới hạn tốc độ
-
-- Bổ sung giới hạn tốc độ cho đăng nhập và API tổng quát.
-- Có cơ chế khóa tạm thời khi vượt ngưỡng thất bại đăng nhập.
-
-### 3.4 CORS và xử lý lỗi production
-
-- Không dùng ký tự đại diện cho nguồn truy cập ở môi trường production.
-- Không trả stack trace nội bộ cho phía client.
-
-Chuẩn phản hồi lỗi API (đồng bộ với tài liệu API contracts):
-
-```json
-{
-  "detail": {
-    "message": "Mô tả lỗi",
-    "error_code": "ERROR_CODE_CONSTANT",
-    "request_id": "uuid",
-    "fields": []
-  }
-}
-```
-
-Nguyên tắc bảo mật cho phản hồi lỗi:
-
-- Không để lộ stack trace hoặc thông tin nội bộ hệ thống.
-- `error_code` phải ổn định để client xử lý mà không phụ thuộc vào nội dung `message`.
-- `request_id` phải có để truy vết log ở môi trường vận hành.
-
-Danh mục mã lỗi chuẩn tham chiếu tại:
-
-- [docs/api-error-codes.md](docs/api-error-codes.md)
-
-### 3.5 Frontend security
-
-- Không lưu token trong localStorage.
-- Ưu tiên refresh token qua cookie chỉ cho HTTP.
-- Tránh render HTML thô nếu chưa qua bước làm sạch dữ liệu.
-
----
-
-## 4. Danh sách biến môi trường đề xuất
-
-Danh sách dưới đây là định hướng để triển khai các lớp bảo mật và tích hợp:
-
-- JWT_SECRET_KEY
-- DATABASE_URL
-- FRONTEND_URL
-- MONGODB_URL
-- CHROMA_HOST
-- AWS_ACCESS_KEY_ID
-- AWS_SECRET_ACCESS_KEY
-- SMTP_PASSWORD
-- TOTP_ENCRYPTION_KEY
-
-Lưu ý:
-
-- Chỉ công bố tên biến, không đưa giá trị thật vào tài liệu.
-
----
-
-## 5. Checklist rà soát bảo mật trước khi hợp nhất mã
-
-1. Không có secret hoặc token trong mã nguồn.
-2. Không có log chứa dữ liệu nhạy cảm.
-3. Có kiểm tra đầu vào bằng schema cho endpoint mới.
-4. Có ràng buộc truy vấn theo tổ chức cho nghiệp vụ đa tenant.
-5. Có cập nhật đồng bộ tài liệu bảo mật khi thay đổi kiến trúc xác thực.
-6. Endpoint mới dùng đúng mẫu phản hồi lỗi thống nhất.
+## 8) RBAC system role rules
+- `is_system=true` role không được sửa/xóa.
+- Endpoint `rbac.manage` (create/update/delete/permissions) chỉ dành cho principal có permission `rbac.manage`.
+- Principal chỉ có `rbac.read` được xem RBAC panel ở chế độ read-only trên frontend.
+- Permission quy ước:
+  - `*.read`: truy cập/xem module.
+  - `*.manage`: thao tác quản trị/CRUD theo module.
+- API RBAC phải trả:
+  - `ROLE_SYSTEM_PROTECTED` khi cố sửa/xóa system role.
+  - `ROLE_IN_USE` khi xóa role đang được gán user.
