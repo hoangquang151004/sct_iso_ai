@@ -266,6 +266,24 @@ class PRPProgram(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    templates: Mapped[List["PRPChecklistTemplate"]] = relationship(back_populates="program", cascade="all, delete-orphan")
+
+
+class PRPChecklistTemplate(Base):
+    """Lưu trữ các hạng mục kiểm tra (câu hỏi) cho từng chương trình PRP."""
+    __tablename__ = "prp_checklist_templates"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    prp_program_id: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.prp_programs.id", ondelete="CASCADE"))
+    document_id: Mapped[Optional[UUID]] = mapped_column(ForeignKey("sct_iso.documents.id")) # Liên kết tài liệu ISO
+    question_text: Mapped[str] = mapped_column(Text, nullable=False)
+    requirement: Mapped[Optional[str]] = mapped_column(Text) # Yêu cầu đạt
+    order_index: Mapped[int] = mapped_column(Integer, default=0) # Thứ tự hiển thị
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    program: Mapped["PRPProgram"] = relationship(back_populates="templates")
+
 
 class PRPAudit(Base):
     __tablename__ = "prp_audits"
@@ -280,6 +298,26 @@ class PRPAudit(Base):
     overall_result: Mapped[Optional[str]] = mapped_column(String(50))
     auditor_id: Mapped[Optional[UUID]] = mapped_column(ForeignKey("sct_iso.users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    prp_program: Mapped[Optional["PRPProgram"]] = relationship()
+    details: Mapped[List["PRPAuditDetail"]] = relationship(back_populates="audit", cascade="all, delete-orphan")
+
+
+class PRPAuditDetail(Base):
+    """Lưu trữ kết quả đánh giá chi tiết cho từng hạng mục của một phiên audit."""
+    __tablename__ = "prp_audit_details"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    audit_id: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.prp_audits.id", ondelete="CASCADE"))
+    checklist_id: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.prp_checklist_templates.id"))
+    result: Mapped[str] = mapped_column(String(20), nullable=False) # e.g., 'PASS', 'FAIL', 'NA'
+    score: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
+    observation: Mapped[Optional[str]] = mapped_column(Text)
+    evidence_url: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    audit: Mapped["PRPAudit"] = relationship(back_populates="details")
+    checklist: Mapped["PRPChecklistTemplate"] = relationship()
 
 
 # =============================================================================
