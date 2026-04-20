@@ -1,20 +1,10 @@
+"use client";
+
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 
-type NavItem = {
-  href: string;
-  label: string;
-};
-
-const navItems: NavItem[] = [
-  { href: "/dashboard", label: "Bảng điều khiển" },
-  { href: "/document-control", label: "Tài liệu" },
-  { href: "/haccp-compliance", label: "Đánh giá rủi ro" },
-  { href: "/prp-audit", label: "Đánh giá PRP" },
-  { href: "/capa-management", label: "CAPA" },
-  { href: "/ai-analytics", label: "Giám sát" },
-  { href: "/reports", label: "Báo cáo" },
-];
+import { APP_NAV_ITEMS, filterNavItemsForPermissions } from "@/lib/auth-routes";
+import { useAuth } from "@/lib/auth-context";
 
 type AppShellProps = {
   activePath: string;
@@ -22,6 +12,20 @@ type AppShellProps = {
 };
 
 export default function AppShell({ activePath, children }: AppShellProps) {
+  const { principal } = useAuth();
+
+  const permissionSet = useMemo(
+    () => new Set(principal?.permissions ?? []),
+    [principal?.permissions],
+  );
+
+  const visibleNavItems = useMemo(
+    () => filterNavItemsForPermissions(APP_NAV_ITEMS, permissionSet),
+    [permissionSet],
+  );
+
+  const profileHref = permissionSet.has("users.read") ? "/user-management" : "/account/sessions";
+
   return (
     <div className="app-shell-bg min-h-screen p-3 md:p-4">
       <div className="mx-auto max-w-[1320px] overflow-hidden rounded-2xl border border-white/25 bg-slate-100 shadow-2xl shadow-cyan-900/30">
@@ -33,8 +37,11 @@ export default function AppShell({ activePath, children }: AppShellProps) {
             >
               SCT-ISO.AI
             </Link>
-            <nav className="hidden flex-wrap items-center gap-1 text-sm font-semibold lg:flex">
-              {navItems.map((item) => (
+            <nav
+              className="hidden flex-wrap items-center gap-1 text-sm font-semibold lg:flex"
+              aria-label="Điều hướng chính"
+            >
+              {visibleNavItems.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
@@ -49,8 +56,9 @@ export default function AppShell({ activePath, children }: AppShellProps) {
               ))}
             </nav>
             <Link
-              href="/user-management"
+              href={profileHref}
               className="flex h-9 w-9 items-center justify-center rounded-full border border-white/35 bg-white/15 text-lg"
+              aria-label="Tài khoản và phiên đăng nhập"
             >
               <span aria-hidden="true">U</span>
             </Link>

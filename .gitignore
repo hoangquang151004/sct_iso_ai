@@ -9,11 +9,38 @@ __pycache__/
 
 *.log
 *.sqlite3
+backend/*.db
+backend/*.sqlite*
 *.bak
 *.swp
 *.tmp
 *.env
 
-# Alembic migration files
-backend/alembic/
-backend/alembic.ini
+# docs
+docs/tasks/
+
+# test
+test/
+tests/
+e2e/
+test-results/
+.pytest_cache/
+
+
+# alembic
+alembic.ini
+alembic/
+migrations/
+
+.cursor/
+gemini.md
+docker-compose.yml
+
+#frontend test files
+frontend/coverage/
+frontend/e2e/
+frontend/playwright.config.ts
+frontend/vitest.config.ts
+frontend/playwright.config.ts
+frontend/vitest.setup.ts
+frontend/playwright.setup.ts

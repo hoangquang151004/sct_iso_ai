@@ -28,3 +28,7 @@ alembic upgrade head
 # lệnh kiểm tra migration hiện tại
 
 alembic current
+
+# tài khoản mk đăng nhập
+username: admin
+password: admin12345

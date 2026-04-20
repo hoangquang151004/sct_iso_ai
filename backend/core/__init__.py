@@ -1,5 +1,3 @@
-from .config import Settings
+from .config import Settings, get_settings, settings
 
-settings = Settings()
-
-__all__ = ["settings"]
+__all__ = ["Settings", "get_settings", "settings"]
