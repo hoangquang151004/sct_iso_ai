@@ -2,7 +2,7 @@
 
 import type { ChartData } from "chart.js";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import AppShell from "@/components/app-shell";
+import AppShell from "@/components/layout/app-shell";
 import {
   InternalAuditChart,
   OeeQualityYieldChart,

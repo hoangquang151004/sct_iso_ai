@@ -233,7 +233,7 @@ export function DeviationByCcpChart() {
           plugins: {
             ...baseDoughnutOptions.plugins,
             centerText: { text: `${maxValue}%` },
-          },
+          } as Record<string, unknown>,
         }}
         plugins={[centerTextPlugin]}
       />
@@ -255,7 +255,7 @@ export function ActionsBySourceChart() {
           plugins: {
             ...baseDoughnutOptions.plugins,
             centerText: { text: `${maxValue}%` },
-          },
+          } as Record<string, unknown>,
         }}
         plugins={[centerTextPlugin]}
       />
@@ -292,7 +292,7 @@ export function HazardAnalysisChart() {
                 display: true,
                 text: "Likelihood",
                 color: "#374151",
-                font: { size: 11, weight: "600" },
+                font: { size: 11, weight: "bold" },
               },
             },
             y: {
@@ -312,7 +312,7 @@ export function HazardAnalysisChart() {
                 display: true,
                 text: "Likelihood",
                 color: "#374151",
-                font: { size: 11, weight: "600" },
+                font: { size: 11, weight: "bold" },
               },
             },
           },

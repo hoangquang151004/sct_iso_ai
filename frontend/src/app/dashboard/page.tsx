@@ -1,5 +1,5 @@
-import AppShell from "@/components/app-shell";
-import { DeviationByCcpChart, IncidentTrendsChart } from "@/components/charts";
+import AppShell from "@/components/layout/app-shell";
+import { DeviationByCcpChart, IncidentTrendsChart } from "@/components/shared/charts";
 import {
   dashboardAlerts,
   dashboardIoTReadings,

@@ -687,6 +687,7 @@ export const exportSchedule = [
 // USER MANAGEMENT DATA
 // ============================================================================
 
+/** Tham chiếu CONTEXT.md mục 10 — đủ 5 vai trò chuẩn RBAC (mock/demo UI). */
 export const userRoles: UserRole[] = [
   {
     name: "Quản trị viên",
@@ -698,11 +699,15 @@ export const userRoles: UserRole[] = [
   },
   {
     name: "QA/QC",
+    permissions: { view: true, edit: true, delete: false },
+  },
+  {
+    name: "Auditor",
     permissions: { view: true, edit: false, delete: false },
   },
   {
     name: "Người dùng",
-    permissions: { view: true, edit: false, delete: false },
+    permissions: { view: true, edit: true, delete: false },
   },
 ];
 

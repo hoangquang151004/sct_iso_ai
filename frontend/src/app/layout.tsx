@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Inter } from "next/font/google";
+import AuthGate from "@/components/shared/auth-gate";
+import { AuthProvider } from "@/hooks";
 import "./globals.css";
 
 const inter = Inter({
@@ -19,7 +22,19 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="vi" className={`${inter.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <AuthProvider>
+          <Suspense
+            fallback={
+              <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-600">
+                Đang tải…
+              </div>
+            }
+          >
+            <AuthGate>{children}</AuthGate>
+          </Suspense>
+        </AuthProvider>
+      </body>
     </html>
   );
 }

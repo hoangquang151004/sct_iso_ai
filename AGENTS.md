@@ -1,14 +1,23 @@
 # Agent Guide - SCT-ISO.AI
 
-This file defines the default workflow for coding agents in this repository.
+This guide is for agentic coding tools working in `D:\sct_iso_ai`.
+Follow docs-first workflow, then run only the minimum commands needed.
 
-## 1. Mandatory Read Order (Before Any Code)
+## 1) Mandatory Read Order (Before Any Code)
 
-1. `CONTEXT.md`
-2. `docs/coding-conventions.md`
-3. `docs/architecture.md`
+1. `AGENTS.md` (this file)
+2. `CONTEXT.md`
+3. `docs/coding-conventions.md`
+4. `docs/architecture.md`
 
-## 2. Change Type -> Required Docs
+Backend-specific follow-up:
+- If editing backend, also read `backend/AGENTS.md`.
+
+Frontend-specific follow-up:
+- If editing frontend, also read `frontend/AGENTS.md`.
+- Important rule from `frontend/AGENTS.md`: this Next.js version has breaking changes, so read relevant docs in `frontend/node_modules/next/dist/docs/` before making framework-level changes.
+
+## 2) Change Type -> Required Docs
 
 - API or endpoint change:
   - `docs/api-contracts.md`
@@ -29,32 +38,135 @@ This file defines the default workflow for coding agents in this repository.
 - Documentation-only change:
   - `docs/docs-review-checklist.md`
 
-## 3. Pre-Coding Checklist
+## 3) Build, Lint, Test Commands
 
-Before writing code, state:
+Run from repo root unless noted.
 
-1. Which docs were reviewed for this specific change.
-2. Which constraints apply (for example: `org_id`, error envelope, security rules).
-3. Which tests are required by `docs/testing-strategy.md`.
-4. Which docs may need updates after code changes.
+### 3.1 Backend setup and run
 
-## 4. Required Implementation Rules
+- Install deps: `pip install -r backend/requirements.txt`
+- Start API (dev): `uvicorn main:app --reload` (run in `backend/`)
+- Apply migrations: `alembic upgrade head` (run in `backend/`)
 
-1. Keep behavior aligned with implemented state vs roadmap state in docs.
-2. Do not hardcode secrets or sensitive configuration values.
-3. For backend request bodies, use schema validation.
-4. Keep naming conventions consistent with `docs/coding-conventions.md`.
-5. For multi-tenant data access, preserve organization scoping with `org_id`.
+### 3.2 Backend tests (pytest)
 
-## 5. Before Merge
+- All backend tests: `pytest -q --maxfail=1` (in `backend/`)
+- Verbose with stdout: `pytest -vv -s` (in `backend/`)
+- Single test file: `pytest tests/test_users_api.py -q` (in `backend/`)
+- Single test case: `pytest tests/test_users_api.py::test_list_users_success -q` (in `backend/`)
+- Filter by keyword: `pytest -k "users and not sessions" -q` (in `backend/`)
 
-Apply `docs/docs-review-checklist.md`, especially the synchronized update rules:
+Notes:
+- `backend/pytest.ini` uses `testpaths = tests` and `python_files = test_*.py`.
+- Integration tests expect PostgreSQL and env vars (see `.github/workflows/backend-tests.yml`).
 
-1. API changes: update API contracts, error codes, and security docs.
-2. DB changes: update database schema and conventions docs.
-3. Flow changes: update user flows and testing strategy.
-4. Architecture changes: update architecture, decisions, and tech stack docs.
+### 3.3 Frontend commands
 
-## 6. Prompt Templates
+- Install deps: `npm ci` (in `frontend/`)
+- Dev server: `npm run dev` (in `frontend/`)
+- Build: `npm run build` (in `frontend/`)
+- Lint: `npm run lint` (in `frontend/`)
+- Unit tests: `npm run test` (in `frontend/`)
+- E2E tests: `npm run e2e` (in `frontend/`)
 
-Reusable prompt templates are stored in `.github/prompts/`.
+### 3.4 Run a single frontend test
+
+- Single Vitest file: `npx vitest run src/path/to/file.test.ts`
+- Single Vitest test name: `npx vitest run -t "renders role matrix"`
+- Single Playwright spec: `npx playwright test e2e/login_redirect.spec.ts`
+- Single Playwright test title: `npx playwright test -g "redirects to login"`
+
+## 4) Code Style and Conventions
+
+### 4.1 Naming
+
+- Python files/functions/variables: `snake_case`.
+- Python classes/Pydantic schemas: `PascalCase`.
+- DB table names: plural `snake_case`.
+- Keep org key naming consistent as `org_id`.
+
+### 4.2 Imports and module boundaries
+
+- Keep imports grouped: stdlib, third-party, local.
+- Prefer absolute imports from project roots (`modules.*`, `core.*`, etc.).
+- Backend routers must inject DB via `Depends(get_db)`; do not create sessions directly.
+- Do not import directly across domain routers; use shared models/schemas (`modules.auth.rbac_models`, shared schema modules).
+- Avoid circular imports between modules.
+
+### 4.3 Typing and schemas
+
+- Use explicit type hints in Python and TypeScript.
+- Avoid `any` in TypeScript unless justified.
+- Use Pydantic request/response schemas for API contracts.
+- Keep response shapes aligned with `docs/api-contracts.md`.
+- UUIDs are serialized as strings in JSON-facing layers.
+
+### 4.4 Formatting
+
+- Follow existing formatting in touched files; do not reformat unrelated code.
+- Keep functions focused and side effects explicit.
+- Add comments only for non-obvious logic or business constraints.
+
+### 4.5 Error handling
+
+- Raise structured HTTP errors with stable `error_code` values.
+- Follow existing error envelope pattern:
+  - `detail.message`
+  - `detail.error_code`
+  - `detail.request_id`
+  - `detail.fields`
+- Use appropriate status codes (`401`, `403`, `404`, `409`, `422`, `429`).
+- Never leak secrets, tokens, or sensitive internals in error messages.
+
+### 4.6 Security and multi-tenant rules
+
+- Never hardcode secrets or environment URLs.
+- Enforce tenant scoping with `org_id` checks (for example `ensure_org_scope`).
+- Respect RBAC permissions at endpoint and UI levels.
+- Keep audit logging for auth/users/rbac management actions.
+
+## 5) Testing Expectations by Change Type
+
+- Backend API/service changes:
+  - Run targeted pytest file(s) first.
+  - Then run broader backend suite when practical.
+- Frontend UI/flow changes:
+  - Run targeted Vitest tests.
+  - Run relevant Playwright spec for critical flows.
+- Auth, sessions, or RBAC changes:
+  - Prioritize `users`, `rbac`, `sessions`, and permission-matrix tests.
+
+Reference: `docs/testing-strategy.md`.
+
+## 6) Docs Sync Rules (Before Merge)
+
+Always apply `docs/docs-review-checklist.md`.
+
+- API changes -> update:
+  - `docs/api-contracts.md`
+  - `docs/api-error-codes.md`
+  - `docs/security-rules.md`
+- DB changes -> update:
+  - `docs/database-schema.md`
+  - `docs/coding-conventions.md`
+- User-flow changes -> update:
+  - `docs/user-flows.md`
+  - `docs/testing-strategy.md`
+  - `docs/known-issues.md` (if relevant)
+- Architecture/stack changes -> update:
+  - `docs/architecture.md`
+  - `docs/tech-stack.md`
+  - `docs/decisions.md` (if decision-level)
+
+## 7) Repository Rule Files (Cursor/Copilot)
+
+As of this update, these files were checked:
+- `.cursor/rules/` (not found)
+- `.cursorrules` (not found)
+- `.github/copilot-instructions.md` (not found)
+
+If any of them are added later, treat them as mandatory and merge their instructions into this workflow.
+
+## 8) Prompt Templates
+
+Reusable prompt templates live in `.github/prompts/`.
