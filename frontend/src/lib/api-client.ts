@@ -1,4 +1,4 @@
-import type { ApiErrorDetail, ApiErrorEnvelope } from "@/lib/users-types";
+import type { ApiErrorDetail, ApiErrorEnvelope } from "@/types";
 
 export class ApiClientError extends Error {
   readonly status: number;
@@ -75,6 +75,9 @@ export async function apiRequest<T>(
   init?: RequestInit,
   options?: ApiRequestOptions,
 ): Promise<T> {
+  const normalizedPath = path.split("?")[0]?.split("#")[0] ?? path;
+  const shouldSkipRefresh = normalizedPath === "/auth/login" || normalizedPath === "/auth/refresh";
+
   const makeRequest = async (token: string | null) => {
     const controller = new AbortController();
     const timeoutMs = options?.timeoutMs ?? 30_000;
@@ -96,7 +99,7 @@ export async function apiRequest<T>(
   };
 
   let response = await makeRequest(accessToken);
-  if (response.status === 401 && !path.startsWith("/auth/")) {
+  if (response.status === 401 && !shouldSkipRefresh) {
     const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
       method: "POST",
       credentials: "include",

@@ -1,12 +1,12 @@
 # User Flows - SCT-ISO.AI
 
-Ngày cập nhật: 2026-04-20.
+Ngày cập nhật: 2026-04-21.
 
 ## 1) Login thật + redirect
-1. User truy cập route protected.
-2. Next.js middleware redirect về `/login?next=<path>`.
+1. User truy cập route protected (không thuộc danh sách public trong `auth-routes`).
+2. Sau khi app bootstrap: nếu chưa có principal, **`AuthGate`** chuyển tới `/login?next=<path>` (client). Riêng truy cập `/`, **middleware** edge (`frontend/src/middleware.ts`) có thể redirect thẳng tới `/login` (không gửi `next` từ edge).
 3. User login thành công qua `POST /auth/login`.
-4. Frontend gọi `GET /auth/me`, set `principal`, rồi redirect về `next`.
+4. Frontend gọi `GET /auth/me`, set `principal`, rồi redirect về `next` (hoặc dashboard mặc định).
 5. `AuthGate` kiểm tra `permissions` theo route (`*.read`), thiếu quyền thì redirect về `/dashboard`.
 6. Nếu login fail: hiển thị message theo `error_code`.
 

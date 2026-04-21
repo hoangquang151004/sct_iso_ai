@@ -1,5 +1,5 @@
 import { apiRequest, clearAccessToken, setAccessToken } from "@/lib/api-client";
-import type { AuthPrincipal, AuthTokenResponse } from "@/lib/users-types";
+import type { AuthPrincipal, AuthTokenResponse } from "@/types";
 
 type LoginPayload = {
   username: string;

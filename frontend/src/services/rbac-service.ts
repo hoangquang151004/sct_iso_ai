@@ -1,5 +1,5 @@
 import { apiRequest } from "@/lib/api-client";
-import type { PermissionResponse, RoleResponse } from "@/lib/users-types";
+import type { PermissionResponse, RoleResponse } from "@/types";
 
 export const normalizeRoleResponse = (
   role: Omit<RoleResponse, "member_count" | "permission_codes" | "created_at"> & {

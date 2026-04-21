@@ -3,8 +3,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
-import { getCurrentPrincipal, login as loginApi, logout as logoutApi, refreshSession } from "@/lib/auth-api";
-import type { AuthPrincipal, AuthTokenResponse } from "@/lib/users-types";
+import { getCurrentPrincipal, login as loginApi, logout as logoutApi, refreshSession } from "@/services";
+import type { AuthPrincipal, AuthTokenResponse } from "@/types";
 
 type AuthContextValue = {
   principal: AuthPrincipal | null;

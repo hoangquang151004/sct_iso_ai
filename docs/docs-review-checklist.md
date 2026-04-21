@@ -2,7 +2,7 @@
 
 Tài liệu này dùng để rà soát nhanh chất lượng và tính nhất quán của toàn bộ tài liệu kỹ thuật trước khi merge.
 
-Ngày cập nhật: 2026-04-16.
+Ngày cập nhật: 2026-04-21.
 
 ---
 
@@ -53,6 +53,7 @@ Ngày cập nhật: 2026-04-16.
 3. Đường dẫn file trong tài liệu là đường dẫn tương đối nhất quán.
 4. Tiêu đề tài liệu theo cùng quy ước đặt tên.
 5. Tiếng Việt có dấu được dùng nhất quán trong phần mô tả.
+6. Khi đổi cấu trúc thư mục frontend: cập nhật đồng thời [docs/architecture.md](docs/architecture.md), [docs/coding-conventions.md](docs/coding-conventions.md), [docs/security-rules.md](docs/security-rules.md), [docs/user-flows.md](docs/user-flows.md), [docs/testing-strategy.md](docs/testing-strategy.md), [docs/decisions.md](docs/decisions.md) (ADR-002 nếu liên quan), [docs/tech-stack.md](docs/tech-stack.md).
 
 ---
 
@@ -78,9 +79,10 @@ Ngày cập nhật: 2026-04-16.
 - [docs/database-schema.md](docs/database-schema.md)
 - [docs/coding-conventions.md](docs/coding-conventions.md)
 
-3. Khi thêm tích hợp mới: cập nhật đồng thời
+3. Khi thêm tích hợp mới hoặc đổi layout `frontend/src/`: cập nhật đồng thời
 
 - [docs/architecture.md](docs/architecture.md)
+- [docs/coding-conventions.md](docs/coding-conventions.md)
 - [docs/tech-stack.md](docs/tech-stack.md)
 - [docs/env-and-config.md](docs/env-and-config.md)
 

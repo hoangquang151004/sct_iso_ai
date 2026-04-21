@@ -1,6 +1,6 @@
 # Security Rules - SCT-ISO.AI
 
-Ngày cập nhật: 2026-04-20.
+Ngày cập nhật: 2026-04-21.
 
 ## 1) Trạng thái đã triển khai
 - Auth API thật: `/auth/login`, `/auth/me`, `/auth/refresh`, `/auth/logout`.
@@ -10,7 +10,7 @@ Ngày cập nhật: 2026-04-20.
 - Audit log đã có (`audit_log` + `GET /audit/logs`).
 - Token invalidation theo `users.token_version` + claim `tv`.
 - Session theo thiết bị đã có (`/auth/sessions/*` và admin revoke-all).
-- Frontend có middleware guard cookie + modal session expired.
+- Frontend: middleware edge (`frontend/src/middleware.ts`) không đọc cookie refresh (cookie gắn origin API, `path=/auth`); bắt buộc đăng nhập và kiểm tra quyền route do **AuthGate** + principal sau `GET /auth/me`. Modal **phiên hết hạn** khi refresh token thất bại (xử lý trong `api-client` / `AuthProvider`).
 
 ## 2) Quy tắc bắt buộc
 1. Không log dữ liệu nhạy cảm (password, raw token, secret).

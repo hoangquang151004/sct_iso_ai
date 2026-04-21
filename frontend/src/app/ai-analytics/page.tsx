@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 
-import AppShell from "@/components/app-shell";
-import { AnomalyDetectionChart } from "@/components/charts";
+import AppShell from "@/components/layout/app-shell";
+import { AnomalyDetectionChart } from "@/components/shared/charts";
 import {
   aiAnalyticsIoTReadings,
   aiAnalyticsSidebarButtons,

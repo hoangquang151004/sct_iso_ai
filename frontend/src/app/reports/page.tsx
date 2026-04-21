@@ -1,9 +1,9 @@
-import AppShell from "@/components/app-shell";
+import AppShell from "@/components/layout/app-shell";
 import {
   InternalAuditChart,
   OeeQualityYieldChart,
   ReportSparklineChart,
-} from "@/components/charts";
+} from "@/components/shared/charts";
 import { exportSchedule, reportsKPIs } from "@/lib/mock-data";
 
 export default function ReportsPage() {

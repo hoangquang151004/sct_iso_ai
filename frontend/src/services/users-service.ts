@@ -5,7 +5,7 @@ import type {
   UserCreatePayload,
   UserResponse,
   UserUpdatePayload,
-} from "@/lib/users-types";
+} from "@/types";
 
 type UserFilter = {
   orgId: string;

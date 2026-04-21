@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { Inter } from "next/font/google";
-import AuthGate from "@/components/auth-gate";
-import { AuthProvider } from "@/lib/auth-context";
+import AuthGate from "@/components/shared/auth-gate";
+import { AuthProvider } from "@/hooks";
 import "./globals.css";
 
 const inter = Inter({

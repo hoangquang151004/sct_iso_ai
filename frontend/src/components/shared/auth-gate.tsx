@@ -9,7 +9,7 @@ import {
   hasRoutePermissions,
   isAuthPublicPath,
 } from "@/lib/auth-routes";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/hooks";
 
 type AuthGateProps = {
   children: React.ReactNode;

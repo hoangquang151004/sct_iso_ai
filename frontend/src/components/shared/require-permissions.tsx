@@ -2,7 +2,7 @@
 
 import React from "react";
 
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/hooks";
 
 type RequirePermissionsProps = {
   codes: string[];

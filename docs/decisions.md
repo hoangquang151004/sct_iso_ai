@@ -66,6 +66,7 @@ Trạng thái hiện tại:
 - Quyết định: Dùng Next.js App Router.
 - Lý do chọn: File-based routing, TypeScript tốt, mở rộng thuận lợi.
 - Hệ quả và đánh đổi: Cần quản lý ranh giới giữa dữ liệu mock và dữ liệu thật.
+- Cấu trúc mã nguồn FE (cập nhật): Toàn bộ UI dưới `frontend/src/` — `app/`, `components/{layout,shared,ui}`, `services/`, `types/`, `hooks/`, `lib/` (tiện ích), `middleware.ts` cùng cấp `app/`. Chi tiết: [docs/architecture.md](docs/architecture.md), [docs/coding-conventions.md](docs/coding-conventions.md).
 - Tài liệu liên quan: [docs/architecture.md](docs/architecture.md), [docs/tech-stack.md](docs/tech-stack.md)
 
 ## ADR-003: Chọn PostgreSQL làm CSDL quan hệ chính

@@ -3,9 +3,9 @@
 import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-import AppShell from "@/components/app-shell";
+import AppShell from "@/components/layout/app-shell";
+import { changeMyPassword } from "@/services";
 import { ApiClientError } from "@/lib/api-client";
-import { changeMyPassword } from "@/lib/users-api";
 import { getMessageByErrorCode } from "@/lib/users-error-map";
 
 const isStrongEnough = (password: string) =>

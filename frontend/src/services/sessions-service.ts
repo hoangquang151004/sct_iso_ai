@@ -1,5 +1,5 @@
 import { apiRequest } from "@/lib/api-client";
-import type { SessionSummary } from "@/lib/users-types";
+import type { SessionSummary } from "@/types";
 
 export const getMySessions = async (): Promise<SessionSummary[]> => {
   return apiRequest<SessionSummary[]>("/auth/sessions");

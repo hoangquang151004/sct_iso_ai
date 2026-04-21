@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useMemo, type ReactNode } from "react";
 
+import { useAuth } from "@/hooks";
 import { APP_NAV_ITEMS, filterNavItemsForPermissions } from "@/lib/auth-routes";
-import { useAuth } from "@/lib/auth-context";
 
 type AppShellProps = {
   activePath: string;

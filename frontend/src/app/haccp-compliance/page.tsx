@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 
-import AppShell from "@/components/app-shell";
-import { HazardAnalysisChart } from "@/components/charts";
+import AppShell from "@/components/layout/app-shell";
+import { HazardAnalysisChart } from "@/components/shared/charts";
 import {
   ccps,
   haccpBreadcrumb,

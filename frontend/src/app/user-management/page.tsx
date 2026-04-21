@@ -3,41 +3,38 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-import AppShell from "@/components/app-shell";
-import RequirePermissions from "@/components/require-permissions";
-import { ApiClientError } from "@/lib/api-client";
-import { useAuth } from "@/lib/auth-context";
+import AppShell from "@/components/layout/app-shell";
+import RequirePermissions from "@/components/shared/require-permissions";
+import { useAuth, usePermissionFlags } from "@/hooks";
 import {
   assignRoleToUser,
+  createRbacRole,
   createUser,
+  deleteRbacRole,
   getAuditLogs,
+  getRbacPermissions,
+  getRbacRoles,
   getRoles,
   getUserById,
   getUsers,
   resetPassword,
+  resetSystemRolePermissions,
   revokeAllUserSessions,
   softDeleteUser,
+  updateRbacRole,
+  updateRolePermissions,
   updateUser,
-} from "@/lib/users-api";
-import { getMessageByErrorCode } from "@/lib/users-error-map";
+} from "@/services";
 import type {
   AuditLogResponse,
+  PermissionResponse,
   RoleResponse,
   UserCreatePayload,
   UserResponse,
   UserUpdatePayload,
-} from "@/lib/users-types";
-
-import {
-  createRbacRole,
-  deleteRbacRole,
-  getRbacPermissions,
-  getRbacRoles,
-  resetSystemRolePermissions,
-  updateRbacRole,
-  updateRolePermissions,
-} from "@/lib/rbac-api";
-import type { PermissionResponse } from "@/lib/users-types";
+} from "@/types";
+import { ApiClientError } from "@/lib/api-client";
+import { getMessageByErrorCode } from "@/lib/users-error-map";
 
 // Icons 
 const EyeIcon = () => (
@@ -123,20 +120,17 @@ export default function UserManagementPage() {
   const searchParams = useSearchParams();
   const { principal, logout } = useAuth();
   const orgId = principal?.org_id ?? "";
-
-  const permissionSet = useMemo(
-    () => new Set(principal?.permissions ?? []),
-    [principal?.permissions],
-  );
-  const canReadRbac = permissionSet.has("rbac.read");
-  const canManageRbac = permissionSet.has("rbac.manage");
-  const canCreateUser = permissionSet.has("users.create");
-  const canUpdateUser = permissionSet.has("users.update");
-  const canAssignRole = permissionSet.has("users.assign_role");
-  const canResetPassword = permissionSet.has("users.reset_password");
-  const canManageSessions = permissionSet.has("users.manage_sessions");
-  const canDeleteUser = permissionSet.has("users.delete");
-  const canReadAudit = permissionSet.has("audit.read");
+  const {
+    canReadRbac,
+    canManageRbac,
+    canCreateUser,
+    canUpdateUser,
+    canAssignRole,
+    canResetPassword,
+    canManageSessions,
+    canDeleteUser,
+    canReadAudit,
+  } = usePermissionFlags(principal);
 
   const [users, setUsers] = useState<UserResponse[]>([]);
   const [roles, setRoles] = useState<RoleResponse[]>([]);

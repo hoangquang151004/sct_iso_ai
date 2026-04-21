@@ -5,9 +5,9 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { ApiClientError } from "@/lib/api-client";
-import { getCurrentPrincipal } from "@/lib/auth-api";
+import { useAuth } from "@/hooks";
+import { getCurrentPrincipal } from "@/services";
 import { AUTH_DEFAULT_AFTER_LOGIN } from "@/lib/auth-routes";
-import { useAuth } from "@/lib/auth-context";
 import { getMessageByErrorCode } from "@/lib/users-error-map";
 
 export default function LoginPage() {

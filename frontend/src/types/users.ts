@@ -78,7 +78,6 @@ export type RoleResponse = {
   is_system: boolean;
   member_count: number;
   created_at: string;
-  /** Danh sách mã quyền từ API `/rbac/roles` (backend trả mảng, có thể rỗng). */
   permission_codes: string[];
 };
 

@@ -1,5 +1,5 @@
-import AppShell from "@/components/app-shell";
-import { ActionsBySourceChart } from "@/components/charts";
+import AppShell from "@/components/layout/app-shell";
+import { ActionsBySourceChart } from "@/components/shared/charts";
 import { capaStats, capaTableRows } from "@/lib/mock-data";
 
 export default function CapaManagementPage() {

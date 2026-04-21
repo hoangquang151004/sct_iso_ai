@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 
-import AppShell from "@/components/app-shell";
+import AppShell from "@/components/layout/app-shell";
+import { getMySessions, revokeAllOtherSessions, revokeMySession } from "@/services";
+import type { SessionSummary } from "@/types";
 import { ApiClientError } from "@/lib/api-client";
 import { getMessageByErrorCode } from "@/lib/users-error-map";
-import { getMySessions, revokeAllOtherSessions, revokeMySession } from "@/lib/sessions-api";
-import type { SessionSummary } from "@/lib/users-types";
 
 export default function AccountSessionsPage() {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);

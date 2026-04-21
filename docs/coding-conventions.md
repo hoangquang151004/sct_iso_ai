@@ -5,7 +5,7 @@ Tài liệu này chia thành 2 lớp quy ước:
 - Áp dụng ngay: phải tuân theo codebase hiện tại.
 - Mục tiêu chuẩn hóa: áp dụng khi refactor hoặc mở rộng kiến trúc.
 
-Ngày cập nhật: 2026-04-16.
+Ngày cập nhật: 2026-04-21.
 
 ---
 
@@ -34,8 +34,18 @@ Lưu ý quan trọng:
 ### 1.3 Quy ước frontend hiện tại
 
 - Dùng TypeScript cho toàn bộ trang trong `frontend/src`.
-- Thành phần trang đặt theo App Router (`page.tsx`, `layout.tsx`).
-- Dữ liệu UI hiện tại đọc từ `frontend/src/lib/mock-data.ts`.
+- Thành phần trang đặt theo App Router (`frontend/src/app/`, `page.tsx`, `layout.tsx`).
+- Middleware Next.js: `frontend/src/middleware.ts` (cùng cấp `app/` trong `src/`).
+- Component theo lớp:
+  - `frontend/src/components/layout/` — khung trang (ví dụ `app-shell`).
+  - `frontend/src/components/shared/` — block dùng chung nhiều màn (ví dụ `auth-gate`, `require-permissions`, biểu đồ).
+  - `frontend/src/components/ui/` — component hiển thị thuần / base (mở rộng dần).
+- Gọi HTTP tới FastAPI: `frontend/src/services/` (theo domain: auth, users, rbac, sessions).
+- Kiểu dùng chung: `frontend/src/types/`.
+- Custom hooks: `frontend/src/hooks/`.
+- Tiện ích nền (API client, auth context, route config, mock): `frontend/src/lib/` (ví dụ `api-client.ts`, `auth-context.tsx`, `auth-routes.ts`, `mock-data.ts`).
+- Barrel exports: `frontend/src/components/index.ts`, `frontend/src/services/index.ts`, `frontend/src/hooks/index.ts`, `frontend/src/types/index.ts` (import có thể dùng `@/services`, `@/hooks`, `@/types`, `@/components/...`).
+- Một phần màn hình demo vẫn đọc mock từ `frontend/src/lib/mock-data.ts`; luồng auth/users/RBAC đã gọi API thật qua `services/`.
 
 ### 1.4 Quy ước kiểu dữ liệu
 
@@ -119,9 +129,10 @@ Danh mục mã lỗi chuẩn tham chiếu tại:
 
 ### 2.2 Frontend
 
-1. Tạo API client dùng chung thay cho mock data.
-2. Tách kiểu dữ liệu dùng chung vào thư mục `types`.
-3. Chuẩn hóa custom hooks cho luồng gọi API.
+1. ~~Tạo API client dùng chung~~ **Đã có:** `frontend/src/lib/api-client.ts` + `frontend/src/services/*`.
+2. ~~Tách kiểu dữ liệu dùng chung vào thư mục `types`~~ **Đã có:** `frontend/src/types/` (barrel `index.ts`).
+3. ~~Chuẩn hóa custom hooks~~ **Đang áp dụng:** `frontend/src/hooks/` (mở rộng dần theo domain).
+4. **Tiếp theo:** giảm dần phụ thuộc `mock-data` trên các màn production; E2E/Storybook (nếu có) có thể giữ mock riêng.
 
 ### 2.3 Dữ liệu
 
