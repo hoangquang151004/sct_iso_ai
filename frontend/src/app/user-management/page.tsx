@@ -10,6 +10,7 @@ import { useAuth } from "@/lib/auth-context";
 import {
   assignRoleToUser,
   createUser,
+  getAuditLogs,
   getRoles,
   getUserById,
   getUsers,
@@ -19,7 +20,13 @@ import {
   updateUser,
 } from "@/lib/users-api";
 import { getMessageByErrorCode } from "@/lib/users-error-map";
-import type { RoleResponse, UserCreatePayload, UserResponse, UserUpdatePayload } from "@/lib/users-types";
+import type {
+  AuditLogResponse,
+  RoleResponse,
+  UserCreatePayload,
+  UserResponse,
+  UserUpdatePayload,
+} from "@/lib/users-types";
 
 import {
   createRbacRole,
@@ -45,6 +52,47 @@ const XIcon = () => (
 const ShieldIcon = () => (
    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>
 );
+const HistoryIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/><path d="M12 7v5l4 2"/></svg>
+);
+
+const formatAuditAction = (action: string): string => {
+  const actionMap: Record<string, string> = {
+    "users.create": "Tạo người dùng",
+    "users.update": "Cập nhật người dùng",
+    "users.delete": "Xóa người dùng",
+    "users.soft_delete": "Vô hiệu hóa người dùng",
+    "users.reset_password": "Đặt lại mật khẩu người dùng",
+    "users.assign_role": "Gán vai trò cho người dùng",
+    "users.revoke_sessions": "Thu hồi phiên đăng nhập",
+    "users.role.assign": "Gán vai trò cho người dùng",
+    "user.soft_delete": "Vô hiệu hóa người dùng",
+    "user.reset_password": "Đặt lại mật khẩu người dùng",
+    "user.change_password": "Đổi mật khẩu người dùng",
+    "rbac.create": "Tạo vai trò",
+    "rbac.update": "Cập nhật vai trò",
+    "rbac.delete": "Xóa vai trò",
+    "rbac.update_permissions": "Cập nhật quyền vai trò",
+    "rbac.role.create": "Tạo vai trò",
+    "rbac.role.update": "Cập nhật vai trò",
+    "rbac.role.delete": "Xóa vai trò",
+    "rbac.role.permissions.update": "Cập nhật quyền vai trò",
+    "rbac.role.permissions.reset": "Khôi phục quyền mặc định vai trò",
+    "auth.login": "Đăng nhập",
+    "auth.login.success": "Đăng nhập thành công",
+    "auth.login.fail": "Đăng nhập thất bại",
+    "auth.logout": "Đăng xuất",
+    "auth.refresh.success": "Làm mới phiên thành công",
+    "auth.refresh.fail": "Làm mới phiên thất bại",
+    "auth.session.revoke.self": "Tự thu hồi phiên đăng nhập",
+    "auth.session.revoke.admin": "Quản trị viên thu hồi phiên đăng nhập",
+  };
+
+  const mapped = actionMap[action];
+  if (mapped) return mapped;
+
+  return "Hành động hệ thống";
+};
 
 const emptyCreateForm = (orgId: string): UserCreatePayload => ({
   username: "",
@@ -88,6 +136,7 @@ export default function UserManagementPage() {
   const canResetPassword = permissionSet.has("users.reset_password");
   const canManageSessions = permissionSet.has("users.manage_sessions");
   const canDeleteUser = permissionSet.has("users.delete");
+  const canReadAudit = permissionSet.has("audit.read");
 
   const [users, setUsers] = useState<UserResponse[]>([]);
   const [roles, setRoles] = useState<RoleResponse[]>([]);
@@ -101,6 +150,7 @@ export default function UserManagementPage() {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [activeProfileTab, setActiveProfileTab] = useState<"info" | "security">("info");
   const [isRbacDrawerOpen, setIsRbacDrawerOpen] = useState(false);
+  const [isAuditDrawerOpen, setIsAuditDrawerOpen] = useState(false);
 
   const [searchKeyword, setSearchKeyword] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -245,6 +295,15 @@ export default function UserManagementPage() {
     if (searchParams.get("tab") === "rbac") {
       void router.replace("/user-management");
     }
+  };
+
+  const openAuditPanel = () => {
+    if (!canReadAudit) return;
+    setIsAuditDrawerOpen(true);
+  };
+
+  const closeAuditPanel = () => {
+    setIsAuditDrawerOpen(false);
   };
 
   const openDetailDrawer = async (userId: string) => {
@@ -508,20 +567,28 @@ export default function UserManagementPage() {
              </div>
 
              {/* Right: Actions */}
-             <div className="flex gap-2.5">
-               <RequirePermissions codes={["rbac.read"]}>
+              <div className="flex gap-2.5">
+                <RequirePermissions codes={["rbac.read"]}>
+                   <button
+                     onClick={openRbacPanel}
+                     className="rounded-md bg-white border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition flex items-center gap-2 shrink-0"
+                   >
+                     <ShieldIcon /> Mở tab Phân quyền (RBAC)
+                   </button>
+                </RequirePermissions>
+                <RequirePermissions codes={["audit.read"]}>
                   <button
-                    onClick={openRbacPanel}
+                    onClick={openAuditPanel}
                     className="rounded-md bg-white border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition flex items-center gap-2 shrink-0"
                   >
-                    <ShieldIcon /> Mở tab Phân quyền (RBAC)
+                    <HistoryIcon /> Mở tab Lịch sử Audit
                   </button>
-               </RequirePermissions>
-               <RequirePermissions codes={["users.create"]}>
-                 <button
-                   className="rounded-md bg-cyan-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-cyan-700 transition flex items-center gap-1.5 shrink-0"
-                   onClick={openCreateDrawer}
-                 >
+                </RequirePermissions>
+                <RequirePermissions codes={["users.create"]}>
+                  <button
+                    className="rounded-md bg-cyan-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-cyan-700 transition flex items-center gap-1.5 shrink-0"
+                    onClick={openCreateDrawer}
+                  >
                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
                    Thêm người dùng
                  </button>
@@ -651,6 +718,10 @@ export default function UserManagementPage() {
              </div>
            </div>
         )}
+
+        {isAuditDrawerOpen && orgId ? (
+          <AuditPanel orgId={orgId} onClose={closeAuditPanel} />
+        ) : null}
 
         {/* SIDE DRAWER FOR USER ACTIONS */}
         {drawerMode !== 'none' && (
@@ -958,9 +1029,11 @@ export default function UserManagementPage() {
                                   </button>
                                 </div>
                               </div>
-                           </div>
-                        </div>
+                            </div>
+
+                         </div>
                       )}
+
                     </div>
                   )}
                 </div>
@@ -991,6 +1064,115 @@ type RbacPanelProps = {
   canManage: boolean;
   onClose: () => void;
 };
+
+type AuditPanelProps = {
+  orgId: string;
+  onClose: () => void;
+};
+
+function AuditPanel({ orgId, onClose }: AuditPanelProps) {
+  const [auditLogs, setAuditLogs] = useState<AuditLogResponse[]>([]);
+  const [actorNameById, setActorNameById] = useState<Record<string, string>>({});
+  const [isAuditLoading, setIsAuditLoading] = useState(false);
+  const [auditErrorMessage, setAuditErrorMessage] = useState("");
+
+  useEffect(() => {
+    const loadAuditData = async () => {
+      setIsAuditLoading(true);
+      setAuditErrorMessage("");
+      try {
+        const [rows, users] = await Promise.all([
+          getAuditLogs({ orgId, limit: 200, offset: 0 }),
+          getUsers({ orgId }),
+        ]);
+        const actorMap: Record<string, string> = {};
+        users.forEach((user) => {
+          actorMap[user.id] = user.username;
+        });
+        setActorNameById(actorMap);
+        setAuditLogs(rows);
+      } catch (error) {
+        if (error instanceof ApiClientError) {
+          setAuditErrorMessage(
+            getMessageByErrorCode(error.detail.error_code, error.detail.message),
+          );
+        } else {
+          setAuditErrorMessage("Không thể tải nhật ký audit.");
+        }
+      } finally {
+        setIsAuditLoading(false);
+      }
+    };
+
+    void loadAuditData();
+  }, [orgId]);
+
+  return (
+    <div className="fixed inset-0 z-40 overflow-hidden" aria-labelledby="audit-master-drawer" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
+      <div className="pointer-events-none fixed inset-0 flex items-center justify-center p-4 sm:p-6 z-[60]">
+        <div className="pointer-events-auto w-full max-w-6xl max-h-[90vh] overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-900/10 flex flex-col transition-all">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900 tracking-tight">Lịch sử tất cả Audit</h2>
+              <p className="mt-1 text-sm text-slate-500">Hiển thị các sự kiện audit gần nhất trong toàn tổ chức.</p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-2 text-slate-500 hover:bg-slate-50"
+              aria-label="Đóng audit panel"
+            >
+              <XIcon />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-auto p-6">
+            {isAuditLoading ? (
+              <div className="flex items-center gap-2 text-sm text-slate-500">
+                <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-slate-500"></div>
+                Đang tải lịch sử audit...
+              </div>
+            ) : auditErrorMessage ? (
+              <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{auditErrorMessage}</div>
+            ) : auditLogs.length === 0 ? (
+              <p className="text-xs text-slate-500 font-medium">Chưa có bản ghi audit nào.</p>
+            ) : (
+              <div className="max-h-[64vh] overflow-auto rounded-lg border border-slate-200">
+                <table className="min-w-full text-xs text-left">
+                  <thead className="sticky top-0 bg-slate-50 text-slate-500 border-b border-slate-200">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">Thời gian</th>
+                      <th className="px-3 py-2 font-semibold">Hành động</th>
+                      <th className="px-3 py-2 font-semibold">Đối tượng</th>
+                      <th className="px-3 py-2 font-semibold">Người thực hiện</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {auditLogs.map((entry) => (
+                      <tr key={entry.id}>
+                        <td className="px-3 py-2 text-slate-600 whitespace-nowrap">
+                          {new Date(entry.created_at).toLocaleString("vi-VN")}
+                        </td>
+                        <td className="px-3 py-2 font-medium text-slate-800">{formatAuditAction(entry.action)}</td>
+                        <td className="px-3 py-2 text-slate-600">{entry.target_type || "-"}</td>
+                        <td className="px-3 py-2 text-slate-500">
+                          {entry.actor_user_id
+                            ? (actorNameById[entry.actor_user_id] || entry.actor_user_id)
+                            : "Hệ thống"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function RbacPanel({ orgId, canManage, onClose }: RbacPanelProps) {
   const [roles, setRoles] = useState<RoleResponse[]>([]);

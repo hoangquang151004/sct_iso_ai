@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/api-client";
 import type {
+  AuditLogResponse,
   RoleResponse,
   UserCreatePayload,
   UserResponse,
@@ -108,4 +109,44 @@ export const changeMyPassword = async (
       new_password: newPassword,
     }),
   });
+};
+
+export type AuditLogFilter = {
+  orgId: string;
+  action?: string;
+  actorUserId?: string;
+  targetType?: string;
+  fromDt?: string;
+  toDt?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export const getAuditLogs = async (
+  filter: AuditLogFilter,
+): Promise<AuditLogResponse[]> => {
+  const searchParams = new URLSearchParams({ org_id: filter.orgId });
+  if (filter.action) {
+    searchParams.set("action", filter.action);
+  }
+  if (filter.actorUserId) {
+    searchParams.set("actor_user_id", filter.actorUserId);
+  }
+  if (filter.targetType) {
+    searchParams.set("target_type", filter.targetType);
+  }
+  if (filter.fromDt) {
+    searchParams.set("from_dt", filter.fromDt);
+  }
+  if (filter.toDt) {
+    searchParams.set("to_dt", filter.toDt);
+  }
+  if (typeof filter.limit === "number") {
+    searchParams.set("limit", String(filter.limit));
+  }
+  if (typeof filter.offset === "number") {
+    searchParams.set("offset", String(filter.offset));
+  }
+
+  return apiRequest<AuditLogResponse[]>(`/audit/logs?${searchParams.toString()}`);
 };

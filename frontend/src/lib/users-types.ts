@@ -98,3 +98,17 @@ export type SessionSummary = {
   last_used_at: string | null;
   is_current: boolean;
 };
+
+export type AuditLogResponse = {
+  id: string;
+  org_id: string;
+  actor_user_id: string | null;
+  action: string;
+  target_type: string | null;
+  target_id: string | null;
+  request_id: string | null;
+  ip: string | null;
+  user_agent: string | null;
+  payload: Record<string, unknown> | null;
+  created_at: string;
+};
