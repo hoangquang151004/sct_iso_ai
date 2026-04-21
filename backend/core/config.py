@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     auth_bootstrap_admin_password: str = "admin12345"
     auth_bootstrap_iso_manager_username: str = "iso_manager"
     auth_bootstrap_iso_manager_password: str = "isomanager12345"
+    enable_document_ui_bootstrap: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env",

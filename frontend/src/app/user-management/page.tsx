@@ -114,6 +114,7 @@ function emptyEditForm(): UserUpdatePayload {
 }
 
 export type DrawerMode = "none" | "create" | "detail" | "edit";
+type MainTab = "users" | "rbac" | "audit";
 
 export default function UserManagementPage() {
   const router = useRouter();
@@ -143,8 +144,7 @@ export default function UserManagementPage() {
   const [drawerMode, setDrawerMode] = useState<DrawerMode>("none");
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [activeProfileTab, setActiveProfileTab] = useState<"info" | "security">("info");
-  const [isRbacDrawerOpen, setIsRbacDrawerOpen] = useState(false);
-  const [isAuditDrawerOpen, setIsAuditDrawerOpen] = useState(false);
+  const [activeMainTab, setActiveMainTab] = useState<MainTab>("users");
 
   const [searchKeyword, setSearchKeyword] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -174,6 +174,25 @@ export default function UserManagementPage() {
         .includes(q);
     });
   }, [searchKeyword, users]);
+
+  const pageHeader = useMemo(() => {
+    if (activeMainTab === "rbac") {
+      return {
+        title: "Phân quyền (RBAC)",
+        description: "Thiết lập vai trò và quyền truy cập cho từng nhóm người dùng.",
+      };
+    }
+    if (activeMainTab === "audit") {
+      return {
+        title: "Lịch sử Audit",
+        description: "Theo dõi các sự kiện bảo mật và thay đổi gần nhất trong tổ chức.",
+      };
+    }
+    return {
+      title: "Người dùng & Phân quyền",
+      description: "Quản lý tài khoản, vai trò và bảo mật toàn tổ chức.",
+    };
+  }, [activeMainTab]);
 
   const loadUsers = async () => {
     if (!orgId) return;
@@ -234,7 +253,7 @@ export default function UserManagementPage() {
       void router.replace("/user-management");
       return;
     }
-    setIsRbacDrawerOpen(true);
+    setActiveMainTab("rbac");
   }, [canReadRbac, router, searchParams]);
 
   useEffect(() => {
@@ -280,12 +299,12 @@ export default function UserManagementPage() {
 
   const openRbacPanel = () => {
     if (!canReadRbac) return;
-    setIsRbacDrawerOpen(true);
+    setActiveMainTab("rbac");
     void router.replace("/user-management?tab=rbac");
   };
 
   const closeRbacPanel = () => {
-    setIsRbacDrawerOpen(false);
+    setActiveMainTab("users");
     if (searchParams.get("tab") === "rbac") {
       void router.replace("/user-management");
     }
@@ -293,11 +312,18 @@ export default function UserManagementPage() {
 
   const openAuditPanel = () => {
     if (!canReadAudit) return;
-    setIsAuditDrawerOpen(true);
+    setActiveMainTab("audit");
   };
 
   const closeAuditPanel = () => {
-    setIsAuditDrawerOpen(false);
+    setActiveMainTab("users");
+  };
+
+  const openUsersTab = () => {
+    setActiveMainTab("users");
+    if (searchParams.get("tab") === "rbac") {
+      void router.replace("/user-management");
+    }
   };
 
   const openDetailDrawer = async (userId: string) => {
@@ -519,18 +545,19 @@ export default function UserManagementPage() {
       <div className="relative rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden min-h-[calc(100vh-6rem)] flex flex-col">
         
         {/* HEADER SECTION */}
-        <div className="border-b border-slate-200 px-6 py-5 sm:flex sm:items-center sm:justify-between shrink-0">
+        <div className="border-b border-slate-200 px-6 py-4 sm:flex sm:items-center sm:justify-between shrink-0 bg-white">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Người dùng & Phân quyền</h1>
-            <p className="mt-1 text-sm text-slate-500">Quản lý tài khoản, vai trò và bảo mật toàn tổ chức.</p>
+            <h1 className="text-xl font-bold tracking-tight text-slate-900">{pageHeader.title}</h1>
+            <p className="mt-0.5 text-xs text-slate-500">{pageHeader.description}</p>
           </div>
-          <div className="mt-4 sm:ml-4 sm:mt-0 flex flex-col md:flex-row gap-3 items-end md:items-center">
-            <div className="text-right text-xs bg-slate-50 border border-slate-200 rounded-lg py-2 px-3">
-               <div>Org: <span className="font-mono text-slate-500">{orgId ? `${orgId.split("-")[0]}...` : "—"}</span></div>
-               <div className="font-medium text-slate-700">{principal.username}</div>
+          <div className="mt-4 sm:ml-4 sm:mt-0 flex gap-3 items-center">
+            <div className="text-right text-xs bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-3">
+               <span className="text-slate-500 mr-2 text-[10px] uppercase font-bold">Tổ chức:</span> 
+               <span className="font-mono text-slate-600 mr-3">{orgId ? `${orgId.split("-")[0]}...` : "—"}</span>
+               <span className="font-bold text-slate-800">{principal.username}</span>
             </div>
             <button
-              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-md transition-colors border border-slate-200 shadow-sm"
+              className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-600 text-xs font-bold rounded-md transition-colors border border-slate-200 shadow-sm"
               onClick={() => void onLogout()}
             >
               Đăng xuất
@@ -538,55 +565,91 @@ export default function UserManagementPage() {
           </div>
         </div>
 
-        {/* TOOLBAR */}
-        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 shrink-0">
+        {/* TABS NAVIGATION */}
+        <div className="px-6 border-b border-slate-200 bg-white shrink-0">
+          <div className="flex space-x-8">
+            <button
+              onClick={openUsersTab}
+              className={`py-3 px-1 text-sm font-bold border-b-2 transition-all ${
+                activeMainTab === "users"
+                  ? "border-cyan-600 text-cyan-700"
+                  : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+              }`}
+            >
+              Danh sách người dùng
+            </button>
+            <RequirePermissions codes={["rbac.read"]}>
+              <button
+                onClick={openRbacPanel}
+                className={`py-3 px-1 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${
+                  activeMainTab === "rbac"
+                    ? "border-cyan-600 text-cyan-700"
+                    : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+                }`}
+              >
+                <ShieldIcon /> Phân quyền (RBAC)
+              </button>
+            </RequirePermissions>
+            <RequirePermissions codes={["audit.read"]}>
+              <button
+                onClick={openAuditPanel}
+                className={`py-3 px-1 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${
+                  activeMainTab === "audit"
+                    ? "border-cyan-600 text-cyan-700"
+                    : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+                }`}
+              >
+                <HistoryIcon /> Lịch sử Audit
+              </button>
+            </RequirePermissions>
+          </div>
+        </div>
+
+        {/* TOOLBAR & FLASH MESSAGES */}
+        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/50 shrink-0">
            <div className="flex flex-wrap gap-4 items-center justify-between">
              
-             {/* Left: Search */}
-             <div className="flex gap-2 w-full md:w-auto">
-               <div className="relative flex-1 md:w-80">
-                 <input
-                   className="w-full rounded-md border border-slate-300 py-2 pl-3 pr-10 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-shadow bg-white"
-                   placeholder="Tìm kiếm tài khoản, email, phòng ban..."
-                   value={searchKeyword}
-                   onChange={(e) => setSearchKeyword(e.target.value)}
-                 />
-                 <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-slate-400">
-                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>
+             {/* Left: Search or Context Info */}
+             <div className="flex-1">
+               {activeMainTab === "users" ? (
+                 <div className="flex gap-2 w-full md:w-auto max-w-md">
+                   <div className="relative flex-1">
+                     <input
+                       className="w-full rounded-lg border border-slate-300 py-2 pl-3 pr-10 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition-all bg-white"
+                       placeholder="Tìm kiếm tài khoản, email, phòng ban..."
+                       value={searchKeyword}
+                       onChange={(e) => setSearchKeyword(e.target.value)}
+                     />
+                     <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-slate-400">
+                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>
+                     </div>
+                   </div>
+                   <button onClick={() => void loadUsers()} className="p-2 rounded-lg border border-slate-300 text-slate-500 hover:bg-white transition-colors bg-white shadow-sm" title="Tải lại">
+                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                   </button>
                  </div>
-               </div>
-               <button onClick={() => void loadUsers()} className="p-2 rounded-md border border-slate-300 text-slate-500 hover:bg-slate-200 transition-colors bg-white shadow-sm" title="Tải lại">
-                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-               </button>
+               ) : (
+                 <div className="flex items-center gap-2 text-slate-500">
+                    <div className="w-1 h-4 bg-cyan-500 rounded-full"></div>
+                    <span className="text-sm font-semibold tracking-tight">
+                      {activeMainTab === "rbac" ? "Cấu hình vai trò & Ma trận quyền hạn" : "Theo dõi nhật ký bảo mật tổ chức"}
+                    </span>
+                 </div>
+               )}
              </div>
 
-             {/* Right: Actions */}
-              <div className="flex gap-2.5">
-                <RequirePermissions codes={["rbac.read"]}>
-                   <button
-                     onClick={openRbacPanel}
-                     className="rounded-md bg-white border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition flex items-center gap-2 shrink-0"
-                   >
-                     <ShieldIcon /> Mở tab Phân quyền (RBAC)
+             {/* Right: Primary Actions */}
+              <div className="flex gap-3">
+                {activeMainTab === "users" && (
+                  <RequirePermissions codes={["users.create"]}>
+                    <button
+                      className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-bold text-white shadow-md hover:bg-cyan-700 transition flex items-center gap-2"
+                      onClick={openCreateDrawer}
+                    >
+                     <PlusIcon /> Thêm người dùng
                    </button>
-                </RequirePermissions>
-                <RequirePermissions codes={["audit.read"]}>
-                  <button
-                    onClick={openAuditPanel}
-                    className="rounded-md bg-white border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition flex items-center gap-2 shrink-0"
-                  >
-                    <HistoryIcon /> Mở tab Lịch sử Audit
-                  </button>
-                </RequirePermissions>
-                <RequirePermissions codes={["users.create"]}>
-                  <button
-                    className="rounded-md bg-cyan-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-cyan-700 transition flex items-center gap-1.5 shrink-0"
-                    onClick={openCreateDrawer}
-                  >
-                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-                   Thêm người dùng
-                 </button>
-               </RequirePermissions>
+                 </RequirePermissions>
+                )}
              </div>
            </div>
 
@@ -605,9 +668,10 @@ export default function UserManagementPage() {
           )}
         </div>
 
-        {/* DATA TABLE */}
-        <div className="overflow-x-auto min-h-[400px] flex-1">
-          <table className="min-w-full text-sm text-left whitespace-nowrap">
+        {/* DATA AREA */}
+        {activeMainTab === "users" ? (
+          <div className="overflow-x-auto min-h-[400px] flex-1">
+            <table className="min-w-full text-sm text-left whitespace-nowrap">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 sticky top-0">
               <tr>
                 <th className="px-6 py-4 font-semibold w-64">Họ tên & Email</th>
@@ -690,31 +754,20 @@ export default function UserManagementPage() {
                 ))
               )}
             </tbody>
-          </table>
-        </div>
+            </table>
+          </div>
+        ) : null}
 
-        {/* ========================================================= */}
-        {/* MASTER OVERTAB: RBAC PANEL */}
-        {/* ========================================================= */}
-        {isRbacDrawerOpen && (
-           <div className="fixed inset-0 z-40 overflow-hidden" aria-labelledby="rbac-master-drawer" role="dialog" aria-modal="true">
-             <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={closeRbacPanel}></div>
-             <div className="pointer-events-none fixed inset-0 flex items-center justify-center p-4 sm:p-6 z-[60]">
-               <div className="pointer-events-auto w-full max-w-6xl max-h-[90vh] overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-900/10 flex flex-col transition-all">
-                 {orgId ? (
-                   <RbacPanel
-                     orgId={orgId}
-                     canManage={canManageRbac}
-                     onClose={closeRbacPanel}
-                   />
-                 ) : null}
-               </div>
-             </div>
-           </div>
-        )}
+        {activeMainTab === "rbac" && orgId ? (
+          <div className="flex-1 overflow-auto p-6 bg-slate-50/50">
+            <RbacPanel orgId={orgId} canManage={canManageRbac} onBack={closeRbacPanel} />
+          </div>
+        ) : null}
 
-        {isAuditDrawerOpen && orgId ? (
-          <AuditPanel orgId={orgId} onClose={closeAuditPanel} />
+        {activeMainTab === "audit" && orgId ? (
+          <div className="flex-1 overflow-auto p-6 bg-slate-50/50">
+            <AuditPanel orgId={orgId} onBack={closeAuditPanel} />
+          </div>
         ) : null}
 
         {/* SIDE DRAWER FOR USER ACTIONS */}
@@ -1053,20 +1106,10 @@ const TrashIcon = () => (
 
 type RbacDrawerMode = "none" | "create" | "edit";
 
-type RbacPanelProps = {
-  orgId: string;
-  canManage: boolean;
-  onClose: () => void;
-};
-
-type AuditPanelProps = {
-  orgId: string;
-  onClose: () => void;
-};
-
-function AuditPanel({ orgId, onClose }: AuditPanelProps) {
+function AuditPanel({ orgId }: { orgId: string }) {
   const [auditLogs, setAuditLogs] = useState<AuditLogResponse[]>([]);
   const [actorNameById, setActorNameById] = useState<Record<string, string>>({});
+  const [actorRoleById, setActorRoleById] = useState<Record<string, string>>({});
   const [isAuditLoading, setIsAuditLoading] = useState(false);
   const [auditErrorMessage, setAuditErrorMessage] = useState("");
 
@@ -1079,17 +1122,25 @@ function AuditPanel({ orgId, onClose }: AuditPanelProps) {
           getAuditLogs({ orgId, limit: 200, offset: 0 }),
           getUsers({ orgId }),
         ]);
-        const actorMap: Record<string, string> = {};
+
+        const nameMap: Record<string, string> = {};
+        const roleMap: Record<string, string> = {};
+
         users.forEach((user) => {
-          actorMap[user.id] = user.username;
+          nameMap[user.id] = user.username;
+          roleMap[user.id] = (user.roles || []).map(r => r.name).join(", ");
         });
-        setActorNameById(actorMap);
-        setAuditLogs(rows);
+
+        // Loại bỏ các hành động gây nhiễu theo yêu cầu
+        const excludedActions = ["auth.refresh.success", "auth.login.fail", "auth.logout"];
+        const filteredLogs = rows.filter(log => !excludedActions.includes(log.action));
+
+        setActorNameById(nameMap);
+        setActorRoleById(roleMap);
+        setAuditLogs(filteredLogs);
       } catch (error) {
         if (error instanceof ApiClientError) {
-          setAuditErrorMessage(
-            getMessageByErrorCode(error.detail.error_code, error.detail.message),
-          );
+          setAuditErrorMessage(getMessageByErrorCode(error.detail.error_code, error.detail.message));
         } else {
           setAuditErrorMessage("Không thể tải nhật ký audit.");
         }
@@ -1097,90 +1148,93 @@ function AuditPanel({ orgId, onClose }: AuditPanelProps) {
         setIsAuditLoading(false);
       }
     };
-
     void loadAuditData();
   }, [orgId]);
 
   return (
-    <div className="fixed inset-0 z-40 overflow-hidden" aria-labelledby="audit-master-drawer" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
-      <div className="pointer-events-none fixed inset-0 flex items-center justify-center p-4 sm:p-6 z-[60]">
-        <div className="pointer-events-auto w-full max-w-6xl max-h-[90vh] overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-900/10 flex flex-col transition-all">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900 tracking-tight">Lịch sử tất cả Audit</h2>
-              <p className="mt-1 text-sm text-slate-500">Hiển thị các sự kiện audit gần nhất trong toàn tổ chức.</p>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-2 text-slate-500 hover:bg-slate-50"
-              aria-label="Đóng audit panel"
-            >
-              <XIcon />
-            </button>
-          </div>
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <div className="px-6 py-4 border-b border-slate-100 bg-white flex justify-between items-center">
+         <h2 className="text-sm font-bold text-slate-800">NHẬT KÝ HOẠT ĐỘNG</h2>
+         <span className="text-[10px] font-medium text-slate-400 bg-slate-50 px-2 py-1 rounded border border-slate-100 tracking-tight">200 sự kiện mới nhất</span>
+      </div>
 
-          <div className="flex-1 overflow-auto p-6">
+      <div className="p-0">
             {isAuditLoading ? (
-              <div className="flex items-center gap-2 text-sm text-slate-500">
-                <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-slate-500"></div>
-                Đang tải lịch sử audit...
+              <div className="flex flex-col items-center justify-center p-20 gap-3 text-slate-400">
+                <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-cyan-500"></div>
+                <span className="text-xs font-medium">Đang tải dữ liệu nhật ký...</span>
               </div>
             ) : auditErrorMessage ? (
-              <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{auditErrorMessage}</div>
+              <div className="m-6 rounded-lg border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-600">{auditErrorMessage}</div>
             ) : auditLogs.length === 0 ? (
-              <p className="text-xs text-slate-500 font-medium">Chưa có bản ghi audit nào.</p>
+              <div className="p-20 text-center text-slate-400 text-xs italic">Chưa có dữ liệu hoạt động nào được ghi nhận.</div>
             ) : (
-              <div className="max-h-[64vh] overflow-auto rounded-lg border border-slate-200">
-                <table className="min-w-full text-xs text-left">
-                  <thead className="sticky top-0 bg-slate-50 text-slate-500 border-b border-slate-200">
+              <div className="max-h-[60vh] overflow-auto scrollbar-thin">
+                <table className="min-w-full text-xs text-left border-separate border-spacing-0">
+                  <thead className="sticky top-0 bg-slate-50/90 backdrop-blur-sm z-10">
                     <tr>
-                      <th className="px-3 py-2 font-semibold">Thời gian</th>
-                      <th className="px-3 py-2 font-semibold">Hành động</th>
-                      <th className="px-3 py-2 font-semibold">Đối tượng</th>
-                      <th className="px-3 py-2 font-semibold">Người thực hiện</th>
+                      <th className="px-6 py-3 font-bold text-slate-500 border-b border-slate-200 uppercase tracking-wider text-[10px]">Thời gian</th>
+                      <th className="px-6 py-3 font-bold text-slate-500 border-b border-slate-200 uppercase tracking-wider text-[10px]">Hành động</th>
+                      <th className="px-6 py-3 font-bold text-slate-500 border-b border-slate-200 uppercase tracking-wider text-[10px]">Vai trò</th>
+                      <th className="px-6 py-3 font-bold text-slate-500 border-b border-slate-200 uppercase tracking-wider text-[10px]">Người thực hiện</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {auditLogs.map((entry) => (
-                      <tr key={entry.id}>
-                        <td className="px-3 py-2 text-slate-600 whitespace-nowrap">
-                          {new Date(entry.created_at).toLocaleString("vi-VN")}
-                        </td>
-                        <td className="px-3 py-2 font-medium text-slate-800">{formatAuditAction(entry.action)}</td>
-                        <td className="px-3 py-2 text-slate-600">{entry.target_type || "-"}</td>
-                        <td className="px-3 py-2 text-slate-500">
-                          {entry.actor_user_id
-                            ? (actorNameById[entry.actor_user_id] || entry.actor_user_id)
-                            : "Hệ thống"}
-                        </td>
-                      </tr>
-                    ))}
+                  <tbody className="divide-y divide-slate-50 bg-white">
+                    {auditLogs.map((entry) => {
+                      const isAuth = entry.action.startsWith('auth.');
+                      const isUser = entry.action.startsWith('users.') || entry.action.startsWith('user.');
+                      const isRbac = entry.action.startsWith('rbac.');
+
+                      return (
+                        <tr key={entry.id} className="hover:bg-slate-50/50 transition-colors group">
+                          <td className="px-6 py-4 text-slate-500 whitespace-nowrap font-medium">
+                            {new Date(entry.created_at).toLocaleString("vi-VN", { 
+                               day: '2-digit', month: '2-digit', year: 'numeric',
+                               hour: '2-digit', minute: '2-digit'
+                            })}
+                          </td>
+                          <td className="px-6 py-4">
+                             <span className={`inline-flex items-center px-2 py-0.5 rounded font-bold tracking-tight text-[10px] uppercase border ${
+                               isAuth ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                               isUser ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                               isRbac ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                               'bg-slate-50 text-slate-600 border-slate-100'
+                             }`}>
+                                {formatAuditAction(entry.action)}
+                             </span>
+                          </td>
+                          <td className="px-6 py-4">
+                             <span className="text-[10px] font-bold text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-200 uppercase">
+                                {entry.actor_user_id ? (actorRoleById[entry.actor_user_id] || "—") : "Hệ thống"}
+                             </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2">
+                               <div className={`h-1.5 w-1.5 rounded-full ${entry.actor_user_id ? 'bg-slate-400' : 'bg-cyan-400'}`}></div>
+                               <span className={`font-bold ${entry.actor_user_id ? 'text-slate-700' : 'text-cyan-600 italic'}`}>
+                                 {entry.actor_user_id ? (actorNameById[entry.actor_user_id] || entry.actor_user_id) : "Hệ thống"}
+                               </span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             )}
-          </div>
-        </div>
       </div>
     </div>
   );
 }
-
-function RbacPanel({ orgId, canManage, onClose }: RbacPanelProps) {
+function RbacPanel({ orgId, canManage }: { orgId: string; canManage: boolean }) {
   const [roles, setRoles] = useState<RoleResponse[]>([]);
   const [permissions, setPermissions] = useState<PermissionResponse[]>([]);
-
-  // Drawer states
   const [drawerMode, setDrawerMode] = useState<RbacDrawerMode>("none");
   const [editingRole, setEditingRole] = useState<RoleResponse | null>(null);
   const [draftName, setDraftName] = useState("");
   const [draftDescription, setDraftDescription] = useState("");
-  const [draftPermissionCodes, setDraftPermissionCodes] = useState<Set<string>>(
-    new Set(),
-  );
-
+  const [draftPermissionCodes, setDraftPermissionCodes] = useState<Set<string>>(new Set());
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1190,17 +1244,12 @@ function RbacPanel({ orgId, canManage, onClose }: RbacPanelProps) {
     setLoading(true);
     setErrorMessage("");
     try {
-      const [roleRows, permissionRows] = await Promise.all([
-        getRbacRoles(orgId),
-        getRbacPermissions(orgId),
-      ]);
+      const [roleRows, permissionRows] = await Promise.all([getRbacRoles(orgId), getRbacPermissions(orgId)]);
       setRoles(roleRows);
       setPermissions(permissionRows);
     } catch (error) {
       if (error instanceof ApiClientError) {
-        setErrorMessage(
-          getMessageByErrorCode(error.detail.error_code, error.detail.message),
-        );
+        setErrorMessage(getMessageByErrorCode(error.detail.error_code, error.detail.message));
       } else {
         setErrorMessage("Không thể tải dữ liệu RBAC.");
       }
@@ -1209,11 +1258,8 @@ function RbacPanel({ orgId, canManage, onClose }: RbacPanelProps) {
     }
   };
 
-  useEffect(() => {
-    void load();
-  }, [orgId]);
+  useEffect(() => { void load(); }, [orgId]);
 
-  // Group permissions by prefix
   const groupedPermissions = useMemo(() => {
     const groups: Record<string, PermissionResponse[]> = {};
     permissions.forEach((perm) => {
@@ -1226,78 +1272,45 @@ function RbacPanel({ orgId, canManage, onClose }: RbacPanelProps) {
 
   const openCreateDrawer = () => {
     if (!canManage) return;
-    setEditingRole(null);
-    setDraftName("");
-    setDraftDescription("");
-    setDraftPermissionCodes(new Set());
-    setErrorMessage("");
-    setStatusMessage("");
-    setDrawerMode("create");
+    setEditingRole(null); setDraftName(""); setDraftDescription(""); setDraftPermissionCodes(new Set());
+    setErrorMessage(""); setStatusMessage(""); setDrawerMode("create");
   };
 
   const openEditDrawer = (role: RoleResponse) => {
     if (!canManage) return;
-    setEditingRole(role);
-    setDraftName(role.name);
-    setDraftDescription(role.description || "");
+    setEditingRole(role); setDraftName(role.name); setDraftDescription(role.description || "");
     setDraftPermissionCodes(new Set(role.permission_codes || []));
-    setErrorMessage("");
-    setStatusMessage("");
-    setDrawerMode("edit");
+    setErrorMessage(""); setStatusMessage(""); setDrawerMode("edit");
   };
 
-  const closeDrawer = () => {
-    setDrawerMode("none");
-  };
+  const closeDrawer = () => setDrawerMode("none");
 
   const toggleDraftPermission = (code: string) => {
     setDraftPermissionCodes((prev) => {
       const next = new Set(prev);
-      if (next.has(code)) next.delete(code);
-      else next.add(code);
+      if (next.has(code)) next.delete(code); else next.add(code);
       return next;
     });
   };
 
   const submitDrawer = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    setErrorMessage("");
-    setStatusMessage("");
-
+    e.preventDefault(); setIsSubmitting(true); setErrorMessage(""); setStatusMessage("");
     try {
       if (drawerMode === "create") {
-        const newRole = await createRbacRole(orgId, {
-          name: draftName,
-          description: draftDescription,
-        });
-        await updateRolePermissions(
-          newRole.id,
-          orgId,
-          Array.from(draftPermissionCodes),
-        );
+        const newRole = await createRbacRole(orgId, { name: draftName, description: draftDescription });
+        await updateRolePermissions(newRole.id, orgId, Array.from(draftPermissionCodes));
         setStatusMessage("Đã tạo mới và cập nhật phân quyền thành công.");
       } else if (drawerMode === "edit" && editingRole) {
         if (!editingRole.is_system) {
-          await updateRbacRole(editingRole.id, orgId, {
-            name: draftName,
-            description: draftDescription,
-          });
+          await updateRbacRole(editingRole.id, orgId, { name: draftName, description: draftDescription });
         }
-        await updateRolePermissions(
-          editingRole.id,
-          orgId,
-          Array.from(draftPermissionCodes),
-        );
+        await updateRolePermissions(editingRole.id, orgId, Array.from(draftPermissionCodes));
         setStatusMessage("Đã lưu thiết lập vai trò thành công.");
       }
-      closeDrawer();
-      await load();
+      closeDrawer(); await load();
     } catch (error) {
       if (error instanceof ApiClientError) {
-        setErrorMessage(
-          getMessageByErrorCode(error.detail.error_code, error.detail.message),
-        );
+        setErrorMessage(getMessageByErrorCode(error.detail.error_code, error.detail.message));
       } else {
         setErrorMessage("Không thể lưu vai trò.");
       }
@@ -1307,27 +1320,15 @@ function RbacPanel({ orgId, canManage, onClose }: RbacPanelProps) {
   };
 
   const onDeleteRole = async (role: RoleResponse) => {
-    if (!canManage) return;
-    if (role.is_system) return;
-    if (
-      !window.confirm(
-        `Bạn có chắc chắn muốn xóa vai trò '${role.name}'? Mọi người dùng thuộc vai trò này sẽ mất các quyền tương ứng.`,
-      )
-    )
-      return;
-    setErrorMessage("");
-    setStatusMessage("");
+    if (!canManage || role.is_system) return;
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa vai trò '${role.name}'?`)) return;
+    setErrorMessage(""); setStatusMessage("");
     try {
       await deleteRbacRole(role.id, orgId);
-      setStatusMessage("Đã xóa vai trò.");
-      await load();
+      setStatusMessage("Đã xóa vai trò."); await load();
     } catch (error) {
       if (error instanceof ApiClientError) {
-        setErrorMessage(
-          getMessageByErrorCode(error.detail.error_code, error.detail.message),
-        );
-      } else {
-        setErrorMessage("Không thể xóa vai trò.");
+        setErrorMessage(getMessageByErrorCode(error.detail.error_code, error.detail.message));
       }
     }
   };
@@ -1335,26 +1336,19 @@ function RbacPanel({ orgId, canManage, onClose }: RbacPanelProps) {
   const onResetSystemRole = async () => {
     if (!canManage || !editingRole || !editingRole.is_system) return;
     if (!window.confirm(`Reset quyền mặc định cho role hệ thống '${editingRole.name}'?`)) return;
-    setErrorMessage("");
-    setStatusMessage("");
-    setIsSubmitting(true);
+    setErrorMessage(""); setStatusMessage(""); setIsSubmitting(true);
     try {
       await resetSystemRolePermissions(editingRole.id, orgId);
       const freshRoles = await getRbacRoles(orgId);
       setRoles(freshRoles);
       const reloaded = freshRoles.find((item) => item.id === editingRole.id);
       if (reloaded) {
-        setEditingRole(reloaded);
-        setDraftPermissionCodes(new Set(reloaded.permission_codes || []));
+        setEditingRole(reloaded); setDraftPermissionCodes(new Set(reloaded.permission_codes || []));
       }
       setStatusMessage("Đã reset quyền mặc định cho role hệ thống.");
     } catch (error) {
       if (error instanceof ApiClientError) {
-        setErrorMessage(
-          getMessageByErrorCode(error.detail.error_code, error.detail.message),
-        );
-      } else {
-        setErrorMessage("Không thể reset quyền mặc định.");
+        setErrorMessage(getMessageByErrorCode(error.detail.error_code, error.detail.message));
       }
     } finally {
       setIsSubmitting(false);
@@ -1362,144 +1356,48 @@ function RbacPanel({ orgId, canManage, onClose }: RbacPanelProps) {
   };
 
   return (
-    <div className="space-y-4 pt-2">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            <ShieldIcon /> Cấu hình vai trò & Quyền hạn
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Tạo các nhóm quyền và gán ranh giới truy cập cho hệ thống.
-          </p>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div className="flex items-center gap-2">
+           <div className="w-1.5 h-6 bg-cyan-600 rounded-full"></div>
+           <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Danh sách Vai trò & Nhóm quyền</h3>
         </div>
         {canManage ? (
-          <button
-            onClick={openCreateDrawer}
-            className="flex items-center gap-1.5 rounded-md bg-slate-800 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-700 transition"
-          >
-            <PlusIcon /> Tạo vai trò mới
-          </button>
+          <button onClick={openCreateDrawer} className="flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white shadow-md hover:bg-slate-800 transition"><PlusIcon /> Tạo vai trò mới</button>
         ) : (
-          <div className="inline-flex flex-col items-end gap-1">
-            <span className="inline-flex rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-500">
-              Chế độ chỉ xem
-            </span>
-            <span className="text-[11px] text-slate-400">
-              Cần quyền <span className="font-mono">rbac.manage</span> để chỉnh sửa.
-            </span>
-          </div>
+          <div className="text-xs font-bold text-slate-400 bg-slate-50 px-3 py-1.5 rounded border border-slate-200 italic">Chế độ chỉ xem</div>
         )}
-        <button
-          type="button"
-          onClick={onClose}
-          className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-2 text-slate-500 hover:bg-slate-50"
-          aria-label="Đóng RBAC panel"
-        >
-          <XIcon />
-        </button>
       </div>
-
-      {statusMessage && (
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 flex items-center gap-2">
-          {statusMessage}
-        </div>
-      )}
-      {errorMessage && (
-        <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 flex items-center gap-2">
-          {errorMessage}
-        </div>
-      )}
-
-      {/* Table */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden mt-4">
-        <div className="overflow-x-auto min-h-[300px]">
+      {statusMessage && <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 flex items-center gap-2">{statusMessage}</div>}
+      {errorMessage && <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 flex items-center gap-2">{errorMessage}</div>}
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
           <table className="min-w-full text-sm text-left whitespace-nowrap">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
               <tr>
-                <th className="px-6 py-3 font-semibold">Tên vai trò</th>
-                <th className="px-6 py-3 font-semibold">Mô tả chi tiết</th>
-                <th className="px-6 py-3 font-semibold text-center mt-0 5">
-                  Thành viên
-                </th>
-                <th className="px-6 py-3 font-semibold text-center mt-0">
-                  Loại Nhóm
-                </th>
-                <th className="px-6 py-3 font-semibold text-right w-32">
-                  Tuỳ chọn
-                </th>
+                <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">Tên vai trò</th>
+                <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">Mô tả</th>
+                <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs text-center">Thành viên</th>
+                <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs text-center">Loại</th>
+                <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs text-right">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
               {loading ? (
-                <tr>
-                  <td
-                    colSpan={5}
-                    className="px-6 py-8 text-center text-slate-500"
-                  >
-                    <div className="flex justify-center items-center gap-2">
-                      <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-slate-400"></div>
-                      Đang lấy dữ liệu...
-                    </div>
-                  </td>
-                </tr>
+                <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-500"><div className="flex justify-center items-center gap-3"><div className="h-5 w-5 animate-spin rounded-full border-b-2 border-cyan-600"></div>Đang lấy dữ liệu...</div></td></tr>
               ) : roles.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={5}
-                    className="px-6 py-12 text-center text-slate-500"
-                  >
-                    Chưa có vai trò nào được định nghĩa.
-                  </td>
-                </tr>
+                <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-500 italic">Chưa có vai trò nào.</td></tr>
               ) : (
                 roles.map((role) => (
-                  <tr
-                    key={role.id}
-                    className="hover:bg-slate-50/70 transition-colors group"
-                  >
-                    <td className="px-6 py-4 font-semibold text-slate-900 border-l-2 border-transparent group-hover:border-cyan-500">
-                      {role.name}
-                    </td>
-                    <td
-                      className="px-6 py-4 text-slate-500 max-w-sm truncate"
-                      title={role.description || undefined}
-                    >
-                      {role.description || "—"}
-                    </td>
-                    <td className="px-6 py-4 text-center font-medium text-slate-800">
-                      <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-inset ring-slate-500/10">
-                        {role.member_count}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      {role.is_system ? (
-                        <span className="inline-flex items-center rounded-md bg-purple-50 px-2 py-1 text-xs font-medium text-purple-700 ring-1 ring-inset ring-purple-700/10">
-                          Hệ thống
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center rounded-md bg-cyan-50 px-2 py-1 text-xs font-medium text-cyan-700 ring-1 ring-inset ring-cyan-700/10">
-                          Tự định nghĩa
-                        </span>
-                      )}
-                    </td>
+                  <tr key={role.id} className="hover:bg-slate-50/70 transition-colors group">
+                    <td className="px-6 py-4 font-bold text-slate-900">{role.name}</td>
+                    <td className="px-6 py-4 text-slate-500 max-w-sm truncate">{role.description || "—"}</td>
+                    <td className="px-6 py-4 text-center"><span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700 ring-1 ring-inset ring-slate-200">{role.member_count}</span></td>
+                    <td className="px-6 py-4 text-center"><span className={`inline-flex items-center rounded-md px-2 py-1 text-[10px] font-bold uppercase ring-1 ring-inset ${role.is_system ? 'bg-purple-50 text-purple-700 ring-purple-700/10' : 'bg-cyan-50 text-cyan-700 ring-cyan-700/10'}`}>{role.is_system ? "Hệ thống" : "Tự định nghĩa"}</span></td>
                     <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2 text-slate-400">
-                        <button
-                          onClick={() => openEditDrawer(role)}
-                          disabled={!canManage}
-                          className={`px-2.5 py-1.5 rounded transition bg-white border border-slate-200 shadow-sm flex items-center gap-1 text-xs font-medium ${!canManage ? "opacity-30 cursor-not-allowed" : "hover:bg-slate-50 hover:text-cyan-600 text-slate-600"}`}
-                          title="Thiết lập quyền"
-                        >
-                          <SettingsIcon /> Cấu hình
-                        </button>
-                        <button
-                          onClick={() => void onDeleteRole(role)}
-                          disabled={!canManage || role.is_system}
-                          className={`p-1.5 rounded transition bg-white border border-slate-200 shadow-sm ${!canManage || role.is_system ? "opacity-30 cursor-not-allowed" : "hover:bg-rose-50 hover:text-rose-600 text-slate-500 hover:border-rose-200"}`}
-                          title="Xóa nhóm"
-                        >
-                          <TrashIcon />
-                        </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button onClick={() => openEditDrawer(role)} disabled={!canManage} className={`px-3 py-1.5 rounded-lg transition bg-white border border-slate-200 shadow-sm flex items-center gap-1.5 text-xs font-bold ${!canManage ? "opacity-30 cursor-not-allowed" : "hover:bg-slate-50 hover:text-cyan-600 text-slate-700"}`}><SettingsIcon /> Thiết lập</button>
+                        {!role.is_system && <button onClick={() => void onDeleteRole(role)} disabled={!canManage} className="p-1.5 rounded-lg transition bg-white border border-slate-200 shadow-sm hover:bg-rose-50 hover:text-rose-600 text-slate-400"><TrashIcon /></button>}
                       </div>
                     </td>
                   </tr>
@@ -1509,200 +1407,57 @@ function RbacPanel({ orgId, canManage, onClose }: RbacPanelProps) {
           </table>
         </div>
       </div>
-
-      {/* Overtab Drawer for Role Form & Permissions */}
       {drawerMode !== "none" && (
-        <div
-          className="fixed inset-0 z-[60] overflow-hidden"
-          aria-labelledby="slide-over-title"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div
-            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity"
-            onClick={closeDrawer}
-          ></div>
+        <div className="fixed inset-0 z-[60] overflow-hidden" aria-labelledby="slide-over-title" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity" onClick={closeDrawer}></div>
           <div className="pointer-events-none fixed inset-0 flex items-center justify-center p-4 sm:p-6 z-[70]">
             <div className="pointer-events-auto w-full max-w-3xl max-h-[90vh] flex flex-col bg-white shadow-2xl ring-1 ring-slate-900/10 rounded-2xl overflow-hidden transition-all">
               <div className="flex flex-col h-full bg-white overflow-y-auto">
-                {/* Header */}
                 <div className="bg-slate-50 px-6 py-6 border-b border-slate-200 flex items-start justify-between shrink-0">
                   <div>
-                    <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                      {drawerMode === "create"
-                        ? "Định nghĩa Vai trò Mới"
-                        : "Thiết lập Vai trò & Quyền hạn"}
-                    </h2>
-                    <p className="mt-1 text-sm text-slate-500">
-                      Vai trò được gắn cho người dùng để kiểm soát truy cập hệ
-                      thống.
-                    </p>
+                    <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">{drawerMode === "create" ? "Định nghĩa Vai trò Mới" : "Thiết lập Vai trò & Quyền hạn"}</h2>
+                    <p className="mt-1 text-sm text-slate-500">Vai trò giúp kiểm soát quyền truy cập hệ thống của người dùng.</p>
                   </div>
-                  <div className="ml-3 flex h-7 items-center">
-                    <button
-                      type="button"
-                      onClick={closeDrawer}
-                      className="rounded-md bg-white text-slate-400 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500 p-1"
-                    >
-                      <XIcon />
-                    </button>
-                  </div>
+                  <button type="button" onClick={closeDrawer} className="rounded-md bg-white text-slate-400 hover:text-slate-600 p-1 transition"><XIcon /></button>
                 </div>
-
-                {/* Form & Permissions */}
-                <form
-                  id="roleForm"
-                  className="flex-1 overflow-y-auto"
-                  onSubmit={submitDrawer}
-                >
+                <form id="roleForm" className="flex-1 overflow-y-auto" onSubmit={submitDrawer}>
                   <div className="p-6 pb-20 space-y-10">
-                    {/* Info Section */}
                     <section>
-                      <h3 className="text-base font-semibold text-slate-900 mb-4 border-b border-slate-100 pb-2 relative inline-block">
-                        1. Thông tin chung
-                      </h3>
+                      <h3 className="text-base font-semibold text-slate-900 mb-4 border-b border-slate-100 pb-2 relative inline-block">1. Thông tin chung</h3>
                       <div className="grid gap-5">
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                            Tên vai trò <span className="text-rose-500">*</span>
-                          </label>
-                          <input
-                            required
-                            value={draftName}
-                            onChange={(e) => setDraftName(e.target.value)}
-                            disabled={editingRole?.is_system}
-                            className="block w-full rounded-md border-0 py-2 px-3 text-slate-900 ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-cyan-600 sm:text-sm"
-                            placeholder="VD: Quản lý Chất lượng, Giám đốc..."
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                            Mô tả mục đích
-                          </label>
-                          <textarea
-                            value={draftDescription}
-                            onChange={(e) =>
-                              setDraftDescription(e.target.value)
-                            }
-                            disabled={editingRole?.is_system}
-                            rows={2}
-                            className="block w-full rounded-md border-0 py-2 px-3 text-slate-900 ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-cyan-600 sm:text-sm"
-                            placeholder="Khu vực hoạt động, quyền hạn liên đới..."
-                          />
-                        </div>
+                        <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Tên vai trò <span className="text-rose-500">*</span></label><input required value={draftName} onChange={(e) => setDraftName(e.target.value)} disabled={editingRole?.is_system} className="block w-full rounded-md border-0 py-2 px-3 text-slate-900 ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-cyan-600 sm:text-sm" /></div>
+                        <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Mô tả mục đích</label><textarea value={draftDescription} onChange={(e) => setDraftDescription(e.target.value)} disabled={editingRole?.is_system} rows={2} className="block w-full rounded-md border-0 py-2 px-3 text-slate-900 ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-cyan-600 sm:text-sm" /></div>
                       </div>
                     </section>
-
-                    {/* Permissions Section */}
                     <section>
                       <div className="mb-5 border-b border-slate-100 pb-3 flex justify-between items-end">
-                        <div className="pr-4">
-                          <h3 className="text-base font-semibold text-slate-900">
-                            2. Giới hạn Quyền (Permissions)
-                          </h3>
-                          <p className="text-xs text-slate-500 mt-1">
-                            Gán các Module chức năng mà vai trò này được phép
-                            truy cập.
-                          </p>
-                          <p className="text-[11px] text-slate-400 mt-1">
-                            Quy ước: <span className="font-mono">*.read</span>{" "}
-                            để truy cập/xem trang,{" "}
-                            <span className="font-mono">*.manage</span> để thao
-                            tác quản trị/CRUD trong module tương ứng.
-                          </p>
-                        </div>
-                        <div className="text-xs font-semibold px-2.5 py-1 bg-cyan-50 text-cyan-700 rounded border border-cyan-100 shrink-0">
-                          Đã chọn: {draftPermissionCodes.size} /{" "}
-                          {permissions.length}
-                        </div>
+                        <div className="pr-4"><h3 className="text-base font-semibold text-slate-900">2. Giới hạn Quyền (Permissions)</h3><p className="text-xs text-slate-500 mt-1">Gán các Module chức năng mà vai trò này được phép truy cập.</p></div>
+                        <div className="text-xs font-semibold px-2.5 py-1 bg-cyan-50 text-cyan-700 rounded border border-cyan-100 shrink-0">Đã chọn: {draftPermissionCodes.size} / {permissions.length}</div>
                       </div>
-
                       <div className="grid gap-x-6 gap-y-6 md:grid-cols-2">
-                        {Object.entries(groupedPermissions).map(
-                          ([prefix, perms]) => (
-                            <div
-                              key={prefix}
-                              className="bg-white rounded-lg p-4 border border-slate-200 shadow-sm"
-                            >
-                              <h4 className="text-sm border-b border-slate-100 pb-2 mb-3 font-bold text-slate-800 uppercase tracking-widest flex items-center justify-between">
-                                <span>{prefix} Domain</span>
-                                <span className="text-xs font-normal text-slate-400 lowercase">
-                                  {perms.length} mục
-                                </span>
-                              </h4>
-                              <div className="space-y-3 pt-1">
-                                {perms.map((p) => (
-                                  <label
-                                    key={p.id}
-                                    className="flex flex-row items-start gap-3 cursor-pointer group hover:bg-slate-50 -mx-2 px-2 py-1 rounded transition-colors"
-                                  >
-                                    <div className="flex items-center h-5">
-                                      <input
-                                        type="checkbox"
-                                        checked={draftPermissionCodes.has(
-                                          p.code,
-                                        )}
-                                        onChange={() =>
-                                          toggleDraftPermission(p.code)
-                                        }
-                                        className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600 focus:outline-none transition group-hover:border-cyan-400"
-                                      />
-                                    </div>
-                                    <div className="flex flex-col">
-                                      <span
-                                        className={`text-sm font-medium ${draftPermissionCodes.has(p.code) ? "text-cyan-800" : "text-slate-700 group-hover:text-slate-900"} transition-colors`}
-                                      >
-                                        {p.code}
-                                      </span>
-                                      <span className="text-xs text-slate-500">
-                                        {p.description ||
-                                          "Không có mô tả chi tiết."}
-                                      </span>
-                                    </div>
-                                  </label>
-                                ))}
-                              </div>
+                        {Object.entries(groupedPermissions).map(([prefix, perms]) => (
+                          <div key={prefix} className="bg-white rounded-lg p-4 border border-slate-200 shadow-sm">
+                            <h4 className="text-sm border-b border-slate-100 pb-2 mb-3 font-bold text-slate-800 uppercase tracking-widest flex items-center justify-between"><span>{prefix} Domain</span><span className="text-xs font-normal text-slate-400 lowercase">{perms.length} mục</span></h4>
+                            <div className="space-y-3 pt-1">
+                              {perms.map((p) => (
+                                <label key={p.id} className="flex flex-row items-start gap-3 cursor-pointer group hover:bg-slate-50 -mx-2 px-2 py-1 rounded transition-colors">
+                                  <input type="checkbox" checked={draftPermissionCodes.has(p.code)} onChange={() => toggleDraftPermission(p.code)} className="h-4 w-4 mt-0.5 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600" />
+                                  <div className="flex flex-col"><span className={`text-sm font-medium ${draftPermissionCodes.has(p.code) ? "text-cyan-800" : "text-slate-700"}`}>{p.code}</span><span className="text-[11px] text-slate-500 leading-tight">{p.description || "Không có mô tả chi tiết."}</span></div>
+                                </label>
+                              ))}
                             </div>
-                          ),
-                        )}
+                          </div>
+                        ))}
                       </div>
                     </section>
                   </div>
                 </form>
-
-                {/* Footer Actions */}
                 <div className="border-t border-slate-200 px-6 py-4 bg-slate-50 flex items-center justify-between shrink-0 gap-3">
                   <div className="flex items-center gap-2">
-                    {editingRole?.is_system ? (
-                      <button
-                        type="button"
-                        onClick={() => void onResetSystemRole()}
-                        disabled={isSubmitting || !canManage}
-                        className="rounded-md bg-white px-3 py-2 text-xs font-semibold text-slate-700 border border-slate-300 hover:bg-slate-100 disabled:opacity-50"
-                      >
-                        Reset quyền mặc định
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={closeDrawer}
-                      disabled={isSubmitting}
-                      className="text-sm font-medium text-slate-600 hover:text-slate-900 bg-transparent px-3 py-2 disabled:opacity-50"
-                    >
-                      Hủy bỏ quay lại
-                    </button>
+                    {editingRole?.is_system && (<button type="button" onClick={() => void onResetSystemRole()} disabled={isSubmitting || !canManage} className="rounded-md bg-white px-3 py-2 text-xs font-semibold text-slate-700 border border-slate-300 hover:bg-slate-100 disabled:opacity-50">Reset quyền mặc định</button>)}
+                    <button type="button" onClick={closeDrawer} disabled={isSubmitting} className="text-sm font-medium text-slate-600 hover:text-slate-900 px-3 py-2">Hủy bỏ</button>
                   </div>
-                  <button
-                    form="roleForm"
-                    type="submit"
-                    disabled={isSubmitting || !draftName.trim() || !canManage}
-                    className="rounded-md bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-slate-800 focus:ring-2 focus:ring-slate-900 focus:ring-offset-2 disabled:opacity-50 flex items-center gap-2 transition-colors"
-                  >
-                    {isSubmitting && (
-                      <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-white"></div>
-                    )}
-                    Xác nhận Lưu
-                  </button>
+                  <button form="roleForm" type="submit" disabled={isSubmitting || !draftName.trim() || !canManage} className="rounded-md bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2 transition-colors">{isSubmitting && <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-white"></div>}Xác nhận Lưu</button>
                 </div>
               </div>
             </div>

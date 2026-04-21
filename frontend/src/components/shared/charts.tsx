@@ -2,6 +2,7 @@
 
 import {
   Chart as ChartJS,
+  type ChartData,
   CategoryScale,
   LinearScale,
   PointElement,
@@ -323,11 +324,15 @@ export function HazardAnalysisChart() {
   );
 }
 
-export function OeeQualityYieldChart() {
+type OeeQualityYieldChartProps = {
+  chartData?: ChartData<"bar", (number | null)[], string>;
+};
+
+export function OeeQualityYieldChart({ chartData }: OeeQualityYieldChartProps) {
   return (
     <div className="h-56">
       <Bar
-        data={oeeQualityYieldChartData}
+        data={chartData ?? oeeQualityYieldChartData}
         options={{
           ...baseBarOptions,
           scales: {
@@ -344,10 +349,14 @@ export function OeeQualityYieldChart() {
   );
 }
 
-export function InternalAuditChart() {
+type InternalAuditChartProps = {
+  chartData?: ChartData<"bar", (number | null)[], string>;
+};
+
+export function InternalAuditChart({ chartData }: InternalAuditChartProps) {
   return (
     <div className="h-56">
-      <Bar data={internalAuditChartData} options={baseBarOptions} />
+      <Bar data={chartData ?? internalAuditChartData} options={baseBarOptions} />
     </div>
   );
 }
@@ -381,15 +390,20 @@ export function AnomalyDetectionChart() {
   );
 }
 
-export function ReportSparklineChart() {
+type ReportSparklineChartProps = {
+  values?: number[];
+};
+
+export function ReportSparklineChart({ values }: ReportSparklineChartProps) {
+  const series = values && values.length > 0 ? values : reportSparklineData;
   return (
     <div className="h-20">
       <Bar
         data={{
-          labels: reportSparklineData.map((_, index) => `${index}`),
+          labels: series.map((_, index) => `${index}`),
           datasets: [
             {
-              data: reportSparklineData,
+              data: series,
               backgroundColor: "#60a5fa",
               borderRadius: 4,
             },

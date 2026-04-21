@@ -2,7 +2,7 @@
 
 Tài liệu này ghi nhận các vấn đề đã biết, workaround tạm thời, và rủi ro cần lưu ý để agent coding không sửa nhầm hoặc tạo regression.
 
-Ngày cập nhật: 2026-04-16.
+Ngày cập nhật: 2026-04-21.
 
 ---
 
@@ -14,8 +14,8 @@ Ngày cập nhật: 2026-04-16.
 
 Trạng thái hiện tại:
 
-- Backend đang ở mức khung endpoint.
-- Frontend đang dùng dữ liệu mock cho nhiều luồng.
+- Backend: JWT access + refresh cookie, RBAC và users/sessions đã gắn DB; nhiều router nghiệp vụ khác vẫn có thể chưa bắt buộc `Bearer` (xem P0-001, SEC-001).
+- Frontend: mã nguồn App Router nằm dưới `frontend/src/` (`app/`, `components/{layout,shared,ui}`, `services/`, `types/`, `hooks/`, `lib/`, `middleware.ts`). Luồng đăng nhập / users / RBAC gọi API thật qua `services/`; nhiều màn dashboard demo vẫn đọc `lib/mock-data.ts`.
 
 ---
 
@@ -31,7 +31,7 @@ Trạng thái hiện tại:
 
 | ID     | Mô tả                                                | Workaround tạm thời                                       | Hướng xử lý                                                                 |
 | ------ | ---------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------- |
-| P0-001 | Chưa có auth thật cho backend                        | Chỉ dùng nội bộ dev, không public                         | Triển khai JWT + RBAC theo [docs/security-rules.md](docs/security-rules.md) |
+| P0-001 | Auth đã có cho `/auth/*`, users, rbac, sessions; nhiều router khác (ví dụ documents, reports, …) có thể chưa gắn `get_current_principal` / permission | Chỉ dùng nội bộ dev, không public; rà soát từng router trước khi expose | Bảo vệ đồng bộ mọi endpoint theo [docs/security-rules.md](docs/security-rules.md) |
 | P0-002 | Endpoint hiện trả dữ liệu mô phỏng, chưa ghi DB thật | Frontend bám mock ổn định, không giả định persisted state | Kết nối DB và service layer theo module                                     |
 | P0-003 | Chưa có middleware xử lý lỗi thống nhất              | Xử lý lỗi tối thiểu ở client khi gọi API                  | Áp dụng error envelope theo [docs/api-contracts.md](docs/api-contracts.md)  |
 | P0-004 | Lệch tiềm ẩn giữa mock data và schema API            | Kiểm tra chéo thủ công khi sửa schema                     | Giảm dần mock, thay bằng API thật và test contract                          |
@@ -68,7 +68,7 @@ Trạng thái hiện tại:
 
 | ID      | Mô tả                               | Giảm thiểu tạm thời                | Hướng xử lý                                       |
 | ------- | ----------------------------------- | ---------------------------------- | ------------------------------------------------- |
-| SEC-001 | Chưa có xác thực truy cập endpoint  | Chỉ chạy môi trường dev nội bộ     | Triển khai auth đầy đủ                            |
+| SEC-001 | Một số endpoint có thể chưa bắt buộc Bearer (tùy router; trùng phạm vi P0-001) | Chỉ chạy môi trường dev nội bộ     | Gắn dependency auth + org scope cho toàn bộ API cần bảo vệ |
 | SEC-002 | Chưa có rate limiting               | Hạn chế sử dụng công khai          | Bật rate limiting khi có auth                     |
 | SEC-003 | Chưa có request_id middleware chuẩn | Theo dõi log thủ công ở mức cơ bản | Triển khai request tracing chuẩn                  |
 | SEC-004 | Chưa có policy upload file thực tế  | Không bật upload file production   | Áp dụng kiểm tra MIME, kích thước và malware scan |
@@ -87,7 +87,9 @@ Trạng thái hiện tại:
 
 Các mục dưới đây là giới hạn thiết kế tạm thời, không hẳn là bug:
 
-- Dùng mock data để phát triển UI nhanh.
+- Dùng mock data để phát triển UI nhanh trên một số màn (song song với API thật cho auth/users/RBAC).
+- **Middleware Next.js** (`frontend/src/middleware.ts`) chỉ xử lý tối thiểu (ví dụ `/` → `/login`); **không** thay cho kiểm tra phiên và quyền route trên client (**AuthGate**, principal sau `GET /auth/me`). Chi tiết: [docs/architecture.md](docs/architecture.md), [docs/security-rules.md](docs/security-rules.md).
+- **Không còn** pattern re-export API trong `lib/*-api.ts`; client gọi HTTP theo domain trong `frontend/src/services/`, kiểu chung trong `frontend/src/types/`, hook trong `frontend/src/hooks/` (xem [docs/coding-conventions.md](docs/coding-conventions.md)).
 - Chưa bật realtime ở tất cả màn hình.
 - Chưa bật đầy đủ pipeline AI runtime.
 
@@ -103,6 +105,8 @@ Các mục dưới đây là giới hạn thiết kế tạm thời, không hẳ
 - [docs/user-flows.md](docs/user-flows.md)
 - [docs/testing-strategy.md](docs/testing-strategy.md)
 - [docs/security-rules.md](docs/security-rules.md)
+
+5. Khi đổi cấu trúc thư mục `frontend/src/`: cập nhật mục **§8** (giới hạn thiết kế FE) và phần **Trạng thái hiện tại** nếu ranh giới mock/API hoặc auth thay đổi; đồng bộ [docs/architecture.md](docs/architecture.md), [docs/coding-conventions.md](docs/coding-conventions.md).
 
 ---
 
