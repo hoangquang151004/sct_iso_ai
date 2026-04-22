@@ -253,6 +253,16 @@ class CCPMonitoringLog(Base):
 # MODULE 5.1.3: PRP AUDIT
 # =============================================================================
 
+class Location(Base):
+    __tablename__ = "locations"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    org_id: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.organizations.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class PRPProgram(Base):
     __tablename__ = "prp_programs"
 
@@ -291,7 +301,7 @@ class PRPAudit(Base):
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     org_id: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.organizations.id", ondelete="CASCADE"))
     prp_program_id: Mapped[Optional[UUID]] = mapped_column(ForeignKey("sct_iso.prp_programs.id"))
-    area: Mapped[Optional[str]] = mapped_column(String(100))
+    area_id: Mapped[Optional[UUID]] = mapped_column(ForeignKey("sct_iso.locations.id"))
     audit_date: Mapped[date] = mapped_column(Date, nullable=False)
     total_score: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
     compliance_rate: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
@@ -300,6 +310,7 @@ class PRPAudit(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     prp_program: Mapped[Optional["PRPProgram"]] = relationship()
+    area: Mapped[Optional["Location"]] = relationship()
     details: Mapped[List["PRPAuditDetail"]] = relationship(back_populates="audit", cascade="all, delete-orphan")
 
 
