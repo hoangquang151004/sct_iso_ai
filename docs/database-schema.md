@@ -8,7 +8,7 @@ Ngày cập nhật: 2026-04-22.
 - Các module nghiệp vụ không định nghĩa model trùng cho auth/rbac/audit.
 
 ## 2) Chuỗi migration hiện tại
-- `0001_rbac_baseline`: revision duy nhất hiện tại trên `sct_iso`.
+- `5e28a4a66bed_baseline_init`: baseline hiện tại trên `sct_iso`.
 
 ## 3) Nhóm bảng auth/users/rbac/audit
 - **users**
@@ -48,5 +48,9 @@ Ngày cập nhật: 2026-04-22.
 ## 5) Vận hành và thay đổi schema
 - Chỉ thay đổi schema qua Alembic migration.
 - Không dùng `create_all()` thay migration trong môi trường shared/production.
-- Khi đổi model trong `backend/database/models.py`, bắt buộc cập nhật migration và tài liệu này.
+- Quy trình khởi tạo DB rỗng:
+  1. Cấu hình `DATABASE_URL` hợp lệ trong `backend/.env`.
+  2. Chạy `alembic upgrade head` trong thư mục `backend/`.
+  3. (Tuỳ chọn) chạy `python script/create_user.py` để seed organization + admin mặc định.
+- Khi đổi model trong `backend/database/models.py`, bắt buộc tạo migration mới và cập nhật tài liệu này.
 - Khuyến nghị dọn/partition `audit_log` theo chính sách retention khi dữ liệu tăng lớn.

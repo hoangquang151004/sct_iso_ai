@@ -40,17 +40,20 @@ class AuthService:
         }
 
     def _build_principal(self, db: Session, user: User) -> AuthPrincipal:
-        role_ids = [item.role_id for item in db.scalars(select(UserRole).where(UserRole.user_id == user.id))]
-        if not role_ids:
+        raw_role_ids = [
+            item.role_id for item in db.scalars(select(UserRole).where(UserRole.user_id == user.id))
+        ]
+        role_ids = [str(role_id) for role_id in raw_role_ids]
+        if not raw_role_ids:
             permissions: list[str] = []
         else:
             permissions = db.scalars(
                 select(Permission.code)
                 .join(RolePermission, RolePermission.permission_id == Permission.id)
-                .where(RolePermission.role_id.in_(role_ids))
+                .where(RolePermission.role_id.in_(raw_role_ids))
             ).all()
         return AuthPrincipal(
-            user_id=user.id,
+            user_id=str(user.id),
             username=user.username,
             role_ids=role_ids,
             permissions=sorted(set(permissions)),
@@ -98,7 +101,7 @@ class AuthService:
     def issue_refresh_token(
         self,
         db: Session,
-        user_id: str,
+        user_id: str | UUID,
         *,
         request: Request | None = None,
         device_label: str | None = None,
@@ -114,10 +117,11 @@ class AuthService:
             user_agent = request.headers.get("user-agent")
             ip = request.client.host if request.client else None
         final_device_label = device_label or inherited_device_label
+        user_uuid = user_id if isinstance(user_id, UUID) else UUID(user_id)
         db.add(
             RefreshToken(
                 id=uuid4(),
-                user_id=UUID(user_id),
+                user_id=user_uuid,
                 token_hash=self._hash_refresh_token(raw_token),
                 user_agent=user_agent[:512] if user_agent else None,
                 ip=ip[:64] if ip else None,

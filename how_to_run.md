@@ -1,34 +1,34 @@
-# lệnh chạy backend
+# Chay backend (PowerShell)
 
 .\.venv\Scripts\activate
 cd backend
 uvicorn main:app --reload
 
-# lệnh chạy frontend
+# Chay frontend (PowerShell)
 
 cd frontend
 npm run dev
 
-# lệnh init dự án
+# Khoi tao database moi tu migration baseline
 
-alembic init alembic
-
-# lệnh migrate database
-
-$env:DATABASE_URL="postgresql+psycopg2://<user>:<password>@<host>:5432/<db_name>"
-alembic revision --autogenerate -m "init"
+cd backend
 alembic upgrade head
 
-# lệnh migrate các lần sau
+# Seed du lieu bootstrap (organization + role + admin)
 
-$env:DATABASE_URL="postgresql+psycopg2://<user>:<password>@<host>:5432/<db_name>"
+python script/create_user.py
+
+# Tao migration moi cho cac lan thay doi model tiep theo
+
+cd backend
 alembic revision --autogenerate -m "<message>"
 alembic upgrade head
 
-# lệnh kiểm tra migration hiện tại
+# Kiem tra trang thai migration hien tai
 
+cd backend
 alembic current
 
-# tài khoản mk đăng nhập
+# Tai khoan dang nhap mac dinh (dev)
 username: admin
 password: admin12345
