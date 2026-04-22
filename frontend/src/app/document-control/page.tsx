@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import AppShell from "@/components/app-shell";
+import AppShell from "@/components/layout/app-shell";
 import CreateDocumentModal from "@/components/create-document-modal";
 import EditDocumentModal from "@/components/edit-document-modal";
 import DocumentScheduleModal, {

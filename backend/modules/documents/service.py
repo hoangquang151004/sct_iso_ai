@@ -4,7 +4,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import String, cast, delete, func, select, update
 from typing import Sequence
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -64,7 +64,7 @@ class DocumentService:
 
         user = db.execute(
             select(User)
-            .where(User.org_id == org.id)
+            .where(cast(User.org_id, String) == str(org.id))
             .order_by(User.created_at.asc())
             .limit(1)
         ).scalar_one_or_none()
@@ -93,7 +93,7 @@ class DocumentService:
                 db.rollback()
                 user = db.execute(
                     select(User)
-                    .where(User.org_id == org.id)
+                    .where(cast(User.org_id, String) == str(org.id))
                     .order_by(User.created_at.asc())
                     .limit(1)
                 ).scalar_one_or_none()
@@ -106,7 +106,9 @@ class DocumentService:
         return DocumentUiContextResponse(org_id=org.id, user_id=user.id)
 
     def _get_document_or_404(self, db: Session, document_id: UUID) -> Document:
-        result = db.get(Document, document_id)
+        result = db.execute(
+            select(Document).where(cast(Document.id, String) == str(document_id)).limit(1)
+        ).scalar_one_or_none()
         if result is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
@@ -119,9 +121,9 @@ class DocumentService:
         docs = list(documents)
         if not docs:
             return {}
-        ids = [d.id for d in docs]
+        ids = [str(d.id) for d in docs]
         rows = db.execute(
-            select(DocumentVersion).where(DocumentVersion.document_id.in_(ids))
+            select(DocumentVersion).where(cast(DocumentVersion.document_id, String).in_(ids))
         ).scalars().all()
         by_doc: dict[UUID, list[DocumentVersion]] = {}
         for v in rows:
@@ -161,7 +163,6 @@ class DocumentService:
         )
         db.add(category)
         db.commit()
-        db.refresh(category)
         return DocumentCategoryResponse.model_validate(category)
 
     def list_categories(
@@ -169,7 +170,7 @@ class DocumentService:
     ) -> list[DocumentCategoryResponse]:
         statement = select(DocumentCategory)
         if org_id is not None:
-            statement = statement.where(DocumentCategory.org_id == org_id)
+            statement = statement.where(cast(DocumentCategory.org_id, String) == str(org_id))
         result = db.execute(statement.order_by(DocumentCategory.created_at.desc())).scalars()
         return [
             DocumentCategoryResponse.model_validate(item)
@@ -190,7 +191,7 @@ class DocumentService:
         cat = db.execute(
             select(DocumentCategory)
             .where(
-                DocumentCategory.org_id == org_id,
+                cast(DocumentCategory.org_id, String) == str(org_id),
                 DocumentCategory.code == "AUTO",
             )
             .limit(1)
@@ -199,7 +200,7 @@ class DocumentService:
             return cat.id
         cat = db.execute(
             select(DocumentCategory)
-            .where(DocumentCategory.org_id == org_id)
+            .where(cast(DocumentCategory.org_id, String) == str(org_id))
             .order_by(DocumentCategory.created_at.asc())
             .limit(1)
         ).scalar_one_or_none()
@@ -215,7 +216,6 @@ class DocumentService:
         )
         db.add(cat)
         db.commit()
-        db.refresh(cat)
         return cat.id
 
     def _next_doc_code(self, db: Session, org_id: UUID, doc_type: str) -> str:
@@ -223,7 +223,7 @@ class DocumentService:
         count = db.execute(
             select(func.count())
             .select_from(Document)
-            .where(Document.org_id == org_id, Document.doc_type == doc_type)
+            .where(cast(Document.org_id, String) == str(org_id), Document.doc_type == doc_type)
         ).scalar_one()
         return f"{prefix}-{int(count) + 1:05d}"
 
@@ -278,7 +278,6 @@ class DocumentService:
         )
         db.add(document)
         db.commit()
-        db.refresh(document)
         self._approvals.setdefault(document.id, [])
         self._change_logs.setdefault(document.id, [])
 
@@ -298,11 +297,7 @@ class DocumentService:
                 created_by=payload.created_by,
             )
             db.add(version)
-            document.current_version = ver
-            document.updated_at = datetime.now(timezone.utc)
-            db.add(document)
             db.commit()
-            db.refresh(document)
 
         return self._enrich_document_response(db, document)
 
@@ -317,11 +312,11 @@ class DocumentService:
     ) -> list[DocumentResponse]:
         statement = select(Document)
         if org_id is not None:
-            statement = statement.where(Document.org_id == org_id)
+            statement = statement.where(cast(Document.org_id, String) == str(org_id))
         if status_filter is not None:
             statement = statement.where(Document.status == status_filter)
         if category_id is not None:
-            statement = statement.where(Document.category_id == category_id)
+            statement = statement.where(cast(Document.category_id, String) == str(category_id))
         if department is not None:
             statement = statement.where(Document.department == department)
         if doc_type is not None:
@@ -347,12 +342,14 @@ class DocumentService:
         self, db: Session, document_id: UUID, org_id: UUID
     ) -> None:
         doc = self._get_document_or_404(db, document_id)
-        if doc.org_id != org_id:
+        if str(doc.org_id) != str(org_id):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Document not found",
             )
-        db.delete(doc)
+        db.execute(
+            delete(Document).where(cast(Document.id, String) == str(document_id))
+        )
         db.commit()
         self._approvals.pop(document_id, None)
         self._change_logs.pop(document_id, None)
@@ -378,13 +375,15 @@ class DocumentService:
                 data["approved_at"] = None
                 data["approved_by"] = None
 
-        for field, value in data.items():
-            setattr(current, field, value)
-        current.updated_at = datetime.now(timezone.utc)
-        db.add(current)
+        stmt = (
+            update(Document)
+            .where(cast(Document.id, String) == str(document_id))
+            .values(**{k: v for k, v in data.items() if hasattr(Document, k)})
+            .values(updated_at=datetime.now(timezone.utc))
+        )
+        db.execute(stmt)
         db.commit()
-        db.refresh(current)
-        return self._enrich_document_response(db, current)
+        return self._enrich_document_response(db, self._get_document_or_404(db, document_id))
 
     def create_document_version(
         self, db: Session, document_id: UUID, payload: DocumentVersionCreate
@@ -401,11 +400,7 @@ class DocumentService:
             created_by=payload.created_by,
         )
         db.add(version)
-        current.current_version = payload.version
-        current.updated_at = datetime.now(timezone.utc)
-        db.add(current)
         db.commit()
-        db.refresh(version)
         return DocumentVersionResponse.model_validate(version)
 
     def list_document_versions(
@@ -414,7 +409,7 @@ class DocumentService:
         self._get_document_or_404(db, document_id)
         statement = (
             select(DocumentVersion)
-            .where(DocumentVersion.document_id == document_id)
+            .where(cast(DocumentVersion.document_id, String) == str(document_id))
             .order_by(DocumentVersion.created_at.desc())
         )
         result = db.execute(statement).scalars()

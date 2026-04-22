@@ -1,6 +1,9 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy.orm import Session
+
+from db_session import get_db
 
 from .schemas import (
     KpiSnapshotCreate,
@@ -22,9 +25,11 @@ report_router = APIRouter(prefix="/reports", tags=["Reports"])
     status_code=status.HTTP_201_CREATED,
     description="Tạo mới một cấu hình báo cáo hệ thống",
 )
-def create_report_config(payload: ReportConfigCreate) -> ReportConfigResponse:
-    result = report_service.create_report_config(payload)
-    return result
+def create_report_config(
+    payload: ReportConfigCreate,
+    db: Session = Depends(get_db),
+) -> ReportConfigResponse:
+    return report_service.create_report_config(db, payload)
 
 
 @report_router.get(
@@ -36,13 +41,14 @@ def list_report_configs(
     org_id: UUID | None = Query(default=None),
     report_type: str | None = Query(default=None),
     is_active: bool | None = Query(default=None),
+    db: Session = Depends(get_db),
 ) -> list[ReportConfigResponse]:
-    result = report_service.list_report_configs(
+    return report_service.list_report_configs(
+        db=db,
         org_id=org_id,
         report_type=report_type,
         is_active=is_active,
     )
-    return result
 
 
 @report_router.get(
@@ -50,9 +56,11 @@ def list_report_configs(
     response_model=ReportConfigResponse,
     description="Lấy chi tiết cấu hình báo cáo theo ID",
 )
-def get_report_config(config_id: UUID) -> ReportConfigResponse:
-    result = report_service.get_report_config(config_id)
-    return result
+def get_report_config(
+    config_id: UUID,
+    db: Session = Depends(get_db),
+) -> ReportConfigResponse:
+    return report_service.get_report_config(db, config_id)
 
 
 @report_router.patch(
@@ -61,10 +69,11 @@ def get_report_config(config_id: UUID) -> ReportConfigResponse:
     description="Cập nhật các tham số hoặc thông tin cấu hình báo cáo",
 )
 def update_report_config(
-    config_id: UUID, payload: ReportConfigUpdate
+    config_id: UUID,
+    payload: ReportConfigUpdate,
+    db: Session = Depends(get_db),
 ) -> ReportConfigResponse:
-    result = report_service.update_report_config(config_id, payload)
-    return result
+    return report_service.update_report_config(db, config_id, payload)
 
 
 @report_router.post(
@@ -74,10 +83,11 @@ def update_report_config(
     description="Ghi lại lịch sử thực hiện xuất báo cáo",
 )
 def create_report_history(
-    config_id: UUID, payload: ReportHistoryCreate
+    config_id: UUID,
+    payload: ReportHistoryCreate,
+    db: Session = Depends(get_db),
 ) -> ReportHistoryResponse:
-    result = report_service.create_report_history(config_id, payload)
-    return result
+    return report_service.create_report_history(db, config_id, payload)
 
 
 @report_router.get(
@@ -85,9 +95,11 @@ def create_report_history(
     response_model=list[ReportHistoryResponse],
     description="Lấy danh sách lịch sử các lần xuất báo cáo của một cấu hình",
 )
-def list_report_history(config_id: UUID) -> list[ReportHistoryResponse]:
-    result = report_service.list_report_history(config_id)
-    return result
+def list_report_history(
+    config_id: UUID,
+    db: Session = Depends(get_db),
+) -> list[ReportHistoryResponse]:
+    return report_service.list_report_history(db, config_id)
 
 
 @report_router.post(
@@ -96,9 +108,11 @@ def list_report_history(config_id: UUID) -> list[ReportHistoryResponse]:
     status_code=status.HTTP_201_CREATED,
     description="Ghi lại số liệu KPI tại một thời điểm nhất định",
 )
-def create_kpi_snapshot(payload: KpiSnapshotCreate) -> KpiSnapshotResponse:
-    result = report_service.create_kpi_snapshot(payload)
-    return result
+def create_kpi_snapshot(
+    payload: KpiSnapshotCreate,
+    db: Session = Depends(get_db),
+) -> KpiSnapshotResponse:
+    return report_service.create_kpi_snapshot(db, payload)
 
 
 @report_router.get(
@@ -109,6 +123,6 @@ def create_kpi_snapshot(payload: KpiSnapshotCreate) -> KpiSnapshotResponse:
 def list_kpi_snapshots(
     org_id: UUID,
     period_type: str | None = Query(default=None),
+    db: Session = Depends(get_db),
 ) -> list[KpiSnapshotResponse]:
-    result = report_service.list_kpi_snapshots(org_id=org_id, period_type=period_type)
-    return result
+    return report_service.list_kpi_snapshots(db=db, org_id=org_id, period_type=period_type)

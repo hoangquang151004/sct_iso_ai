@@ -7,8 +7,8 @@ import {
   InternalAuditChart,
   OeeQualityYieldChart,
   ReportSparklineChart,
-} from "@/components/charts";
-import { syncDocumentUiContext } from "@/lib/documents-api";
+} from "@/components/shared/charts";
+import { useAuth } from "@/hooks/use-auth";
 import {
   internalAuditChartData,
   oeeQualityYieldChartData,
@@ -60,6 +60,7 @@ function capaOntimePercent(latest: KpiSnapshotDto): number {
 }
 
 export default function ReportsPage() {
+  const { principal } = useAuth();
   const [snapshots, setSnapshots] = useState<KpiSnapshotDto[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -72,8 +73,10 @@ export default function ReportsPage() {
       setLoadError(null);
       try {
         const envOrg = process.env.NEXT_PUBLIC_ORG_ID?.trim() ?? "";
-        const orgId =
-          envOrg || (await syncDocumentUiContext()).org_id;
+        const orgId = envOrg || principal?.org_id || "";
+        if (!orgId) {
+          throw new Error("Không xác định được tổ chức hiện tại để tải báo cáo");
+        }
         const rows = await listKpiSnapshots(orgId, "monthly");
         if (!cancelled) setSnapshots(rows);
       } catch (e) {
@@ -90,7 +93,7 @@ export default function ReportsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [principal?.org_id]);
 
   const sortedAsc = useMemo(
     () =>

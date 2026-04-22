@@ -26,11 +26,9 @@ e2e/
 test-results/
 .pytest_cache/
 
-
-# alembic
+#alembic
 alembic.ini
 alembic/
-migrations/
 
 .cursor/
 gemini.md
@@ -44,4 +42,9 @@ frontend/vitest.config.ts
 frontend/playwright.config.ts
 frontend/vitest.setup.ts
 frontend/playwright.setup.ts
+*.test.tsx
+*.test.ts
+pytest.ini
 
+
+uploads/

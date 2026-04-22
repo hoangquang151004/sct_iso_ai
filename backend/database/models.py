@@ -437,18 +437,64 @@ class NotificationLog(Base):
 # MODULE 5.1.6: BÁO CÁO & KPI
 # =============================================================================
 
+class ReportConfig(Base):
+    __tablename__ = "report_configs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    org_id: Mapped[str] = mapped_column(ForeignKey("sct_iso.organizations.id", ondelete="CASCADE"))
+    created_by: Mapped[str] = mapped_column(ForeignKey("sct_iso.users.id"))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    report_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    target_roles: Mapped[Optional[List[str]]] = mapped_column(ARRAY(Text))
+    filter_config: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB)
+    schedule_type: Mapped[Optional[str]] = mapped_column(String(50))
+    schedule_config: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB)
+    recipients: Mapped[Optional[List[str]]] = mapped_column(ARRAY(Text))
+    output_format: Mapped[Optional[List[str]]] = mapped_column(ARRAY(Text))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ReportHistory(Base):
+    __tablename__ = "report_history"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    config_id: Mapped[str] = mapped_column(ForeignKey("sct_iso.report_configs.id", ondelete="CASCADE"))
+    org_id: Mapped[str] = mapped_column(ForeignKey("sct_iso.organizations.id", ondelete="CASCADE"))
+    report_name: Mapped[Optional[str]] = mapped_column(String(255))
+    period_from: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    period_to: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    parameters: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB)
+    file_url: Mapped[Optional[str]] = mapped_column(Text)
+    file_format: Mapped[Optional[str]] = mapped_column(String(20))
+    generated_by: Mapped[str] = mapped_column(ForeignKey("sct_iso.users.id"))
+    sent_to: Mapped[Optional[List[str]]] = mapped_column(ARRAY(Text))
+    status: Mapped[str] = mapped_column(String(50), default="GENERATING")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class KPISnapshot(Base):
     __tablename__ = "kpi_snapshots"
 
-    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
-    org_id: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.organizations.id", ondelete="CASCADE"))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    org_id: Mapped[str] = mapped_column(ForeignKey("sct_iso.organizations.id", ondelete="CASCADE"))
     snapshot_date: Mapped[date] = mapped_column(Date, nullable=False)
     period_type: Mapped[str] = mapped_column(String(20), nullable=False)
-    
+
     # KPI Fields
     doc_total: Mapped[Optional[int]] = mapped_column(Integer)
+    doc_approved: Mapped[Optional[int]] = mapped_column(Integer)
+    doc_pending: Mapped[Optional[int]] = mapped_column(Integer)
+    doc_overdue_review: Mapped[Optional[int]] = mapped_column(Integer)
+    haccp_ccp_monitored_rate: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
     haccp_deviation_count: Mapped[Optional[int]] = mapped_column(Integer)
     prp_audit_compliance_rate: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
+    prp_nc_open_count: Mapped[Optional[int]] = mapped_column(Integer)
+    capa_ontime_closure_rate: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
     capa_open_count: Mapped[Optional[int]] = mapped_column(Integer)
-    
+    capa_overdue_count: Mapped[Optional[int]] = mapped_column(Integer)
+    alert_critical_count: Mapped[Optional[int]] = mapped_column(Integer)
+    alert_open_count: Mapped[Optional[int]] = mapped_column(Integer)
+
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

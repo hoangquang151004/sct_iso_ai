@@ -1,7 +1,10 @@
-from datetime import datetime
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy import String, cast, select
+from sqlalchemy.orm import Session
+
+from database.models import KPISnapshot, ReportConfig, ReportHistory
 
 from .schemas import (
     KpiSnapshotCreate,
@@ -15,24 +18,21 @@ from .schemas import (
 
 
 class ReportService:
-    def __init__(self) -> None:
-        self._report_configs: dict[UUID, ReportConfigResponse] = {}
-        self._report_history: dict[UUID, list[ReportHistoryResponse]] = {}
-        self._kpi_snapshots: dict[UUID, list[KpiSnapshotResponse]] = {}
-
-    def _get_report_config_or_404(self, config_id: UUID) -> ReportConfigResponse:
-        result = self._report_configs.get(config_id)
+    def _get_report_config_or_404(self, db: Session, config_id: UUID) -> ReportConfig:
+        result = db.execute(
+            select(ReportConfig).where(cast(ReportConfig.id, String) == str(config_id)).limit(1)
+        ).scalar_one_or_none()
         if result is None:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Report config not found"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Report config not found",
             )
         return result
 
-    def create_report_config(self, payload: ReportConfigCreate) -> ReportConfigResponse:
-        result = ReportConfigResponse(
-            id=uuid4(),
-            org_id=payload.org_id,
-            created_by=payload.created_by,
+    def create_report_config(self, db: Session, payload: ReportConfigCreate) -> ReportConfigResponse:
+        model = ReportConfig(
+            org_id=str(payload.org_id),
+            created_by=str(payload.created_by),
             name=payload.name,
             report_type=payload.report_type,
             description=payload.description,
@@ -43,71 +43,75 @@ class ReportService:
             recipients=payload.recipients,
             output_format=payload.output_format,
             is_active=payload.is_active,
-            created_at=datetime.utcnow(),
         )
-        self._report_configs[result.id] = result
-        self._report_history[result.id] = []
-        self._kpi_snapshots.setdefault(result.org_id, [])
-        return result
+        db.add(model)
+        db.commit()
+        return ReportConfigResponse.model_validate(model)
 
     def list_report_configs(
         self,
+        db: Session,
         org_id: UUID | None = None,
         report_type: str | None = None,
         is_active: bool | None = None,
     ) -> list[ReportConfigResponse]:
-        result = list(self._report_configs.values())
+        stmt = select(ReportConfig)
         if org_id is not None:
-            result = [item for item in result if item.org_id == org_id]
+            stmt = stmt.where(cast(ReportConfig.org_id, String) == str(org_id))
         if report_type is not None:
-            result = [item for item in result if item.report_type == report_type]
+            stmt = stmt.where(ReportConfig.report_type == report_type)
         if is_active is not None:
-            result = [item for item in result if item.is_active == is_active]
-        return result
+            stmt = stmt.where(ReportConfig.is_active == is_active)
+        rows = db.execute(stmt.order_by(ReportConfig.created_at.desc())).scalars().all()
+        return [ReportConfigResponse.model_validate(item) for item in rows]
 
-    def get_report_config(self, config_id: UUID) -> ReportConfigResponse:
-        result = self._get_report_config_or_404(config_id)
-        return result
+    def get_report_config(self, db: Session, config_id: UUID) -> ReportConfigResponse:
+        return ReportConfigResponse.model_validate(self._get_report_config_or_404(db, config_id))
 
     def update_report_config(
-        self, config_id: UUID, payload: ReportConfigUpdate
+        self, db: Session, config_id: UUID, payload: ReportConfigUpdate
     ) -> ReportConfigResponse:
-        current = self._get_report_config_or_404(config_id)
-        result = current.model_copy(update=payload.model_dump(exclude_unset=True))
-        self._report_configs[config_id] = result
-        return result
+        current = self._get_report_config_or_404(db, config_id)
+        data = payload.model_dump(exclude_unset=True)
+        for field, value in data.items():
+            setattr(current, field, value)
+        db.add(current)
+        db.commit()
+        return ReportConfigResponse.model_validate(current)
 
     def create_report_history(
-        self, config_id: UUID, payload: ReportHistoryCreate
+        self, db: Session, config_id: UUID, payload: ReportHistoryCreate
     ) -> ReportHistoryResponse:
-        config = self._get_report_config_or_404(config_id)
-        result = ReportHistoryResponse(
-            id=uuid4(),
-            config_id=config_id,
-            org_id=config.org_id,
+        config = self._get_report_config_or_404(db, config_id)
+        model = ReportHistory(
+            config_id=str(config_id),
+            org_id=str(config.org_id),
             report_name=payload.report_name,
             period_from=payload.period_from,
             period_to=payload.period_to,
             parameters=payload.parameters,
             file_url=payload.file_url,
             file_format=payload.file_format,
-            generated_by=payload.generated_by,
+            generated_by=str(payload.generated_by),
             sent_to=payload.sent_to,
             status=payload.status,
-            created_at=datetime.utcnow(),
         )
-        self._report_history.setdefault(config_id, []).append(result)
-        return result
+        db.add(model)
+        db.commit()
+        return ReportHistoryResponse.model_validate(model)
 
-    def list_report_history(self, config_id: UUID) -> list[ReportHistoryResponse]:
-        self._get_report_config_or_404(config_id)
-        result = self._report_history.get(config_id, [])
-        return result
+    def list_report_history(self, db: Session, config_id: UUID) -> list[ReportHistoryResponse]:
+        self._get_report_config_or_404(db, config_id)
+        rows = db.execute(
+            select(ReportHistory)
+            .where(cast(ReportHistory.config_id, String) == str(config_id))
+            .order_by(ReportHistory.created_at.desc())
+        ).scalars().all()
+        return [ReportHistoryResponse.model_validate(item) for item in rows]
 
-    def create_kpi_snapshot(self, payload: KpiSnapshotCreate) -> KpiSnapshotResponse:
-        result = KpiSnapshotResponse(
-            id=uuid4(),
-            org_id=payload.org_id,
+    def create_kpi_snapshot(self, db: Session, payload: KpiSnapshotCreate) -> KpiSnapshotResponse:
+        model = KPISnapshot(
+            org_id=str(payload.org_id),
             snapshot_date=payload.snapshot_date,
             period_type=payload.period_type,
             doc_total=payload.doc_total,
@@ -123,18 +127,19 @@ class ReportService:
             capa_overdue_count=payload.capa_overdue_count,
             alert_critical_count=payload.alert_critical_count,
             alert_open_count=payload.alert_open_count,
-            computed_at=datetime.utcnow(),
         )
-        self._kpi_snapshots.setdefault(payload.org_id, []).append(result)
-        return result
+        db.add(model)
+        db.commit()
+        return KpiSnapshotResponse.model_validate(model)
 
     def list_kpi_snapshots(
-        self, org_id: UUID, period_type: str | None = None
+        self, db: Session, org_id: UUID, period_type: str | None = None
     ) -> list[KpiSnapshotResponse]:
-        result = self._kpi_snapshots.get(org_id, [])
+        stmt = select(KPISnapshot).where(cast(KPISnapshot.org_id, String) == str(org_id))
         if period_type is not None:
-            result = [item for item in result if item.period_type == period_type]
-        return result
+            stmt = stmt.where(KPISnapshot.period_type == period_type)
+        rows = db.execute(stmt.order_by(KPISnapshot.snapshot_date.asc())).scalars().all()
+        return [KpiSnapshotResponse.model_validate(item) for item in rows]
 
 
 report_service = ReportService()

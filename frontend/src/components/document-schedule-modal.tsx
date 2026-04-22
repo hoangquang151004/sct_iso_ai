@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 const STORAGE_PREFIX = "documentControl:autoSchedule:v1:";
 
@@ -117,18 +117,34 @@ export default function DocumentScheduleModal({
   orgId,
   onSaved,
 }: DocumentScheduleModalProps) {
-  const [draft, setDraft] = useState<DocumentAutoScheduleState>(DEFAULT_STATE);
+  if (!isOpen) return null;
+  return (
+    <DocumentScheduleModalContent
+      key={orgId}
+      onClose={onClose}
+      orgId={orgId}
+      onSaved={onSaved}
+    />
+  );
+}
+
+type DocumentScheduleModalContentProps = {
+  onClose: () => void;
+  orgId: string;
+  onSaved: (state: DocumentAutoScheduleState) => void;
+};
+
+function DocumentScheduleModalContent({
+  onClose,
+  orgId,
+  onSaved,
+}: DocumentScheduleModalContentProps) {
+  const [draft, setDraft] = useState<DocumentAutoScheduleState>(() =>
+    loadDocumentSchedule(orgId),
+  );
   const [savedFlash, setSavedFlash] = useState(false);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    setDraft(loadDocumentSchedule(orgId));
-    setSavedFlash(false);
-  }, [isOpen, orgId]);
-
   const summary = useMemo(() => formatDocumentScheduleSummary(draft), [draft]);
-
-  if (!isOpen) return null;
 
   const handleSave = () => {
     saveDocumentSchedule(orgId, draft);
