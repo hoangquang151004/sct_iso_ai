@@ -1,6 +1,7 @@
 import secrets
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from uuid import UUID
 from uuid import uuid4
 
 from fastapi import HTTPException, Request, Response, status
@@ -10,9 +11,9 @@ from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from core.config import settings
+from database.models import Permission, RefreshToken, RolePermission, User, UserRole
 
 from .schemas import AuthPrincipal
-from .rbac_models import Permission, RefreshToken, RolePermission, User, UserRole
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -115,8 +116,8 @@ class AuthService:
         final_device_label = device_label or inherited_device_label
         db.add(
             RefreshToken(
-                id=str(uuid4()),
-                user_id=user_id,
+                id=uuid4(),
+                user_id=UUID(user_id),
                 token_hash=self._hash_refresh_token(raw_token),
                 user_agent=user_agent[:512] if user_agent else None,
                 ip=ip[:64] if ip else None,

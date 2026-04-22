@@ -28,7 +28,6 @@ test-results/
 
 #alembic
 alembic.ini
-alembic/
 
 .cursor/
 gemini.md

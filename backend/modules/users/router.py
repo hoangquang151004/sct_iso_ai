@@ -5,10 +5,10 @@ from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, R
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from database.models import User
 from db_session import get_db
 from modules.audit.service import audit_service
 from modules.auth.dependencies import ensure_org_scope, get_current_principal, require_permissions
-from modules.auth.rbac_models import User
 from modules.auth.schemas import AuthPrincipal
 from modules.auth.service import auth_service
 from .schemas import (
@@ -159,7 +159,7 @@ def admin_revoke_all_sessions(
 ) -> dict[str, int]:
     ensure_org_scope(principal.org_id, org_id)
     target_user = db.scalar(
-        select(User).where(User.id == str(user_id)).where(User.org_id == str(org_id))
+        select(User).where(User.id == user_id).where(User.org_id == org_id)
     )
     if target_user is None:
         raise HTTPException(

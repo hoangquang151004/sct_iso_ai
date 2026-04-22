@@ -4,16 +4,24 @@ from typing import Optional, List, Dict, Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
-    String, Boolean, DateTime, Date, ForeignKey, Text, func, 
-    Integer, Numeric, ARRAY, BigInteger
+    String, Boolean, DateTime, Date, ForeignKey, Text, func,
+    Integer, Numeric, ARRAY, BigInteger, UniqueConstraint
 )
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB, INET
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
     """Base class với cấu hình schema mặc định là sct_iso."""
     __table_args__ = {"schema": "sct_iso"}
+
+
+def _new_uuid() -> UUID:
+    return uuid4()
+
+
+def _utc_now() -> datetime:
+    return datetime.utcnow()
 
 
 # =============================================================================
@@ -40,14 +48,19 @@ class Organization(Base):
 
 class Role(Base):
     __tablename__ = "roles"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_roles_org_name"), {"schema": "sct_iso"})
 
-    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=_new_uuid)
     org_id: Mapped[Optional[UUID]] = mapped_column(ForeignKey("sct_iso.organizations.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     permissions: Mapped[Dict[str, Any]] = mapped_column(JSONB, server_default='{}')
     is_system: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    role_permissions: Mapped[List["RolePermission"]] = relationship(
+        back_populates="role", cascade="all,delete"
+    )
 
 
 class User(Base):
@@ -65,27 +78,82 @@ class User(Base):
     phone: Mapped[Optional[str]] = mapped_column(String(20))
     avatar_url: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    disabled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     organization: Mapped["Organization"] = relationship(back_populates="users")
     role: Mapped[Optional["Role"]] = relationship()
+    user_roles: Mapped[List["UserRole"]] = relationship(back_populates="user", cascade="all,delete")
 
 
-class UserActivityLog(Base):
-    __tablename__ = "user_activity_logs"
+class Permission(Base):
+    __tablename__ = "permissions"
 
-    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
-    user_id: Mapped[Optional[UUID]] = mapped_column(ForeignKey("sct_iso.users.id", ondelete="SET NULL"))
-    action: Mapped[str] = mapped_column(String(100), nullable=False)
-    module: Mapped[Optional[str]] = mapped_column(String(100))
-    target_id: Mapped[Optional[UUID]] = mapped_column(PG_UUID(as_uuid=True))
-    target_table: Mapped[Optional[str]] = mapped_column(String(100))
-    detail: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB)
-    ip_address: Mapped[Optional[str]] = mapped_column(INET)
-    user_agent: Mapped[Optional[str]] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=_new_uuid)
+    code: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now)
+
+
+class RolePermission(Base):
+    __tablename__ = "role_permissions"
+    __table_args__ = (UniqueConstraint("role_id", "permission_id", name="uq_role_permissions"), {"schema": "sct_iso"})
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=_new_uuid)
+    role_id: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.roles.id", ondelete="CASCADE"))
+    permission_id: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.permissions.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now)
+
+    role: Mapped["Role"] = relationship(back_populates="role_permissions")
+
+
+class UserRole(Base):
+    __tablename__ = "user_roles"
+    __table_args__ = (UniqueConstraint("user_id", "role_id", name="uq_user_roles"), {"schema": "sct_iso"})
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=_new_uuid)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.users.id", ondelete="CASCADE"))
+    role_id: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.roles.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now)
+
+    user: Mapped["User"] = relationship(back_populates="user_roles")
+
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=_new_uuid)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.users.id", ondelete="CASCADE"))
+    token_hash: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    device_label: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now)
+
+
+class AuditLogEntry(Base):
+    __tablename__ = "audit_log"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=_new_uuid)
+    org_id: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.organizations.id", ondelete="CASCADE"))
+    actor_user_id: Mapped[Optional[UUID]] = mapped_column(
+        ForeignKey("sct_iso.users.id", ondelete="SET NULL"), nullable=True
+    )
+    action: Mapped[str] = mapped_column(String(150), nullable=False)
+    target_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    target_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    request_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    payload: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now)
 
 
 # =============================================================================

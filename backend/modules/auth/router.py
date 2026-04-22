@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from core.rate_limit import limiter, login_rate_limit, refresh_rate_limit
 from db_session import get_db
 from modules.audit.service import audit_service
-from modules.auth.rbac_models import User
+from database.models import User
 from .dependencies import get_current_principal
 from .schemas import AuthLoginRequest, AuthPrincipal, AuthTokenResponse
 from .sessions_router import sessions_router

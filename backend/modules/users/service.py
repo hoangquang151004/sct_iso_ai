@@ -8,8 +8,8 @@ from passlib.context import CryptContext
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from database.models import Role, User, UserRole
 from modules.auth.password_policy import validate_password_strength
-from modules.auth.rbac_models import Role, User, UserRole
 from modules.auth.service import auth_service
 from .schemas import RoleRef, RoleResponse, UserCreate, UserResponse, UserUpdate
 
@@ -32,11 +32,11 @@ class UserService:
             .where(UserRole.user_id == item.id)
             .order_by(Role.name.asc())
         ).all()
-        role_refs = [RoleRef(id=UUID(role_id), name=role_name) for role_id, role_name in assigned_roles]
+        role_refs = [RoleRef(id=role_id, name=role_name) for role_id, role_name in assigned_roles]
         first_role = role_refs[0] if role_refs else None
         return UserResponse(
-            id=UUID(item.id),
-            org_id=UUID(item.org_id),
+            id=item.id,
+            org_id=item.org_id,
             role_id=first_role.id if first_role else None,
             role=first_role,
             roles=role_refs,
@@ -63,7 +63,7 @@ class UserService:
             )
 
     def _get_user_or_404(self, db: Session, user_id: UUID, org_id: UUID | None = None) -> User:
-        result = db.scalar(select(User).where(User.id == str(user_id)))
+        result = db.scalar(select(User).where(User.id == user_id))
         if result is None or (org_id is not None and result.org_id != str(org_id)):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -101,7 +101,7 @@ class UserService:
     def _validate_role(self, db: Session, org_id: UUID, role_id: UUID | None) -> Role | None:
         if role_id is None:
             return None
-        role = db.scalar(select(Role).where(Role.id == str(role_id)))
+        role = db.scalar(select(Role).where(Role.id == role_id))
         if role is None or (role.org_id not in {None, str(org_id)}):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -115,8 +115,8 @@ class UserService:
         role = self._validate_role(db, payload.org_id, payload.role_id)
         now = datetime.now(UTC)
         entity = User(
-            id=str(uuid4()),
-            org_id=str(payload.org_id),
+            id=uuid4(),
+            org_id=payload.org_id,
             username=payload.username,
             email=payload.email,
             password_hash=pwd_context.hash(payload.password),
@@ -132,7 +132,7 @@ class UserService:
         db.add(entity)
         db.flush()
         if role is not None:
-            db.add(UserRole(id=str(uuid4()), user_id=entity.id, role_id=role.id))
+            db.add(UserRole(id=uuid4(), user_id=entity.id, role_id=role.id))
         db.commit()
         db.refresh(entity)
         return self._to_response(db, entity)
@@ -145,13 +145,13 @@ class UserService:
         is_active: bool | None = None,
         department: str | None = None,
     ) -> list[UserResponse]:
-        query = select(User).where(User.org_id == str(org_id))
+        query = select(User).where(User.org_id == org_id)
         if is_active is not None:
             query = query.where(User.is_active == is_active)
         if department is not None:
             query = query.where(User.department == department)
         if role_id is not None:
-            query = query.join(UserRole, UserRole.user_id == User.id).where(UserRole.role_id == str(role_id))
+            query = query.join(UserRole, UserRole.user_id == User.id).where(UserRole.role_id == role_id)
         result = db.scalars(query.order_by(User.created_at.desc())).all()
         return [self._to_response(db, item) for item in result]
 
@@ -193,7 +193,7 @@ class UserService:
             role = self._validate_role(db, org_id, update_data["role_id"])
             db.query(UserRole).filter(UserRole.user_id == current.id).delete()
             if role is not None:
-                db.add(UserRole(id=str(uuid4()), user_id=current.id, role_id=role.id))
+                db.add(UserRole(id=uuid4(), user_id=current.id, role_id=role.id))
             current.token_version += 1
             auth_service.invalidate_user_token_version_cache(current.id)
         if "is_active" in update_data and update_data["is_active"] is False:
@@ -274,11 +274,11 @@ class UserService:
         db.flush()
 
     def list_roles(self, db: Session, org_id: UUID) -> list[RoleResponse]:
-        roles = db.scalars(select(Role).where(or_(Role.org_id.is_(None), Role.org_id == str(org_id)))).all()
+        roles = db.scalars(select(Role).where(or_(Role.org_id.is_(None), Role.org_id == org_id))).all()
         return [
             RoleResponse(
-                id=UUID(role.id),
-                org_id=UUID(role.org_id) if role.org_id else None,
+                id=role.id,
+                org_id=role.org_id,
                 name=role.name,
                 description=role.description,
                 is_system=role.is_system,

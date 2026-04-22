@@ -1,5 +1,5 @@
 from datetime import timezone, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from passlib.context import CryptContext
 from sqlalchemy import select
@@ -7,8 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from core.config import settings
-from db_session import SessionLocal
-from .rbac_models import (
+from database.models import (
     Organization,
     Permission,
     RefreshToken,
@@ -17,11 +16,12 @@ from .rbac_models import (
     User,
     UserRole,
 )
+from db_session import SessionLocal
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-DEFAULT_ORG_ID = settings.auth_bootstrap_org_id
+DEFAULT_ORG_ID = UUID(settings.auth_bootstrap_org_id)
 
 # Khớp CONTEXT.md mục 10 (Admin, ISO Manager, QA/QC, Auditor, User).
 CONTEXT_ROLE_DESCRIPTIONS: dict[str, str] = {
@@ -167,7 +167,7 @@ def _seed_roles(db: Session, permissions: dict[str, Permission]) -> dict[str, Ro
         )
         if role is None:
             role = Role(
-                id=str(uuid4()),
+                id=uuid4(),
                 org_id=DEFAULT_ORG_ID,
                 name=role_name,
                 description=CONTEXT_ROLE_DESCRIPTIONS.get(
@@ -186,7 +186,7 @@ def _seed_roles(db: Session, permissions: dict[str, Permission]) -> dict[str, Ro
             if permission.id not in existing_permission_ids:
                 db.add(
                     RolePermission(
-                        id=str(uuid4()),
+                        id=uuid4(),
                         role_id=role.id,
                         permission_id=permission.id,
                     )
@@ -199,7 +199,7 @@ def _seed_user(db: Session, roles: dict[str, Role], username: str, password: str
     user = db.scalar(select(User).where(User.username == username))
     if user is None:
         user = User(
-            id=str(uuid4()),
+            id=uuid4(),
             org_id=DEFAULT_ORG_ID,
             username=username,
             email=f"{username}@example.com",
@@ -214,7 +214,7 @@ def _seed_user(db: Session, roles: dict[str, Role], username: str, password: str
         select(UserRole).where(UserRole.user_id == user.id).where(UserRole.role_id == role.id)
     )
     if has_role is None:
-        db.add(UserRole(id=str(uuid4()), user_id=user.id, role_id=role.id))
+        db.add(UserRole(id=uuid4(), user_id=user.id, role_id=role.id))
 
 
 def seed_rbac_defaults() -> None:

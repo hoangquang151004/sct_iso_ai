@@ -1,52 +1,52 @@
 # Database Schema - SCT-ISO.AI
 
-Ngày cập nhật: 2026-04-20.
+Ngày cập nhật: 2026-04-22.
 
-## 1) Migration baseline và các revision chính
-- `0001_rbac_baseline`: baseline duy nhất cho module users/auth/rbac/audit trên schema `sct_iso`, đã bao gồm các cột hardening/session/users polish và bảng `audit_log`.
+## 1) Nguồn schema chuẩn
+- Schema chính: `sct_iso` (single-schema).
+- Nguồn model duy nhất: `backend/database/models.py`.
+- Các module nghiệp vụ không định nghĩa model trùng cho auth/rbac/audit.
 
-Schema chuẩn hiện tại cho module users/auth/rbac/audit: `sct_iso` (single-schema).
+## 2) Chuỗi migration hiện tại
+- `0001_rbac_baseline`: revision duy nhất hiện tại trên `sct_iso`.
 
-## 2) Bảng users (đáng chú ý)
-- `id` (uuid, pk)
-- `org_id` (uuid, fk)
-- `username` (unique)
-- `email` (unique)
-- `password_hash`
-- `is_active`
-- `token_version` (int, default 0, not null)
-- `disabled_at` (timestamptz, nullable)
-- `must_change_password` (bool, default false)
-- `last_login`
-- `created_at`, `updated_at`
+## 3) Nhóm bảng auth/users/rbac/audit
+- **users**
+  - `id` (uuid, pk), `org_id` (uuid, fk), `role_id` (uuid, nullable, fk -> `roles.id`)
+  - `username` (unique), `email` (unique), `password_hash`
+  - `is_active`, `token_version` (default 0), `disabled_at`, `must_change_password`
+  - `last_login`, `created_at`, `updated_at`
+- **roles**
+  - `id` (uuid, pk), `org_id` (uuid, nullable), `name`, `description`, `is_system`, `created_at`
+  - unique constraint: `uq_roles_org_name` trên `(org_id, name)`
+- **permissions**
+  - `id` (uuid, pk), `code` (unique), `description`, `created_at`
+- **role_permissions**
+  - `id` (uuid, pk), `role_id` (uuid, fk), `permission_id` (uuid, fk), `created_at`
+  - unique constraint: `uq_role_permissions` trên `(role_id, permission_id)`
+- **user_roles**
+  - `id` (uuid, pk), `user_id` (uuid, fk), `role_id` (uuid, fk), `created_at`
+  - unique constraint: `uq_user_roles` trên `(user_id, role_id)`
+- **refresh_tokens**
+  - `id` (uuid, pk), `user_id` (uuid, fk), `token_hash` (unique)
+  - `user_agent`, `ip`, `device_label`, `last_used_at`
+  - `expires_at`, `revoked_at`, `created_at`
+- **audit_log**
+  - `id` (uuid, pk), `org_id` (uuid, fk), `actor_user_id` (uuid, nullable, fk)
+  - `action`, `target_type`, `target_id`, `request_id`, `ip`, `user_agent`
+  - `payload` (json/jsonb), `created_at`
+  - indexes:
+    - `ix_audit_log_org_created_at` trên `(org_id, created_at)`
+    - `ix_audit_log_actor_created_at` trên `(actor_user_id, created_at)`
+    - `ix_audit_log_action_created_at` trên `(action, created_at)`
 
-## 3) Bảng refresh_tokens (session store)
-- `id` (uuid, pk)
-- `user_id` (uuid, fk)
-- `token_hash` (unique)
-- `expires_at`, `revoked_at`
-- `user_agent` (nullable)
-- `ip` (nullable)
-- `device_label` (nullable)
-- `last_used_at` (nullable)
-- `created_at`
+## 4) Quy ước dữ liệu cần giữ ổn định
+- Dùng UUID native PostgreSQL cho các khóa chính/phụ của auth/rbac/audit.
+- Audit chuẩn dùng `audit_log`; không dùng flow mới trên `user_activity_logs`.
+- JSON payload audit dùng cột `payload`.
 
-## 4) Bảng audit_log
-- `id` (string 36, pk)
-- `org_id` (string 36)
-- `actor_user_id` (string 36, nullable)
-- `action` (string 128)
-- `target_type` (string 128, nullable)
-- `target_id` (string 64, nullable)
-- `metadata` (json/jsonb nullable)
-- `created_at` (timestamptz)
-
-Indexes chính:
-- `ix_audit_log_org_created_at` trên `(org_id, created_at)`
-- `ix_audit_log_actor_created_at` trên `(actor_user_id, created_at)`
-- `ix_audit_log_action_created_at` trên `(action, created_at)`
-
-## 5) Lưu ý vận hành
-- Chỉ dùng Alembic để đổi schema trong môi trường chia sẻ.
-- Không dùng `create_all()` thay cho migration ở production.
-- Khuyến nghị định kỳ dọn/partition `audit_log` khi dữ liệu tăng lớn.
+## 5) Vận hành và thay đổi schema
+- Chỉ thay đổi schema qua Alembic migration.
+- Không dùng `create_all()` thay migration trong môi trường shared/production.
+- Khi đổi model trong `backend/database/models.py`, bắt buộc cập nhật migration và tài liệu này.
+- Khuyến nghị dọn/partition `audit_log` theo chính sách retention khi dữ liệu tăng lớn.

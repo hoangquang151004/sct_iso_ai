@@ -8,9 +8,9 @@ from fastapi import Request
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
+from database.models import AuditLogEntry
 from modules.auth.schemas import AuthPrincipal
 
-from .models import AuditLogEntry
 from .schemas import AuditLogResponse
 
 logger = logging.getLogger(__name__)
@@ -30,14 +30,14 @@ class AuditService:
         payload: dict | None = None,
     ) -> None:
         try:
-            org_value = str(org_id or (actor.org_id if actor else ""))
+            org_value = org_id or (actor.org_id if actor else None)
             if not org_value:
                 return
             db.add(
                 AuditLogEntry(
-                    id=str(uuid4()),
-                    org_id=org_value,
-                    actor_user_id=actor.user_id if actor else None,
+                    id=uuid4(),
+                    org_id=UUID(str(org_value)),
+                    actor_user_id=UUID(actor.user_id) if actor else None,
                     action=action,
                     target_type=target_type,
                     target_id=target_id,
@@ -66,12 +66,12 @@ class AuditService:
         offset: int = 0,
     ) -> list[AuditLogResponse]:
         query: Select[tuple[AuditLogEntry]] = select(AuditLogEntry).where(
-            AuditLogEntry.org_id == str(org_id)
+            AuditLogEntry.org_id == org_id
         )
         if action:
             query = query.where(AuditLogEntry.action == action)
         if actor_user_id:
-            query = query.where(AuditLogEntry.actor_user_id == str(actor_user_id))
+            query = query.where(AuditLogEntry.actor_user_id == actor_user_id)
         if target_type:
             query = query.where(AuditLogEntry.target_type == target_type)
         if from_dt:
@@ -83,9 +83,9 @@ class AuditService:
         ).all()
         return [
             AuditLogResponse(
-                id=UUID(row.id),
-                org_id=UUID(row.org_id),
-                actor_user_id=UUID(row.actor_user_id) if row.actor_user_id else None,
+                id=row.id,
+                org_id=row.org_id,
+                actor_user_id=row.actor_user_id,
                 action=row.action,
                 target_type=row.target_type,
                 target_id=row.target_id,

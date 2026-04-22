@@ -7,8 +7,8 @@ from fastapi import HTTPException, status
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
+from database.models import Permission, Role, RolePermission, User, UserRole
 from modules.auth.bootstrap import SYSTEM_ROLE_PERMISSION_SPECS
-from modules.auth.rbac_models import Permission, Role, RolePermission, User, UserRole
 from modules.auth.service import auth_service
 
 from .schemas import PermissionResponse, RoleCreateRequest, RoleResponse, RoleUpdateRequest
@@ -46,7 +46,7 @@ class RbacService:
 
     def _role_or_404(self, db: Session, role_id: UUID, org_id: UUID) -> Role:
         role = db.scalar(
-            select(Role).where(Role.id == str(role_id)).where(or_(Role.org_id == str(org_id), Role.org_id.is_(None)))
+            select(Role).where(Role.id == role_id).where(or_(Role.org_id == org_id, Role.org_id.is_(None)))
         )
         if role is None:
             raise HTTPException(
@@ -65,9 +65,9 @@ class RbacService:
     def _ensure_role_name_unique(
         self, db: Session, *, org_id: UUID, name: str, excluded_role_id: UUID | None = None
     ) -> None:
-        query = select(Role).where(Role.org_id == str(org_id)).where(Role.name.ilike(name))
+        query = select(Role).where(Role.org_id == org_id).where(Role.name.ilike(name))
         if excluded_role_id is not None:
-            query = query.where(Role.id != str(excluded_role_id))
+            query = query.where(Role.id != excluded_role_id)
         if db.scalar(query):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -78,7 +78,7 @@ class RbacService:
         rows = db.scalars(select(Permission).order_by(Permission.code.asc())).all()
         return [
             PermissionResponse(
-                id=UUID(item.id),
+                id=item.id,
                 code=item.code,
                 description=item.description,
                 created_at=item.created_at,
@@ -94,8 +94,8 @@ class RbacService:
         ).all()
         return [
             RoleResponse(
-                id=UUID(role.id),
-                org_id=UUID(role.org_id) if role.org_id else None,
+                id=role.id,
+                org_id=role.org_id,
                 name=role.name,
                 description=role.description,
                 is_system=role.is_system,
@@ -109,8 +109,8 @@ class RbacService:
     def create_role(self, db: Session, payload: RoleCreateRequest) -> RoleResponse:
         self._ensure_role_name_unique(db, org_id=payload.org_id, name=payload.name)
         role = Role(
-            id=str(uuid4()),
-            org_id=str(payload.org_id),
+            id=uuid4(),
+            org_id=payload.org_id,
             name=payload.name,
             description=payload.description,
             is_system=False,
@@ -119,8 +119,8 @@ class RbacService:
         db.add(role)
         db.flush()
         return RoleResponse(
-            id=UUID(role.id),
-            org_id=UUID(role.org_id) if role.org_id else None,
+            id=role.id,
+            org_id=role.org_id,
             name=role.name,
             description=role.description,
             is_system=role.is_system,
@@ -142,8 +142,8 @@ class RbacService:
         update_data = payload.model_dump(exclude_unset=True)
         if not update_data:
             return RoleResponse(
-                id=UUID(role.id),
-                org_id=UUID(role.org_id) if role.org_id else None,
+                id=role.id,
+                org_id=role.org_id,
                 name=role.name,
                 description=role.description,
                 is_system=role.is_system,
@@ -162,8 +162,8 @@ class RbacService:
             setattr(role, key, value)
         db.flush()
         return RoleResponse(
-            id=UUID(role.id),
-            org_id=UUID(role.org_id) if role.org_id else None,
+            id=role.id,
+            org_id=role.org_id,
             name=role.name,
             description=role.description,
             is_system=role.is_system,
@@ -216,7 +216,7 @@ class RbacService:
         for permission_id in to_add:
             db.add(
                 RolePermission(
-                    id=str(uuid4()),
+                    id=uuid4(),
                     role_id=role.id,
                     permission_id=permission_id,
                     created_at=datetime.now(UTC),
