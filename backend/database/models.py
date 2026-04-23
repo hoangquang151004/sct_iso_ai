@@ -353,14 +353,19 @@ class PRPChecklistTemplate(Base):
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     prp_program_id: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.prp_programs.id", ondelete="CASCADE"))
+    location_id: Mapped[Optional[UUID]] = mapped_column(ForeignKey("sct_iso.locations.id")) # Liên kết khu vực
     document_id: Mapped[Optional[UUID]] = mapped_column(ForeignKey("sct_iso.documents.id")) # Liên kết tài liệu ISO
     question_text: Mapped[str] = mapped_column(Text, nullable=False)
+    answer_type: Mapped[str] = mapped_column(String(50), default="BOOLEAN") # BOOLEAN, TEXT, NUMBER, SELECT
+    options: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB) # Các lựa chọn cho SELECT
+    target_value: Mapped[Optional[float]] = mapped_column(Numeric(10, 2)) # Giá trị mục tiêu cho kiểu NUMBER
     requirement: Mapped[Optional[str]] = mapped_column(Text) # Yêu cầu đạt
     order_index: Mapped[int] = mapped_column(Integer, default=0) # Thứ tự hiển thị
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     program: Mapped["PRPProgram"] = relationship(back_populates="templates")
+    location: Mapped[Optional["Location"]] = relationship()
 
 
 class PRPAudit(Base):
@@ -389,7 +394,7 @@ class PRPAuditDetail(Base):
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     audit_id: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.prp_audits.id", ondelete="CASCADE"))
     checklist_id: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.prp_checklist_templates.id"))
-    result: Mapped[str] = mapped_column(String(20), nullable=False) # e.g., 'PASS', 'FAIL', 'NA'
+    result: Mapped[str] = mapped_column(Text, nullable=False) # e.g., 'PASS', 'FAIL', 'NA', or free text
     score: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
     observation: Mapped[Optional[str]] = mapped_column(Text)
     evidence_url: Mapped[Optional[str]] = mapped_column(Text)
