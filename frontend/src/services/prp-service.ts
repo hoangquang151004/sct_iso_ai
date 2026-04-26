@@ -37,11 +37,15 @@ export async function listAudits(params?: {
   org_id?: string;
   area_id?: string;
   audit_date?: string;
+  month?: number;
+  year?: number;
 }): Promise<PRPAudit[]> {
   const query = new URLSearchParams();
   if (params?.org_id) query.append("org_id", params.org_id);
   if (params?.area_id) query.append("area_id", params.area_id);
   if (params?.audit_date) query.append("audit_date", params.audit_date);
+  if (params?.month) query.append("month", params.month.toString());
+  if (params?.year) query.append("year", params.year.toString());
   
   const queryString = query.toString();
   return apiRequest<PRPAudit[]>(`/prp/${queryString ? `?${queryString}` : ""}`);
