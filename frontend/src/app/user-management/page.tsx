@@ -24,7 +24,7 @@ import {
   updateRbacRole,
   updateRolePermissions,
   updateUser,
-} from "@/services";
+} from "@/api";
 import type {
   AuditLogResponse,
   PermissionResponse,

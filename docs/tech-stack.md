@@ -5,7 +5,7 @@ Tài liệu này mô tả công nghệ theo 2 lớp:
 - Thành phần đã xác nhận trong mã nguồn hiện tại.
 - Thành phần dự kiến bổ sung theo roadmap.
 
-Ngày cập nhật: 2026-04-21.
+Ngày cập nhật: 2026-04-22.
 
 ---
 
@@ -39,7 +39,7 @@ Ghi chú phiên bản:
 - Biểu đồ: Chart.js 4.5.1 và react-chartjs-2 5.3.1.
 - Lint: ESLint 9 cùng eslint-config-next 16.2.3.
 
-Cấu trúc mã nguồn UI (App Router, `frontend/src/`): `app/`, `components/{layout,shared,ui}`, `services/`, `types/`, `hooks/`, `lib/`, `middleware.ts` — mô tả chi tiết trong [docs/architecture.md](docs/architecture.md) và [docs/coding-conventions.md](docs/coding-conventions.md).
+Cấu trúc mã nguồn UI (App Router, `frontend/src/`): `app/`, `api/`, `components/{layout,shared,ui}`, `services/` (compatibility), `types/`, `hooks/`, `lib/`, `middleware.ts` — mô tả chi tiết trong [docs/architecture.md](docs/architecture.md) và [docs/coding-conventions.md](docs/coding-conventions.md).
 
 ---
 

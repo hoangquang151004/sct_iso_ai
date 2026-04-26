@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createDocument } from "@/lib/documents-api";
+import { createDocument } from "@/api/documents";
 
 type CreateDocumentModalProps = {
   isOpen: boolean;

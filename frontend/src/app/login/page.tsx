@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { ApiClientError } from "@/lib/api-client";
 import { useAuth } from "@/hooks";
-import { getCurrentPrincipal } from "@/services";
+import { getCurrentPrincipal } from "@/api";
 import { AUTH_DEFAULT_AFTER_LOGIN } from "@/lib/auth-routes";
 import { getMessageByErrorCode } from "@/lib/users-error-map";
 

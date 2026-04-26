@@ -3,7 +3,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
-import { getCurrentPrincipal, login as loginApi, logout as logoutApi, refreshSession } from "@/services";
+import { getCurrentPrincipal, login as loginApi, logout as logoutApi, refreshSession } from "@/api";
 import type { AuthPrincipal, AuthTokenResponse } from "@/types";
 
 type AuthContextValue = {

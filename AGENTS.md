@@ -89,6 +89,7 @@ Notes:
 
 - Keep imports grouped: stdlib, third-party, local.
 - Prefer absolute imports from project roots (`modules.*`, `core.*`, etc.).
+- Frontend API domain modules live in `frontend/src/api/`; keep `frontend/src/lib/` for infrastructure helpers only.
 - Backend routers must inject DB via `Depends(get_db)`; do not create sessions directly.
 - Do not import directly across domain routers; use shared models/schemas (`modules.auth.rbac_models`, shared schema modules).
 - Avoid circular imports between modules.

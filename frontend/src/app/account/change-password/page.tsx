@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import AppShell from "@/components/layout/app-shell";
-import { changeMyPassword } from "@/services";
+import { changeMyPassword } from "@/api";
 import { ApiClientError } from "@/lib/api-client";
 import { getMessageByErrorCode } from "@/lib/users-error-map";
 

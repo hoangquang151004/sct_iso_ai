@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import AppShell from "@/components/layout/app-shell";
-import { getMySessions, revokeAllOtherSessions, revokeMySession } from "@/services";
+import { getMySessions, revokeAllOtherSessions, revokeMySession } from "@/api";
 import type { SessionSummary } from "@/types";
 import { ApiClientError } from "@/lib/api-client";
 import { getMessageByErrorCode } from "@/lib/users-error-map";

@@ -5,7 +5,7 @@ Tài liệu này chia thành 2 lớp quy ước:
 - Áp dụng ngay: phải tuân theo codebase hiện tại.
 - Mục tiêu chuẩn hóa: áp dụng khi refactor hoặc mở rộng kiến trúc.
 
-Ngày cập nhật: 2026-04-21.
+Ngày cập nhật: 2026-04-22.
 
 ---
 
@@ -40,12 +40,13 @@ Lưu ý quan trọng:
   - `frontend/src/components/layout/` — khung trang (ví dụ `app-shell`).
   - `frontend/src/components/shared/` — block dùng chung nhiều màn (ví dụ `auth-gate`, `require-permissions`, biểu đồ).
   - `frontend/src/components/ui/` — component hiển thị thuần / base (mở rộng dần).
-- Gọi HTTP tới FastAPI: `frontend/src/services/` (theo domain: auth, users, rbac, sessions).
+- Gọi HTTP tới FastAPI: `frontend/src/api/` (theo domain: auth, users, rbac, sessions, documents, reports).
 - Kiểu dùng chung: `frontend/src/types/`.
 - Custom hooks: `frontend/src/hooks/`.
-- Tiện ích nền (API client, auth context, route config, mock): `frontend/src/lib/` (ví dụ `api-client.ts`, `auth-context.tsx`, `auth-routes.ts`, `mock-data.ts`).
-- Barrel exports: `frontend/src/components/index.ts`, `frontend/src/services/index.ts`, `frontend/src/hooks/index.ts`, `frontend/src/types/index.ts` (import có thể dùng `@/services`, `@/hooks`, `@/types`, `@/components/...`).
-- Một phần màn hình demo vẫn đọc mock từ `frontend/src/lib/mock-data.ts`; luồng auth/users/RBAC đã gọi API thật qua `services/`.
+- Tiện ích nền (API client, auth context, route config, mock): `frontend/src/lib/` (ví dụ `api-client.ts`, `auth-context.tsx`, `auth-routes.ts`, `mock-data.ts`), không chứa API domain.
+- Compatibility layer tạm thời: `frontend/src/services/*` và `frontend/src/lib/*-api.ts` chỉ re-export sang `@/api/*`; không thêm logic mới.
+- Barrel exports: `frontend/src/components/index.ts`, `frontend/src/api/index.ts`, `frontend/src/hooks/index.ts`, `frontend/src/types/index.ts` (import ưu tiên `@/api`, `@/hooks`, `@/types`, `@/components/...`).
+- Một phần màn hình demo vẫn đọc mock từ `frontend/src/lib/mock-data.ts`; luồng auth/users/RBAC/documents/reports gọi API qua `api/`.
 
 ### 1.4 Quy ước kiểu dữ liệu
 
@@ -129,7 +130,7 @@ Danh mục mã lỗi chuẩn tham chiếu tại:
 
 ### 2.2 Frontend
 
-1. ~~Tạo API client dùng chung~~ **Đã có:** `frontend/src/lib/api-client.ts` + `frontend/src/services/*`.
+1. ~~Tạo API client dùng chung~~ **Đã có:** `frontend/src/lib/api-client.ts` + `frontend/src/api/*`.
 2. ~~Tách kiểu dữ liệu dùng chung vào thư mục `types`~~ **Đã có:** `frontend/src/types/` (barrel `index.ts`).
 3. ~~Chuẩn hóa custom hooks~~ **Đang áp dụng:** `frontend/src/hooks/` (mở rộng dần theo domain).
 4. **Tiếp theo:** giảm dần phụ thuộc `mock-data` trên các màn production; E2E/Storybook (nếu có) có thể giữ mock riêng.

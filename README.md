@@ -20,3 +20,4 @@ Then load additional docs by change type (API, DB, security, UI flow, AI) as def
 - `docs/testing-strategy.md`
 - `docs/database-schema.md`
 - `docs/docs-review-checklist.md`
+- `docs/project-structure.md`

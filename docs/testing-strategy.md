@@ -1,13 +1,13 @@
 # Testing Strategy - SCT-ISO.AI
 
-Ngày cập nhật: 2026-04-21.
+Ngày cập nhật: 2026-04-22.
 
 ## 1) 3 tầng test
 1. Backend integration: `pytest` (`backend/tests`), DB PostgreSQL thật.
 2. Frontend unit: `vitest` + RTL.
 3. Frontend e2e: `playwright` (`frontend/e2e`).
 
-**Ghi chú cấu trúc FE (2026-04):** unit test thường `vi.mock` theo module alias `@/services`, `@/hooks` (không còn shim `lib/*-api.ts`). Test gần implementation: ví dụ `frontend/src/services/*.test.ts` cho service layer.
+**Ghi chú cấu trúc FE (2026-04):** unit test thường `vi.mock` theo module alias `@/api`, `@/hooks`; compatibility layer `@/services` chỉ dùng tạm thời. Test gần implementation: ví dụ `frontend/src/api/*.test.ts` cho API domain layer.
 
 ## 2) Trạng thái hiện tại
 - Backend: đã có test auth/users/rbac/session/audit mức integration; local có thể skip nếu chưa cấu hình `TEST_DATABASE_URL`.

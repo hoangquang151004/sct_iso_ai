@@ -1,6 +1,6 @@
 # Architecture - SCT-ISO.AI
 
-Ngày cập nhật: 2026-04-21.
+Ngày cập nhật: 2026-04-22.
 
 ## 1) Tổng quan hiện tại
 Monorepo gồm:
@@ -44,11 +44,12 @@ Từ đó hỗ trợ:
 - **`AppShell`** (`frontend/src/components/layout/app-shell.tsx`): lọc menu theo cùng tập permission để đồng bộ với khả năng truy cập route.
 - **Tầng mã nguồn UI (chuẩn hóa):**
   - `frontend/src/app/`: App Router (`page.tsx`, `layout.tsx`, …).
+  - `frontend/src/api/`: lớp gọi API tập trung theo domain (`auth`, `users`, `rbac`, `sessions`, `documents`, `reports`).
   - `frontend/src/components/layout/`, `…/shared/`, `…/ui/`: component theo lớp (layout / dùng chung / base).
-  - `frontend/src/services/`: hàm gọi API theo domain (auth, users, rbac, sessions).
+  - `frontend/src/services/`: compatibility layer re-export trong giai đoạn chuyển đổi; không thêm API domain mới.
   - `frontend/src/types/`: kiểu TypeScript dùng chung (API contracts phía FE).
   - `frontend/src/hooks/`: custom hooks tái sử dụng (ví dụ auth).
-  - `frontend/src/lib/`: tiện ích nền (`api-client`, `auth-context`, `auth-routes`, `mock-data`, …).
+  - `frontend/src/lib/`: tiện ích nền (`api-client`, `auth-context`, `auth-routes`, `mock-data`, …), không chứa API domain.
   - Import ưu tiên alias `@/…` theo `frontend/tsconfig.json`.
 - RBAC UI flow thống nhất qua `user-management` (query `?tab=rbac`); route `/rbac` chỉ giữ vai trò legacy redirect.
 - RBAC panel dùng API `/rbac/roles` để render permission matrix và `member_count` active cho từng role.

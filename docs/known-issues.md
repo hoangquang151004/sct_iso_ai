@@ -2,7 +2,7 @@
 
 Tài liệu này ghi nhận các vấn đề đã biết, workaround tạm thời, và rủi ro cần lưu ý để agent coding không sửa nhầm hoặc tạo regression.
 
-Ngày cập nhật: 2026-04-21.
+Ngày cập nhật: 2026-04-22.
 
 ---
 
@@ -15,7 +15,7 @@ Ngày cập nhật: 2026-04-21.
 Trạng thái hiện tại:
 
 - Backend: JWT access + refresh cookie, RBAC và users/sessions đã gắn DB; nhiều router nghiệp vụ khác vẫn có thể chưa bắt buộc `Bearer` (xem P0-001, SEC-001).
-- Frontend: mã nguồn App Router nằm dưới `frontend/src/` (`app/`, `components/{layout,shared,ui}`, `services/`, `types/`, `hooks/`, `lib/`, `middleware.ts`). Luồng đăng nhập / users / RBAC gọi API thật qua `services/`; nhiều màn dashboard demo vẫn đọc `lib/mock-data.ts`.
+- Frontend: mã nguồn App Router nằm dưới `frontend/src/` (`app/`, `api/`, `components/{layout,shared,ui}`, `services/` compatibility, `types/`, `hooks/`, `lib/`, `middleware.ts`). Luồng đăng nhập / users / RBAC / documents / reports gọi API thật qua `api/`; nhiều màn dashboard demo vẫn đọc `lib/mock-data.ts`.
 
 ---
 
@@ -89,7 +89,7 @@ Các mục dưới đây là giới hạn thiết kế tạm thời, không hẳ
 
 - Dùng mock data để phát triển UI nhanh trên một số màn (song song với API thật cho auth/users/RBAC).
 - **Middleware Next.js** (`frontend/src/middleware.ts`) chỉ xử lý tối thiểu (ví dụ `/` → `/login`); **không** thay cho kiểm tra phiên và quyền route trên client (**AuthGate**, principal sau `GET /auth/me`). Chi tiết: [docs/architecture.md](docs/architecture.md), [docs/security-rules.md](docs/security-rules.md).
-- **Không còn** pattern re-export API trong `lib/*-api.ts`; client gọi HTTP theo domain trong `frontend/src/services/`, kiểu chung trong `frontend/src/types/`, hook trong `frontend/src/hooks/` (xem [docs/coding-conventions.md](docs/coding-conventions.md)).
+- Có compatibility re-export tạm thời ở `services/*` và `lib/*-api.ts` để tránh break import cũ; chuẩn chính thức là client gọi HTTP theo domain trong `frontend/src/api/`, kiểu chung trong `frontend/src/types/`, hook trong `frontend/src/hooks/` (xem [docs/coding-conventions.md](docs/coding-conventions.md)).
 - Chưa bật realtime ở tất cả màn hình.
 - Chưa bật đầy đủ pipeline AI runtime.
 
