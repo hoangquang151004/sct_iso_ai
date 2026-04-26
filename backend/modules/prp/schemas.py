@@ -126,6 +126,7 @@ class PRPAuditDetailBase(BaseModel):
     score: Optional[float] = None
     observation: Optional[str] = None
     evidence_url: Optional[str] = None
+    create_nc: bool = False
 
 
 class PRPAuditDetailCreate(PRPAuditDetailBase):

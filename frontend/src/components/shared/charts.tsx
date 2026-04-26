@@ -242,20 +242,23 @@ export function DeviationByCcpChart() {
   );
 }
 
-export function ActionsBySourceChart() {
-  const maxValue = Math.max(
-    ...(actionsBySourceChartData.datasets[0]?.data ?? [0]),
-  );
+type ActionsBySourceChartProps = {
+  chartData?: ChartData<"doughnut", (number | null)[], string>;
+};
+
+export function ActionsBySourceChart({ chartData }: ActionsBySourceChartProps) {
+  const data = chartData ?? actionsBySourceChartData;
+  const maxValue = Math.max(...(data.datasets[0]?.data ?? [0]).map(v => Number(v) || 0));
 
   return (
     <div className="h-56">
       <Doughnut
-        data={actionsBySourceChartData}
+        data={data}
         options={{
           ...baseDoughnutOptions,
           plugins: {
             ...baseDoughnutOptions.plugins,
-            centerText: { text: `${maxValue}%` },
+            centerText: { text: maxValue > 0 ? `${maxValue}` : "0" },
           } as Record<string, unknown>,
         }}
         plugins={[centerTextPlugin]}

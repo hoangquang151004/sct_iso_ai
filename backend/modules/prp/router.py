@@ -216,6 +216,8 @@ def list_prp_audits(
     org_id: Optional[UUID] = Query(None),
     area_id: Optional[UUID] = Query(None, description="Lọc theo ID khu vực"),
     audit_date: Optional[date] = Query(None, description="Lọc theo ngày đánh giá"),
+    month: Optional[int] = Query(None, ge=1, le=12),
+    year: Optional[int] = Query(None),
     service: PRPAuditService = Depends(get_prp_audit_service),
 ):
     return service.get_audits(
@@ -223,7 +225,9 @@ def list_prp_audits(
         limit=limit, 
         org_id=org_id, 
         area_id=area_id, 
-        audit_date=audit_date
+        audit_date=audit_date,
+        month=month,
+        year=year
     )
 
 

@@ -164,8 +164,10 @@ class PRPAuditService:
         org_id: Optional[UUID] = None,
         area_id: Optional[UUID] = None,
         audit_date: Optional[date] = None,
+        month: Optional[int] = None,
+        year: Optional[int] = None,
     ) -> List[PRPAudit]:
-        """Lấy danh sách Audit, lọc theo khu vực và tháng năm."""
+        """Lấy danh sách Audit, lọc theo khu vực và ngày hoặc tháng/năm."""
         query = select(PRPAudit).options(
             joinedload(PRPAudit.area), joinedload(PRPAudit.prp_program)
         )
@@ -174,12 +176,16 @@ class PRPAuditService:
             query = query.where(PRPAudit.org_id == org_id)
         if area_id:
             query = query.where(PRPAudit.area_id == area_id)
+        
         if audit_date:
-            # Lọc theo Tháng và Năm của audit_date
+            query = query.where(PRPAudit.audit_date == audit_date)
+        elif month and year:
             query = query.where(
-                extract("month", PRPAudit.audit_date) == audit_date.month,
-                extract("year", PRPAudit.audit_date) == audit_date.year,
+                extract("month", PRPAudit.audit_date) == month,
+                extract("year", PRPAudit.audit_date) == year,
             )
+        elif year:
+            query = query.where(extract("year", PRPAudit.audit_date) == year)
 
         query = query.order_by(PRPAudit.audit_date.desc())
         return list(self.db.scalars(query.offset(skip).limit(limit)).all())
@@ -203,11 +209,15 @@ class PRPAuditService:
         self.db.flush()
 
         for detail_in in payload.details:
-            db_detail = PRPAuditDetail(audit_id=db_audit.id, **detail_in.model_dump())
+            # Tách create_nc ra trước khi dump vào model database
+            detail_data = detail_in.model_dump()
+            should_create_nc = detail_data.pop("create_nc", False)
+            
+            db_detail = PRPAuditDetail(audit_id=db_audit.id, **detail_data)
             self.db.add(db_detail)
             
-            # Nếu hạng mục kiểm tra là FAIL -> Tạo NonConformity tự động
-            if detail_in.result == "FAIL":
+            # Chỉ tạo NonConformity khi người dùng yêu cầu
+            if should_create_nc:
                 checklist = self.db.get(PRPChecklistTemplate, detail_in.checklist_id)
                 q_text = checklist.question_text if checklist else "Hạng mục PRP không xác định"
                 

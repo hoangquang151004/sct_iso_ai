@@ -45,6 +45,32 @@ class CAPAResponse(CAPABase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class NonConformityCreate(BaseModel):
+    org_id: UUID
+    source: str
+    source_ref_id: Optional[UUID] = None
+    title: str
+    description: Optional[str] = None
+    severity: str = "MEDIUM"
+
+
+class NonConformityResponse(BaseModel):
+    id: UUID
+    org_id: UUID
+    nc_code: Optional[str] = None
+    source: str
+    source_ref_id: Optional[UUID] = None
+    title: str
+    description: Optional[str] = None
+    severity: str
+    status: str
+    detected_by: Optional[UUID] = None
+    detected_at: datetime
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 # Các schema cho Dashboard
 class KPIResponse(BaseModel):
     total: int
@@ -53,6 +79,7 @@ class KPIResponse(BaseModel):
     verifying: int
     closed: int
     overdue: int
+    source_distribution: dict[str, int] = {}
 
 
 class KanbanBoardResponse(BaseModel):

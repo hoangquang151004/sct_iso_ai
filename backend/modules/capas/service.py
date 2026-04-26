@@ -4,8 +4,8 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from database.models import CAPA
-from .schemas import CAPACreate, CAPAStatus, CAPAUpdate
+from database.models import CAPA, NonConformity
+from .schemas import CAPACreate, CAPAStatus, CAPAUpdate, NonConformityCreate
 
 
 class CAPAService:
@@ -20,6 +20,34 @@ class CAPAService:
             or 0
         )
         return f"CAPA-{year}-{(count + 1):04d}"
+
+    def get_nc(self, nc_id: UUID) -> Optional[NonConformity]:
+        """Lấy NonConformity theo ID."""
+        return self.db.get(NonConformity, nc_id)
+
+    def create_nc(self, payload: NonConformityCreate) -> NonConformity:
+        """Tạo mới một điểm không phù hợp (NC) thủ công."""
+        db_nc = NonConformity(
+            **payload.model_dump(), status="OPEN", detected_at=datetime.now()
+        )
+        self.db.add(db_nc)
+        self.db.commit()
+        self.db.refresh(db_nc)
+        return db_nc
+
+    def get_ncs(
+        self, org_id: UUID, status: Optional[str] = "OPEN", source: Optional[str] = None
+    ) -> List[NonConformity]:
+        """Lấy danh sách các lỗi (NC) chưa được xử lý của tổ chức, hỗ trợ lọc theo nguồn."""
+        stmt = select(NonConformity).where(NonConformity.org_id == org_id)
+        if status:
+            stmt = stmt.where(NonConformity.status == status)
+        if source:
+            stmt = stmt.where(NonConformity.source == source)
+
+        return list(
+            self.db.scalars(stmt.order_by(NonConformity.detected_at.desc())).all()
+        )
 
     def get_capas(self, skip: int = 0, limit: int = 100, org_id: Optional[UUID] = None):
         query = select(CAPA)
@@ -49,14 +77,32 @@ class CAPAService:
         for key, value in update_data.items():
             setattr(db_capa, key, value)
 
+        # Nếu CAPA được đóng -> Tự động đóng NC liên quan
+        if payload.status == CAPAStatus.CLOSED and db_capa.nc_id:
+            db_nc = self.db.get(NonConformity, db_capa.nc_id)
+            if db_nc:
+                db_nc.status = "CLOSED"
+
         self.db.commit()
         self.db.refresh(db_capa)
         return db_capa
 
     def get_capa_kpi(self, org_id: UUID) -> Dict[str, Any]:
         """Thống kê KPI chi tiết cho Beta"""
-        base_query = select(CAPA).where(CAPA.org_id == org_id)
-        all_capas = self.db.scalars(base_query).all()
+        # Join với NonConformity để lấy nguồn gốc (source)
+        stmt = (
+            select(CAPA, NonConformity.source)
+            .join(NonConformity, CAPA.nc_id == NonConformity.id, isouter=True)
+            .where(CAPA.org_id == org_id)
+        )
+        results = self.db.execute(stmt).all()
+
+        all_capas = [r[0] for r in results]
+        sources = [r[1] for r in results if r[1]]
+
+        source_dist = {}
+        for s in sources:
+            source_dist[s] = source_dist.get(s, 0) + 1
 
         now = datetime.now().date()
         return {
@@ -76,6 +122,7 @@ class CAPAService:
                     if c.status != CAPAStatus.CLOSED and c.due_date and c.due_date < now
                 ]
             ),
+            "source_distribution": source_dist,
         }
 
     def get_kanban_board(self, org_id: UUID) -> Dict[str, List[Any]]:
@@ -85,3 +132,11 @@ class CAPAService:
             if c.status in board:
                 board[c.status].append(c)
         return board
+
+    def delete_capa(self, capa_id: UUID) -> bool:
+        db_capa = self.db.get(CAPA, capa_id)
+        if not db_capa:
+            return False
+        self.db.delete(db_capa)
+        self.db.commit()
+        return True

@@ -20,7 +20,8 @@ export default function PrpAuditPage() {
   const [openNCs, setOpenNCs] = useState<NonConformity[]>([]);
   const [programs, setPrograms] = useState<PRPProgram[]>([]);
   const [selectedZone, setSelectedZone] = useState<string>("");
-  const [selectedMonth, setSelectedMonth] = useState<string>(""); 
+  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]); 
+  const [filterType, setFilterType] = useState<"day" | "month">("day");
   const [loading, setLoading] = useState(true);
 
   // States for Modals
@@ -32,26 +33,31 @@ export default function PrpAuditPage() {
   const [showNCTracking, setShowNCTracking] = useState(false);
   const [selectedAuditId, setSelectedAuditId] = useState<string | null>(null);
 
+  const [kpis, setKpis] = useState<any>(null);
+
   useEffect(() => {
     async function init() {
       try {
+        const today = new Date().toISOString().split('T')[0];
         const [locs, ads, progs] = await Promise.all([
           prpService.listLocations(),
-          prpService.listAudits(),
+          prpService.listAudits({ audit_date: today }),
           prpService.listPrograms(),
         ]);
         setLocations(locs);
         setAudits(ads);
         setPrograms(progs);
 
-        // Fetch upcoming schedules and NCs if orgId is available
+        // Fetch upcoming schedules, NCs and KPIs if orgId is available
         if (orgId) {
-          const [upcomings, ncs] = await Promise.all([
+          const [upcomings, ncs, kpiData] = await Promise.all([
             prpService.getUpcomingSchedules(orgId),
-            capaService.listNCs(orgId, "OPEN", "PRP")
+            capaService.listNCs(orgId, "OPEN", "PRP"),
+            capaService.getKPIs(orgId)
           ]);
           setUpcomingSchedules(upcomings);
           setOpenNCs(ncs);
+          setKpis(kpiData);
         }
       } catch (error) {
         console.error("Failed to fetch PRP data:", error);
@@ -61,6 +67,11 @@ export default function PrpAuditPage() {
     }
     init();
   }, [orgId]);
+
+  // Logic tính tỉ lệ thực tế
+  const closureRate = kpis?.total > 0 
+    ? Math.round((kpis.closed / kpis.total) * 100) 
+    : 0;
 
   const refreshPrograms = async () => {
     const progs = await prpService.listPrograms();
@@ -81,24 +92,30 @@ export default function PrpAuditPage() {
     }
   };
 
-  const handleFilterChange = async (zoneId: string, monthValue?: string) => {
+  const handleFilterChange = async (zoneId: string, dateValue?: string, type?: "day" | "month") => {
     const zId = zoneId !== undefined ? zoneId : selectedZone;
-    const mVal = monthValue !== undefined ? monthValue : selectedMonth;
+    const dVal = dateValue !== undefined ? dateValue : selectedDate;
+    const fType = type !== undefined ? type : filterType;
     
     setSelectedZone(zId);
-    setSelectedMonth(mVal);
+    setSelectedDate(dVal);
+    setFilterType(fType);
     setLoading(true);
     
     try {
-      let auditDate = undefined;
-      if (mVal) {
-        auditDate = `${mVal}-01`;
+      const params: any = { area_id: zId || undefined };
+      
+      if (dVal) {
+        if (fType === "day") {
+          params.audit_date = dVal;
+        } else {
+          const [year, month] = dVal.split("-");
+          params.month = parseInt(month);
+          params.year = parseInt(year);
+        }
       }
       
-      const ads = await prpService.listAudits({ 
-        area_id: zId || undefined,
-        audit_date: auditDate 
-      });
+      const ads = await prpService.listAudits(params);
       setAudits(ads);
     } catch (error) {
       console.error("Failed to filter audits:", error);
@@ -108,6 +125,12 @@ export default function PrpAuditPage() {
   };
 
   const currentScore = audits[0]?.compliance_rate || 0;
+
+  const sortedAuditsByDate = [...audits].sort((a, b) => 
+    new Date(b.audit_date).getTime() - new Date(a.audit_date).getTime()
+  );
+
+  const highestRiskAudit = [...audits].sort((a, b) => (a.compliance_rate || 0) - (b.compliance_rate || 0))[0];
 
   return (
     <AppShell activePath="/prp-audit">
@@ -141,11 +164,11 @@ export default function PrpAuditPage() {
         </div>
       </div>
 
-      <div className="mb-6 flex gap-4">
+      <div className="mb-6 flex items-center gap-4">
         <select
           value={selectedZone}
           onChange={(e) => handleFilterChange(e.target.value)}
-          className="rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-700"
+          className="rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-700 focus:ring-2 focus:ring-[#1e8b9b] outline-none"
         >
           <option value="">Tất cả khu vực</option>
           {locations.map((loc) => (
@@ -154,22 +177,33 @@ export default function PrpAuditPage() {
             </option>
           ))}
         </select>
+
+        <div className="flex bg-slate-100 p-1 rounded-lg">
+          <button
+            onClick={() => handleFilterChange(selectedZone, new Date().toISOString().split('T')[0], "day")}
+            className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
+              filterType === "day" ? "bg-white text-[#1e8b9b] shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            Theo Ngày
+          </button>
+          <button
+            onClick={() => handleFilterChange(selectedZone, new Date().toISOString().slice(0, 7), "month")}
+            className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
+              filterType === "month" ? "bg-white text-[#1e8b9b] shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            Theo Tháng
+          </button>
+        </div>
+
         <div className="relative">
           <input
-            type="month"
-            value={selectedMonth}
+            type={filterType === "day" ? "date" : "month"}
+            value={selectedDate}
             onChange={(e) => handleFilterChange(selectedZone, e.target.value)}
             className="rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#1e8b9b]"
           />
-          {selectedMonth && (
-            <button 
-              onClick={() => handleFilterChange(selectedZone, "")}
-              className="absolute right-8 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-              title="Xóa bộ lọc thời gian"
-            >
-              &times;
-            </button>
-          )}
         </div>
       </div>
 
@@ -199,18 +233,18 @@ export default function PrpAuditPage() {
             </div>
 
             <div className="rounded-xl bg-white p-6 shadow">
-              <h2 className="mb-4 font-bold text-slate-800 uppercase text-xs tracking-wider text-slate-400">NC Tồn đọng</h2>
+              <h2 className="mb-4 font-bold text-slate-800 uppercase text-xs tracking-wider text-slate-400">Tỉ lệ khắc phục</h2>
               <div className="flex items-baseline gap-2">
-                <div className="text-4xl font-black text-rose-500">{openNCs.length}</div>
-                <div className="text-xs font-bold text-rose-300 uppercase">Điểm lỗi</div>
+                <div className="text-4xl font-black text-emerald-500">{closureRate}%</div>
+                <div className="text-xs font-bold text-emerald-300 uppercase">Hoàn thành</div>
               </div>
-              <p className="text-[10px] text-slate-400 mt-1 italic">Cần xử lý CAPA ngay</p>
+              <p className="text-[10px] text-slate-400 mt-1 italic">Dựa trên các hành động CAPA</p>
             </div>
 
             <div className="rounded-xl bg-white p-6 shadow">
               <h2 className="mb-4 font-bold text-slate-800 uppercase text-xs tracking-wider text-slate-400">Rủi ro cao nhất</h2>
-              <div className="text-sm font-bold text-slate-700 truncate" title={audits.sort((a,b) => a.compliance_rate - b.compliance_rate)[0]?.area?.name || "N/A"}>
-                {audits.sort((a,b) => a.compliance_rate - b.compliance_rate)[0]?.area?.name || "Chưa có dữ liệu"}
+              <div className="text-sm font-bold text-slate-700 truncate" title={highestRiskAudit?.area?.name || "N/A"}>
+                {highestRiskAudit?.area?.name || "Chưa có dữ liệu"}
               </div>
               <div className="mt-1 flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-amber-500"></span>
@@ -234,21 +268,21 @@ export default function PrpAuditPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {audits.length === 0 ? (
+                  {sortedAuditsByDate.length === 0 ? (
                     <tr>
                       <td colSpan={4} className="px-4 py-10 text-center text-slate-400">
                         Không có dữ liệu đánh giá cho bộ lọc này.
                       </td>
                     </tr>
                   ) : (
-                    audits.map((audit) => (
+                    sortedAuditsByDate.map((audit) => (
                       <tr 
                         key={audit.id} 
                         onClick={() => setSelectedAuditId(audit.id)}
                         className="hover:bg-slate-50 cursor-pointer transition-colors"
                       >
                         <td className="px-4 py-3">
-                          {new Date(audit.audit_date).toLocaleDateString("vi-VN")}
+                          {new Date(audit.audit_date).toLocaleDateString()}
                         </td>
                         <td className="px-4 py-3 font-medium">{audit.area?.name}</td>
                         <td className="px-4 py-3 text-center font-bold text-emerald-600">
@@ -344,7 +378,7 @@ export default function PrpAuditPage() {
                           {nc.title}
                         </h3>
                         <div className="mt-1 flex items-center justify-between text-[10px] font-medium">
-                          <span className="text-slate-400">{new Date(nc.detected_at).toLocaleDateString("vi-VN")}</span>
+                          <span className="text-slate-400">{new Date(nc.detected_at).toLocaleDateString()}</span>
                           <span className="px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded uppercase text-[8px] font-bold">{nc.severity}</span>
                         </div>
                       </div>
@@ -405,6 +439,13 @@ export default function PrpAuditPage() {
         <AuditDetailModal
           auditId={selectedAuditId}
           onClose={() => setSelectedAuditId(null)}
+          onSuccess={() => {
+            refreshNCs();
+            // Cập nhật lại KPI tỉ lệ khắc phục
+            if (orgId) {
+              capaService.getKPIs(orgId).then(setKpis);
+            }
+          }}
         />
       )}
 
@@ -477,7 +518,7 @@ function NCTrackingModal({ onClose }: { onClose: () => void }) {
                 {ncs.map((nc) => (
                   <tr key={nc.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-4 text-slate-500 w-32">
-                      {new Date(nc.detected_at).toLocaleDateString("vi-VN")}
+                      {new Date(nc.detected_at).toLocaleDateString()}
                     </td>
                     <td className="px-4 py-4 font-medium text-slate-800">
                       {nc.title}
@@ -881,14 +922,61 @@ function ScheduleModal({ locations, programs, onClose, onSuccess }: any) {
 
 // Modal components
 function AuditDetailModal({ auditId, onClose }: { auditId: string; onClose: () => void }) {
+  const toast = useToast();
+  const { principal } = useAuth();
   const [audit, setAudit] = useState<PRPAudit | null>(null);
   const [loading, setLoading] = useState(true);
+  const [existingNCs, setExistingNCs] = useState<string[]>([]);
+  const [selectedDetailForCAPA, setSelectedDetailForCAPA] = useState<any>(null);
+  const [managerReason, setManagerReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    prpService.getAuditById(auditId)
-      .then(setAudit)
-      .finally(() => setLoading(false));
+    async function fetchAuditAndChecks() {
+      try {
+        setLoading(true);
+        const data = await prpService.getAuditById(auditId);
+        setAudit(data);
+        
+        // Kiểm tra xem những detail nào đã được tạo NC
+        if (data?.details) {
+          const detailIds = data.details.map((d: any) => d.id);
+          const ncs = await capaService.checkExistingNCs(detailIds);
+          setExistingNCs(ncs);
+        }
+      } catch (error) {
+        console.error("Failed to load audit detail:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchAuditAndChecks();
   }, [auditId]);
+
+  const handleCreateNCRequest = async () => {
+    if (!principal?.org_id || !selectedDetailForCAPA) return;
+    try {
+      setSubmitting(true);
+      await capaService.createNC({
+        org_id: principal.org_id,
+        source: "PRP",
+        source_ref_id: selectedDetailForCAPA.id,
+        title: managerReason, // Tiêu đề là nội dung phân tích của Quản lý
+        description: selectedDetailForCAPA.checklist?.question_text, // Mô tả là câu hỏi kiểm tra gốc
+        severity: "MEDIUM"
+      });
+      
+      setExistingNCs([...existingNCs, selectedDetailForCAPA.id]);
+      toast.success("Đã gửi yêu cầu CAPA sang bộ phận xử lý!");
+      setSelectedDetailForCAPA(null);
+      setManagerReason("");
+    } catch (error) {
+      console.error("Failed to create NC:", error);
+      toast.error("Lỗi khi tạo yêu cầu CAPA.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   if (loading) return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -900,66 +988,57 @@ function AuditDetailModal({ auditId, onClose }: { auditId: string; onClose: () =
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
-        <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+      <div className="bg-white rounded-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+        <div className="p-6 border-b flex justify-between items-center bg-slate-800 text-white">
           <div>
-            <h2 className="text-xl font-bold text-slate-800">Chi tiết Đánh giá PRP</h2>
-            <div className="flex flex-col">
-              <p className="text-sm font-medium text-[#1e8b9b]">
-                Chương trình: {audit.prp_program ? audit.prp_program.name : "Đang tải..."}
-              </p>
-              <p className="text-xs text-slate-500">
-                Khu vực: {audit.area?.name}
-              </p>
-              <p className="text-xs text-slate-500">
-                Ngày: {new Date(audit.audit_date).toLocaleDateString("vi-VN")}
-              </p>
-            </div>
+            <h2 className="text-xl font-bold">Chi tiết Đánh giá PRP</h2>
+            <p className="text-xs text-slate-300">
+              Khu vực: {audit.area?.name} | Ngày: {new Date(audit.audit_date).toLocaleDateString()}
+            </p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
+          <button onClick={onClose} className="text-white/60 hover:text-white text-2xl">&times;</button>
         </div>
 
         <div className="p-6 flex-1 overflow-auto">
-          <div className="grid grid-cols-3 gap-6 mb-8">
-            <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100">
-              <p className="text-xs text-emerald-600 font-bold uppercase mb-1">Tỉ lệ tuân thủ</p>
-              <p className="text-2xl font-bold text-emerald-700">{audit.compliance_rate}%</p>
-            </div>
-            <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
-              <p className="text-xs text-blue-600 font-bold uppercase mb-1">Kết quả chung</p>
-              <p className="text-2xl font-bold text-blue-700">{audit.overall_result}</p>
-            </div>
-            <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-              <p className="text-xs text-slate-600 font-bold uppercase mb-1">Tổng số hạng mục</p>
-              <p className="text-2xl font-bold text-slate-700">{audit.details?.length || 0}</p>
-            </div>
-          </div>
-
           <table className="w-full text-left text-sm text-slate-700">
             <thead className="bg-slate-100 sticky top-0">
               <tr>
                 <th className="px-4 py-3 font-bold">Hạng mục kiểm tra</th>
                 <th className="px-4 py-3 text-center font-bold">Kết quả</th>
-                <th className="px-4 py-3 font-bold">Ghi chú / Quan sát</th>
+                <th className="px-4 py-3 font-bold">Auditor Quan sát</th>
+                <th className="px-4 py-3 text-right font-bold">Hành động</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {audit.details?.map((detail) => (
+              {audit.details?.map((detail: any) => (
                 <tr key={detail.id} className="hover:bg-slate-50/50">
-                  <td className="px-4 py-4">
-                    <p className="font-medium text-slate-800">{detail.checklist?.question_text}</p>
-                    <p className="text-xs text-slate-400">ID: {detail.checklist_id}</p>
+                  <td className="px-4 py-4 max-w-xs font-medium">
+                    {detail.checklist?.question_text}
                   </td>
                   <td className="px-4 py-4 text-center">
-                    <span className={`px-3 py-1 rounded-lg text-xs font-bold ${
+                    <span className={`px-3 py-1 rounded-lg text-[10px] font-bold ${
                       detail.result === "PASS" ? "bg-emerald-100 text-emerald-700" : 
                       detail.result === "FAIL" ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600"
                     }`}>
                       {detail.result}
                     </span>
                   </td>
-                  <td className="px-4 py-4 text-slate-500 italic">
-                    {detail.observation || "Không có ghi chú"}
+                  <td className="px-4 py-4 text-slate-500 italic text-xs">
+                    {detail.observation || "---"}
+                  </td>
+                  <td className="px-4 py-4 text-right">
+                    {detail.result === "FAIL" && (
+                      existingNCs.includes(detail.id) ? (
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">✓ Đã yêu cầu CAPA</span>
+                      ) : (
+                        <button 
+                          onClick={() => setSelectedDetailForCAPA(detail)}
+                          className="px-3 py-1 bg-rose-500 text-white rounded text-[10px] font-bold hover:bg-rose-600 transition shadow-sm"
+                        >
+                          ⚠️ Tạo yêu cầu CAPA
+                        </button>
+                      )
+                    )}
                   </td>
                 </tr>
               ))}
@@ -968,9 +1047,55 @@ function AuditDetailModal({ auditId, onClose }: { auditId: string; onClose: () =
         </div>
 
         <div className="p-6 border-t bg-slate-50 flex justify-end">
-          <button onClick={onClose} className="px-6 py-2 bg-slate-800 text-white rounded-lg font-medium">Đóng</button>
+          <button onClick={onClose} className="px-8 py-2 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-900 transition">Đóng</button>
         </div>
       </div>
+
+      {/* Mini-modal for Manager Reason */}
+      {selectedDetailForCAPA && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl animate-in zoom-in-95">
+            <div className="p-6 border-b bg-rose-600 text-white rounded-t-2xl">
+              <h3 className="font-bold">Khởi tạo Yêu cầu CAPA</h3>
+              <p className="text-[10px] opacity-80 mt-1">Phân tích lỗi & Gửi yêu cầu xử lý sang module CAPA</p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                <p className="text-[10px] uppercase font-bold text-slate-400">Lỗi ghi nhận:</p>
+                <p className="text-sm font-bold text-slate-700">{selectedDetailForCAPA.checklist?.question_text}</p>
+                <p className="text-xs text-slate-500 mt-2 italic">"{selectedDetailForCAPA.observation || "Không có mô tả chi tiết từ Auditor"}"</p>
+              </div>
+              
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-600 uppercase">Phân tích của Quản lý (Lý do)</label>
+                <textarea 
+                  value={managerReason}
+                  onChange={(e) => setManagerReason(e.target.value)}
+                  className="w-full rounded-xl border-slate-200 text-sm focus:ring-rose-500 focus:border-rose-500"
+                  placeholder="Tại sao lỗi này xảy ra? Cần xử lý gì gấp không?..."
+                  rows={4}
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button 
+                  onClick={() => { setSelectedDetailForCAPA(null); setManagerReason(""); }}
+                  className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition"
+                >
+                  Hủy
+                </button>
+                <button 
+                  onClick={handleCreateNCRequest}
+                  disabled={submitting || !managerReason}
+                  className="flex-[2] py-3 bg-rose-600 text-white rounded-xl font-bold hover:bg-rose-700 disabled:opacity-50 transition shadow-lg"
+                >
+                  {submitting ? "Đang gửi..." : "Xác nhận & Gửi yêu cầu"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1457,10 +1582,11 @@ function AuditFormModal({ locations, programs, onClose, onSuccess }: any) {
           checklist_id: t.id,
           result: val,
           score: isPass ? 100 : 0,
-          observation: obs
+          observation: obs,
+          create_nc: false // Auditor không tự tạo NC nữa
         };
       });
-      
+
       const complianceRate = scoreableCount > 0 ? (passCount / scoreableCount) * 100 : 0;
 
       await prpService.createFullAudit({
@@ -1475,7 +1601,7 @@ function AuditFormModal({ locations, programs, onClose, onSuccess }: any) {
         details: details,
       });
 
-      toast.success("Báo cáo đánh giá đã được gửi!");
+      toast.success("Báo cáo đánh giá đã được gửi thành công!");
       onSuccess();
     } catch (error) {
       console.error("Failed to submit audit:", error);
@@ -1540,7 +1666,7 @@ function AuditFormModal({ locations, programs, onClose, onSuccess }: any) {
                       <span className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded font-bold">Mục tiêu: ≥ {t.target_value}</span>
                     )}
                   </div>
-                  
+
                   <div className="mb-4">
                     {t.answer_type === "BOOLEAN" ? (
                       <div className="flex gap-4">
