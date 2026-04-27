@@ -27,7 +27,7 @@ export default function CapaManagementPage() {
       setLoading(true);
       const [kpiData, ncData, boardData] = await Promise.all([
         capaService.getKPIs(orgId),
-        capaService.listNCs(orgId, "OPEN", sourceFilter || undefined),
+        capaService.listNCs(orgId, "WAITING", sourceFilter || undefined),
         capaService.getBoard(orgId)
       ]);
       
@@ -223,7 +223,7 @@ export default function CapaManagementPage() {
 
       {/* Kanban Board Section */}
       <div className="mb-6 flex justify-between items-center">
-        <h2 className="font-bold text-slate-800 text-lg">Bảng công việc (Kanban)</h2>
+        <h2 className="font-bold text-slate-800 text-lg">Bảng công việc</h2>
         <button className="px-4 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-50 transition shadow-sm">
           Xuất báo cáo
         </button>
@@ -438,8 +438,6 @@ function CAPAFormModal({ nc, onClose, onSuccess }: { nc: NonConformity, onClose:
         due_date: dueDate || undefined,
         status: "OPEN"
       });
-
-      await capaService.updateNC(nc.id, { status: "IN_PROGRESS" });
 
       toast.success("Đã khởi tạo CAPA thành công!");
       onSuccess();

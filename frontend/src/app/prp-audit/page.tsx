@@ -9,6 +9,58 @@ import { auditMonths } from "@/lib/mock-data";
 
 import { useToast, useAuth } from "@/hooks";
 
+const getNCStatusBadge = (nc: any) => {
+  // Ưu tiên hiển thị trạng thái từ CAPA nếu NC này đã được tạo CAPA
+  const displayStatus = nc.capa_status || nc.status;
+
+  switch (displayStatus) {
+    case "WAITING":
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 mr-1.5 animate-pulse"></span>
+          Đang chờ duyệt
+        </span>
+      );
+    case "OPEN":
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 mr-1.5"></span>
+          Đã duyệt (Mở)
+        </span>
+      );
+    case "IN_PROGRESS":
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 border border-indigo-200">
+          <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 mr-1.5"></span>
+          Đang xử lý
+        </span>
+      );
+    case "VERIFYING":
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200">
+          <span className="w-1.5 h-1.5 rounded-full bg-purple-400 mr-1.5"></span>
+          Đang thẩm tra
+        </span>
+      );
+    case "CLOSED":
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 border border-emerald-200">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5"></span>
+          Đã hoàn thành
+        </span>
+      );
+    case "REJECTED":
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-800 border border-rose-200">
+          <span className="w-1.5 h-1.5 rounded-full bg-rose-400 mr-1.5"></span>
+          Bị bác bỏ
+        </span>
+      );
+    default:
+      return <span className="text-slate-400 text-xs">{displayStatus}</span>;
+  }
+};
+
 export default function PrpAuditPage() {
   const toast = useToast();
   const { principal } = useAuth();
@@ -52,11 +104,12 @@ export default function PrpAuditPage() {
         if (orgId) {
           const [upcomings, ncs, kpiData] = await Promise.all([
             prpService.getUpcomingSchedules(orgId),
-            capaService.listNCs(orgId, "OPEN", "PRP"),
+            capaService.listNCs(orgId, "", "PRP"), // Lấy tất cả để lọc ở FE hoặc hiện hết trừ CLOSED
             capaService.getKPIs(orgId)
           ]);
           setUpcomingSchedules(upcomings);
-          setOpenNCs(ncs);
+          // Chỉ lấy OPEN, IN_PROGRESS, VERIFYING (ẩn CLOSED)
+          setOpenNCs(ncs.filter((nc: any) => nc.status !== "CLOSED"));
           setKpis(kpiData);
         }
       } catch (error) {
@@ -87,8 +140,8 @@ export default function PrpAuditPage() {
 
   const refreshNCs = async () => {
     if (orgId) {
-      const ncs = await capaService.listNCs(orgId, "OPEN", "PRP");
-      setOpenNCs(ncs);
+      const ncs = await capaService.listNCs(orgId, "", "PRP");
+      setOpenNCs(ncs.filter((nc: any) => nc.status !== "CLOSED"));
     }
   };
 
@@ -350,11 +403,11 @@ export default function PrpAuditPage() {
               </div>
             </section>
 
-            {/* Widget 2: Điểm NC đang mở */}
+            {/* Widget 2: Tiến độ xử lý lỗi (NC) */}
             <section className="flex-1 rounded-xl bg-white p-6 shadow flex flex-col min-h-[300px]">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-lg font-bold text-slate-800">
-                  Điểm NC đang mở
+                  Tiến độ xử lý lỗi (NC)
                 </h2>
                 <button 
                   onClick={() => setShowNCTracking(true)}
@@ -372,14 +425,23 @@ export default function PrpAuditPage() {
                   </div>
                 ) : (
                   openNCs.slice(0, 4).map((nc) => (
-                    <div key={nc.id} className="group p-3 border border-rose-50 rounded-xl bg-rose-50/30 hover:bg-white hover:shadow-sm transition-all border-l-4 border-l-rose-500">
+                    <div key={nc.id} className={`group p-3 border rounded-xl hover:shadow-sm transition-all border-l-4 ${
+                      (nc.capa_status || nc.status) === "OPEN" ? "bg-rose-50/30 border-rose-100 border-l-rose-500" :
+                      (nc.capa_status || nc.status) === "IN_PROGRESS" ? "bg-blue-50/30 border-blue-100 border-l-blue-500" :
+                      "bg-amber-50/30 border-amber-100 border-l-amber-500"
+                    }`}>
                       <div className="min-w-0 flex-1">
-                        <h3 className="font-bold text-slate-700 text-xs truncate group-hover:text-rose-600 transition-colors" title={nc.title}>
-                          {nc.title}
-                        </h3>
-                        <div className="mt-1 flex items-center justify-between text-[10px] font-medium">
+                        <div className="flex justify-between items-start gap-2 mb-1">
+                          <h3 className="font-bold text-slate-700 text-xs truncate group-hover:text-rose-600 transition-colors" title={nc.title}>
+                            {nc.title}
+                          </h3>
+                          <div className="shrink-0">
+                            {getNCStatusBadge(nc)}
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] font-medium">
                           <span className="text-slate-400">{new Date(nc.detected_at).toLocaleDateString()}</span>
-                          <span className="px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded uppercase text-[8px] font-bold">{nc.severity}</span>
+                          <span className="text-slate-400 uppercase text-[8px] font-bold">Lần {openNCs.indexOf(nc) + 1}</span>
                         </div>
                       </div>
                     </div>
@@ -450,7 +512,7 @@ export default function PrpAuditPage() {
       )}
 
       {showUpcomingModal && (
-        <UpcomingSchedulesModal onClose={() => setShowUpcomingModal(false)} />
+        <ScheduleManagementModal onClose={() => setShowUpcomingModal(false)} />
       )}
 
       {showNCTracking && (
@@ -461,19 +523,18 @@ export default function PrpAuditPage() {
 }
 
 function NCTrackingModal({ onClose }: { onClose: () => void }) {
-  const toast = useToast();
   const { principal } = useAuth();
   const orgId = principal?.org_id;
   const [ncs, setNcs] = useState<NonConformity[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedNC, setSelectedNC] = useState<NonConformity | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>(""); // "" = All
 
   const fetchNCs = async () => {
     if (!orgId) return;
     try {
       setLoading(true);
-      // Chỉ lấy lỗi từ nguồn PRP
-      const data = await capaService.listNCs(orgId, "OPEN", "PRP");
+      // Lấy lỗi từ nguồn PRP với bộ lọc trạng thái
+      const data = await capaService.listNCs(orgId, statusFilter, "PRP");
       setNcs(data);
     } catch (error) {
       console.error("Failed to fetch NCs:", error);
@@ -484,7 +545,7 @@ function NCTrackingModal({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     fetchNCs();
-  }, [orgId]);
+  }, [orgId, statusFilter]);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -492,17 +553,39 @@ function NCTrackingModal({ onClose }: { onClose: () => void }) {
         <div className="p-6 border-b flex justify-between items-center bg-rose-600 text-white">
           <div>
             <h2 className="text-xl font-bold">Theo dõi điểm Không tuân thủ (NC) - PRP</h2>
-            <p className="text-xs text-rose-100 mt-1">Danh sách lỗi phát sinh từ Đánh giá PRP</p>
+            <p className="text-xs text-rose-100 mt-1">Theo dõi tiến độ khắc phục các lỗi phát sinh</p>
           </div>
           <button onClick={onClose} className="text-white/80 hover:text-white text-2xl">&times;</button>
+        </div>
+
+        <div className="bg-slate-50 border-b p-2 flex gap-1">
+          {[
+            { label: "Tất cả", value: "" },
+            { label: "Mới (Chờ duyệt)", value: "WAITING" },
+            { label: "Đã duyệt", value: "OPEN" },
+            { label: "Đang xử lý", value: "IN_PROGRESS,VERIFYING" },
+            { label: "Hoàn thành", value: "CLOSED" },
+          ].map((tab) => (
+            <button
+              key={tab.value}
+              onClick={() => setStatusFilter(tab.value)}
+              className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                statusFilter === tab.value 
+                  ? "bg-white text-rose-600 shadow-sm border border-rose-100" 
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
         
         <div className="p-6 flex-1 overflow-auto">
           {loading ? (
-            <div className="text-center py-10">Đang tải danh sách lỗi...</div>
+            <div className="text-center py-10 text-slate-400">Đang tải danh sách lỗi...</div>
           ) : ncs.length === 0 ? (
             <div className="text-center py-20 text-slate-400 border-2 border-dashed rounded-xl">
-              Hiện tại không có điểm lỗi PRP nào cần xử lý.
+              Không tìm thấy điểm lỗi nào trong danh mục này.
             </div>
           ) : (
             <table className="w-full text-left text-sm">
@@ -511,7 +594,7 @@ function NCTrackingModal({ onClose }: { onClose: () => void }) {
                   <th className="px-4 py-3 font-bold text-slate-600">Ngày phát hiện</th>
                   <th className="px-4 py-3 font-bold text-slate-600">Nội dung lỗi</th>
                   <th className="px-4 py-3 font-bold text-slate-600 text-center">Mức độ</th>
-                  <th className="px-4 py-3 font-bold text-slate-600 text-right">Thao tác</th>
+                  <th className="px-4 py-3 font-bold text-slate-600 text-right">Tiến độ xử lý</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -530,13 +613,8 @@ function NCTrackingModal({ onClose }: { onClose: () => void }) {
                         {nc.severity}
                       </span>
                     </td>
-                    <td className="px-4 py-4 text-right w-32">
-                      <button
-                        onClick={() => setSelectedNC(nc)}
-                        className="px-3 py-1 bg-rose-500 text-white rounded font-bold text-xs hover:bg-rose-600 transition"
-                      >
-                        Gửi CAPA
-                      </button>
+                    <td className="px-4 py-4 text-right w-40">
+                      {getNCStatusBadge(nc)}
                     </td>
                   </tr>
                 ))}
@@ -549,186 +627,121 @@ function NCTrackingModal({ onClose }: { onClose: () => void }) {
           <button onClick={onClose} className="px-8 py-2 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-900 transition">Đóng</button>
         </div>
       </div>
-
-      {selectedNC && (
-        <CAPAFormModal 
-          nc={selectedNC} 
-          onClose={() => setSelectedNC(null)} 
-          onSuccess={() => {
-            setSelectedNC(null);
-            fetchNCs();
-          }}
-        />
-      )}
     </div>
   );
 }
 
-function CAPAFormModal({ nc, onClose, onSuccess }: { nc: NonConformity, onClose: () => void, onSuccess: () => void }) {
-  const toast = useToast();
+function ScheduleManagementModal({ onClose }: { onClose: () => void }) {
   const { principal } = useAuth();
-  
-  const [title, setTitle] = useState(`Khắc phục: ${nc.title}`);
-  const [rootCause, setRootCause] = useState("");
-  const [dueDate, setDueDate] = useState("");
-  const [loading, setLoading] = useState(false);
+  const orgId = principal?.org_id;
+  const [schedules, setSchedules] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<string>(""); // "" = All, "SCHEDULED", "COMPLETED", "OVERDUE"
 
-  const handleSubmit = async () => {
-    if (!principal?.org_id) return;
+  const fetchSchedules = async () => {
+    if (!orgId) return;
     try {
       setLoading(true);
-      // 1. Tạo CAPA
-      await capaService.createCAPA({
-        org_id: principal.org_id,
-        nc_id: nc.id,
-        title,
-        root_cause: rootCause,
-        due_date: dueDate || undefined,
-        status: "OPEN"
-      });
-
-      // 2. Cập nhật NC sang trạng thái đang xử lý (In-progress/Capa-linked)
-      // Trong logic demo này, chúng ta giả định NC sẽ được ẩn hoặc đổi trạng thái
-      await capaService.updateNC(nc.id, { status: "IN_PROGRESS" });
-
-      toast.success("Đã gửi yêu cầu CAPA thành công!");
-      onSuccess();
+      const data = await prpService.listSchedules(orgId, filter || undefined);
+      setSchedules(data);
     } catch (error) {
-      console.error("Failed to create CAPA:", error);
-      toast.error("Lỗi khi gửi CAPA.");
+      console.error("Failed to load schedules:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
-      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl animate-in zoom-in-95 duration-200">
-        <div className="p-6 border-b flex justify-between items-center bg-slate-800 text-white">
-          <h2 className="text-lg font-bold">Khởi tạo hành động CAPA</h2>
-          <button onClick={onClose} className="text-white/60 hover:text-white text-2xl">&times;</button>
-        </div>
-        
-        <div className="p-6 space-y-4">
-          <div className="p-3 bg-rose-50 border border-rose-100 rounded-lg">
-            <p className="text-[10px] uppercase font-bold text-rose-400">Đang xử lý lỗi:</p>
-            <p className="text-sm font-bold text-slate-700">{nc.title}</p>
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-500 uppercase">Tiêu đề CAPA</label>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full rounded-lg border-slate-300 text-sm focus:ring-slate-800"
-              placeholder="VD: Khắc phục lỗi vệ sinh khu vực đóng gói"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-500 uppercase">Phân tích nguyên nhân gốc rễ (Root Cause)</label>
-            <textarea
-              value={rootCause}
-              onChange={(e) => setRootCause(e.target.value)}
-              className="w-full rounded-lg border-slate-300 text-sm focus:ring-slate-800"
-              placeholder="Nhập phân tích nguyên nhân..."
-              rows={3}
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-500 uppercase">Hạn hoàn thành</label>
-            <input
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-              className="w-full rounded-lg border-slate-300 text-sm focus:ring-slate-800"
-            />
-          </div>
-
-          <div className="pt-4 flex gap-2">
-            <button
-              onClick={onClose}
-              className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-lg font-bold hover:bg-slate-200 transition"
-            >
-              Hủy
-            </button>
-            <button
-              onClick={handleSubmit}
-              disabled={loading || !title || !dueDate}
-              className="flex-[2] py-3 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-900 disabled:opacity-50 transition shadow-lg"
-            >
-              {loading ? "Đang gửi..." : "Gửi yêu cầu CAPA"}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function UpcomingSchedulesModal({ onClose }: { onClose: () => void }) {
-  const { principal } = useAuth();
-  const orgId = principal?.org_id;
-  const [schedules, setSchedules] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
   useEffect(() => {
-    if (!orgId) {
-      setLoading(false);
-      return;
+    fetchSchedules();
+  }, [orgId, filter]);
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "COMPLETED":
+        return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">Đúng hạn</span>;
+      case "OVERDUE":
+        return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-200 animate-pulse">Quá hạn</span>;
+      case "SCHEDULED":
+        return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-700 border border-sky-200">Sắp tới</span>;
+      default:
+        return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">{status}</span>;
     }
-    prpService.getUpcomingSchedules(orgId)
-      .then(setSchedules)
-      .catch(err => console.error("Failed to load upcoming schedules:", err))
-      .finally(() => setLoading(false));
-  }, [orgId]);
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col shadow-2xl">
-        <div className="p-6 border-b flex justify-between items-center bg-sky-600 text-white">
-          <h2 className="text-xl font-bold">Lịch công việc PRP sắp tới</h2>
+      <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl">
+        <div className="p-6 border-b flex justify-between items-center bg-slate-800 text-white">
+          <div>
+            <h2 className="text-xl font-bold">Quản lý Lịch đánh giá PRP</h2>
+            <p className="text-xs text-slate-300 mt-1">Theo dõi tiến độ thực hiện kế hoạch kiểm tra</p>
+          </div>
           <button onClick={onClose} className="text-white/80 hover:text-white text-2xl">&times;</button>
         </div>
         
+        <div className="bg-slate-50 border-b p-2 flex gap-1">
+          {[
+            { label: "Tất cả", value: "" },
+            { label: "Sắp tới", value: "SCHEDULED" },
+            { label: "Quá hạn", value: "OVERDUE" },
+            { label: "Đúng hạn", value: "COMPLETED" },
+          ].map((tab) => (
+            <button
+              key={tab.value}
+              onClick={() => setFilter(tab.value)}
+              className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                filter === tab.value 
+                  ? "bg-white text-slate-800 shadow-sm border border-slate-200" 
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         <div className="p-6 flex-1 overflow-auto">
           {loading ? (
-            <div className="text-center py-10 text-slate-400 font-medium italic">Đang tải lịch công việc...</div>
+            <div className="text-center py-10 text-slate-400">Đang tải lịch trình...</div>
           ) : schedules.length === 0 ? (
             <div className="text-center py-20 text-slate-400 border-2 border-dashed rounded-xl">
-              Chưa có lịch làm việc nào được lên kế hoạch.
+              Không tìm thấy lịch trình nào phù hợp.
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {schedules.map((s) => (
-                <div key={s.id} className="flex gap-4 p-4 border border-slate-100 rounded-xl bg-slate-50 hover:bg-white hover:shadow-md transition-all group">
-                  <div className="flex flex-col items-center justify-center bg-white border border-sky-100 rounded-lg px-4 py-2 min-w-[100px] shadow-sm">
-                    <span className="text-[10px] uppercase font-bold text-sky-500">Tháng {new Date(s.start_time).getMonth() + 1}</span>
-                    <span className="text-2xl font-bold text-slate-700">{new Date(s.start_time).getDate()}</span>
-                    <span className="text-[10px] text-slate-400 font-medium">Năm {new Date(s.start_time).getFullYear()}</span>
+                <div key={s.id} className="flex gap-4 p-4 border border-slate-100 rounded-xl bg-white hover:shadow-md transition-all group">
+                  <div className={`flex flex-col items-center justify-center border rounded-lg px-4 py-2 min-w-[90px] shadow-sm ${
+                    s.status === "OVERDUE" ? "bg-rose-50 border-rose-100" : "bg-slate-50 border-slate-100"
+                  }`}>
+                    <span className="text-[10px] uppercase font-bold text-slate-400">Ngày</span>
+                    <span className={`text-2xl font-black ${s.status === "OVERDUE" ? "text-rose-600" : "text-slate-700"}`}>
+                      {new Date(s.start_time).getDate()}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-medium">T{new Date(s.start_time).getMonth() + 1}</span>
                   </div>
-                  <div className="flex-1">
-                    <h3 className="font-bold text-slate-800 group-hover:text-sky-600 transition-colors">{s.title}</h3>
-                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 font-medium">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      {getStatusBadge(s.status)}
+                      <span className="text-[10px] text-slate-400 font-bold">{new Date(s.start_time).getFullYear()}</span>
+                    </div>
+                    <h3 className="font-bold text-slate-800 group-hover:text-sky-600 transition-colors truncate">
+                      {s.title}
+                    </h3>
+                    <div className="mt-2 flex items-center gap-3 text-xs text-slate-500">
                       <div className="flex items-center gap-1">
                         <svg className="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        {new Date(s.start_time).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+                        {new Date(s.start_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       </div>
-                      <div className="flex items-center gap-1">
-                        <svg className="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <div className="flex items-center gap-1 italic opacity-60">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                         </svg>
-                        {/* Khu vực thường có trong title, nếu muốn tách riêng cần parse description */}
-                        Lịch trình hệ thống
+                        PRP Schedule
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center">
-                    <span className="px-3 py-1 bg-sky-100 text-sky-700 rounded-full text-[10px] font-bold">Dự kiến</span>
                   </div>
                 </div>
               ))}
@@ -957,7 +970,7 @@ function AuditDetailModal({ auditId, onClose }: { auditId: string; onClose: () =
     if (!principal?.org_id || !selectedDetailForCAPA) return;
     try {
       setSubmitting(true);
-      await capaService.createNC({
+      await prpService.createNC({
         org_id: principal.org_id,
         source: "PRP",
         source_ref_id: selectedDetailForCAPA.id,

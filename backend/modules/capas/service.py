@@ -5,13 +5,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from database.models import CAPA, NonConformity
-from .schemas import CAPACreate, CAPAStatus, CAPAUpdate, NonConformityCreate
+from .schemas import CAPACreate, CAPAStatus, CAPAUpdate, NCUpdate
 
 
 class CAPAService:
     def __init__(self, db: Session):
         self.db = db
 
+    # --- 1. UTILITY ---
     def _generate_capa_code(self, org_id: UUID) -> str:
         """Tự động tạo mã CAPA-YYYY-XXXX"""
         year = datetime.now().year
@@ -21,42 +22,90 @@ class CAPAService:
         )
         return f"CAPA-{year}-{(count + 1):04d}"
 
+    # --- 2. NON-CONFORMITY (NC) MANAGEMENT ---
     def get_nc(self, nc_id: UUID) -> Optional[NonConformity]:
         """Lấy NonConformity theo ID."""
         return self.db.get(NonConformity, nc_id)
 
-    def create_nc(self, payload: NonConformityCreate) -> NonConformity:
-        """Tạo mới một điểm không phù hợp (NC) thủ công."""
-        db_nc = NonConformity(
-            **payload.model_dump(), status="OPEN", detected_at=datetime.now()
+    def check_existing_ncs(self, source_ref_ids: List[UUID]) -> List[UUID]:
+        """Kiểm tra xem các source_ref_ids đã có NC nào được tạo chưa."""
+        stmt = select(NonConformity.source_ref_id).where(
+            NonConformity.source_ref_id.in_(source_ref_ids)
         )
-        self.db.add(db_nc)
+        return list(self.db.scalars(stmt).all())
+
+    def update_nc(self, nc_id: UUID, payload: NCUpdate) -> Optional[NonConformity]:
+        db_nc = self.get_nc(nc_id)
+        if not db_nc:
+            return None
+
+        update_data = payload.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            if hasattr(db_nc, key):
+                # Handle Enum values if any
+                val_to_save = value.value if hasattr(value, "value") else value
+                setattr(db_nc, key, val_to_save)
+
         self.db.commit()
         self.db.refresh(db_nc)
         return db_nc
 
     def get_ncs(
-        self, org_id: UUID, status: Optional[str] = "OPEN", source: Optional[str] = None
-    ) -> List[NonConformity]:
-        """Lấy danh sách các lỗi (NC) chưa được xử lý của tổ chức, hỗ trợ lọc theo nguồn."""
-        stmt = select(NonConformity).where(NonConformity.org_id == org_id)
+        self,
+        org_id: UUID,
+        status: Optional[str] = "WAITING",
+        source: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Lấy danh sách các lỗi (NC) kèm theo thông tin trạng thái CAPA nếu có."""
+        stmt = (
+            select(
+                NonConformity,
+                CAPA.id.label("capa_id"),
+                CAPA.status.label("capa_status"),
+            )
+            .outerjoin(CAPA, NonConformity.id == CAPA.nc_id)
+            .where(NonConformity.org_id == org_id)
+        )
+
+        # Xử lý lọc thông minh kết hợp cả hai bảng
         if status:
-            stmt = stmt.where(NonConformity.status == status)
+            status_list = status.split(",")
+            conditions = []
+            for s in status_list:
+                if s == "WAITING":
+                    conditions.append(NonConformity.status == "WAITING")
+                elif s == "OPEN":
+                    conditions.append((NonConformity.status == "OPEN") & (CAPA.status == "OPEN"))
+                elif s == "IN_PROGRESS":
+                    conditions.append((NonConformity.status == "OPEN") & (CAPA.status == "IN_PROGRESS"))
+                elif s == "VERIFYING":
+                    conditions.append((NonConformity.status == "OPEN") & (CAPA.status == "VERIFYING"))
+                elif s == "CLOSED":
+                    conditions.append(NonConformity.status == "CLOSED")
+                else:
+                    conditions.append(NonConformity.status == s)
+
+            from sqlalchemy import or_
+            stmt = stmt.where(or_(*conditions))
+
         if source:
             stmt = stmt.where(NonConformity.source == source)
 
-        return list(
-            self.db.scalars(stmt.order_by(NonConformity.detected_at.desc())).all()
-        )
+        results = self.db.execute(stmt.order_by(NonConformity.detected_at.desc())).all()
 
-    def get_capas(self, skip: int = 0, limit: int = 100, org_id: Optional[UUID] = None):
-        query = select(CAPA)
-        if org_id:
-            query = query.where(CAPA.org_id == org_id)
-        return self.db.scalars(
-            query.order_by(CAPA.created_at.desc()).offset(skip).limit(limit)
-        ).all()
+        final_ncs = []
+        for row in results:
+            nc_dict = {
+                c.name: getattr(row.NonConformity, c.name)
+                for c in row.NonConformity.__table__.columns
+            }
+            nc_dict["capa_id"] = row.capa_id
+            nc_dict["capa_status"] = row.capa_status
+            final_ncs.append(nc_dict)
 
+        return final_ncs
+
+    # --- 3. CAPA MANAGEMENT ---
     def create_capa(self, payload: CAPACreate) -> CAPA:
         data = payload.model_dump()
         if not data.get("capa_code"):
@@ -64,6 +113,13 @@ class CAPAService:
 
         db_capa = CAPA(**data)
         self.db.add(db_capa)
+
+        # Chuyển trạng thái NC sang OPEN khi bắt đầu tạo CAPA
+        if db_capa.nc_id:
+            db_nc = self.db.get(NonConformity, db_capa.nc_id)
+            if db_nc:
+                db_nc.status = "OPEN"
+
         self.db.commit()
         self.db.refresh(db_capa)
         return db_capa
@@ -75,21 +131,25 @@ class CAPAService:
 
         update_data = payload.model_dump(exclude_unset=True)
         for key, value in update_data.items():
-            setattr(db_capa, key, value)
+            val_to_save = value.value if hasattr(value, "value") else value
+            setattr(db_capa, key, val_to_save)
 
-        # Nếu CAPA được đóng -> Tự động đóng NC liên quan
-        if payload.status == CAPAStatus.CLOSED and db_capa.nc_id:
+        # Đồng bộ trạng thái sang bảng NonConformity (NC) nếu có liên kết
+        if db_capa.nc_id:
             db_nc = self.db.get(NonConformity, db_capa.nc_id)
             if db_nc:
-                db_nc.status = "CLOSED"
+                if db_capa.status == "CLOSED":
+                    db_nc.status = "CLOSED"
+                else:
+                    db_nc.status = "OPEN"
 
         self.db.commit()
         self.db.refresh(db_capa)
         return db_capa
 
+    # --- 4. ANALYTICS & BOARD ---
     def get_capa_kpi(self, org_id: UUID) -> Dict[str, Any]:
         """Thống kê KPI chi tiết cho Beta"""
-        # Join với NonConformity để lấy nguồn gốc (source)
         stmt = (
             select(CAPA, NonConformity.source)
             .join(NonConformity, CAPA.nc_id == NonConformity.id, isouter=True)
@@ -108,35 +168,18 @@ class CAPAService:
         return {
             "total": len(all_capas),
             "open": len([c for c in all_capas if c.status == CAPAStatus.OPEN]),
-            "in_progress": len(
-                [c for c in all_capas if c.status == CAPAStatus.IN_PROGRESS]
-            ),
-            "verifying": len(
-                [c for c in all_capas if c.status == CAPAStatus.VERIFYING]
-            ),
+            "in_progress": len([c for c in all_capas if c.status == CAPAStatus.IN_PROGRESS]),
+            "verifying": len([c for c in all_capas if c.status == CAPAStatus.VERIFYING]),
             "closed": len([c for c in all_capas if c.status == CAPAStatus.CLOSED]),
-            "overdue": len(
-                [
-                    c
-                    for c in all_capas
-                    if c.status != CAPAStatus.CLOSED and c.due_date and c.due_date < now
-                ]
-            ),
+            "overdue": len([c for c in all_capas if c.status != CAPAStatus.CLOSED and c.due_date and c.due_date < now]),
             "source_distribution": source_dist,
         }
 
     def get_kanban_board(self, org_id: UUID) -> Dict[str, List[Any]]:
         capas = self.db.scalars(select(CAPA).where(CAPA.org_id == org_id)).all()
-        board = {s.value: [] for s in CAPAStatus}
+        board = {"OPEN": [], "IN_PROGRESS": [], "VERIFYING": [], "CLOSED": []}
         for c in capas:
-            if c.status in board:
-                board[c.status].append(c)
+            status_val = c.status
+            if status_val in board:
+                board[status_val].append(c)
         return board
-
-    def delete_capa(self, capa_id: UUID) -> bool:
-        db_capa = self.db.get(CAPA, capa_id)
-        if not db_capa:
-            return False
-        self.db.delete(db_capa)
-        self.db.commit()
-        return True

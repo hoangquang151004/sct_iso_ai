@@ -1,10 +1,8 @@
 from typing import List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 from database import db_manager
-from database.models import NonConformity
 
 from .schemas import (
     CAPACreate,
@@ -12,8 +10,8 @@ from .schemas import (
     CAPAUpdate,
     KanbanBoardResponse,
     KPIResponse,
-    NonConformityCreate,
     NonConformityResponse,
+    NCUpdate,
 )
 from .service import CAPAService
 
@@ -33,11 +31,11 @@ def get_capa_service(db: Session = Depends(get_db)) -> CAPAService:
     "/ncs",
     response_model=List[NonConformityResponse],
     summary="Danh sách điểm không phù hợp (NC)",
-    description="Lấy danh sách các điểm NC đang mở (OPEN) của tổ chức để theo dõi và xử lý CAPA.",
+    description="Lấy danh sách các điểm NC đang chờ xử lý (WAITING) của tổ chức để theo dõi và tạo CAPA.",
 )
 def list_ncs(
     org_id: UUID = Query(...),
-    status: Optional[str] = Query("OPEN"),
+    status: Optional[str] = Query("WAITING"),
     source: Optional[str] = Query(None, description="Lọc theo nguồn: PRP, HACCP, v.v."),
     service: CAPAService = Depends(get_capa_service),
 ):
@@ -53,25 +51,10 @@ def check_ncs(
     source_ref_ids: List[UUID] = Query(...),
     service: CAPAService = Depends(get_capa_service),
 ):
-    # Trả về danh sách các source_ref_id đã có bản ghi NC
-    stmt = select(NonConformity.source_ref_id).where(
-        NonConformity.source_ref_id.in_(source_ref_ids)
-    )
-    return list(service.db.scalars(stmt).all())
+    return service.check_existing_ncs(source_ref_ids)
 
 
-@capas_router.post(
-    "/nc",
-    response_model=NonConformityResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Tạo NC thủ công",
-)
-def create_manual_nc(
-    payload: NonConformityCreate, service: CAPAService = Depends(get_capa_service)
-):
-    return service.create_nc(payload)
-
-
+# Removed create_manual_nc - NCs must be created through source modules (PRP/HACCP)
 @capas_router.post(
     "/",
     response_model=CAPAResponse,
@@ -116,19 +99,12 @@ def get_board(org_id: UUID, service: CAPAService = Depends(get_capa_service)):
 )
 def update_nc(
     nc_id: UUID,
-    payload: dict,  # Đơn giản hóa cho Beta
+    payload: NCUpdate,
     service: CAPAService = Depends(get_capa_service),
 ):
-    # Thêm logic update_nc vào service nếu cần, ở đây viết inline cho nhanh
-    db_nc = service.get_nc(nc_id)
+    db_nc = service.update_nc(nc_id, payload)
     if not db_nc:
         raise HTTPException(status_code=404, detail="NC not found")
-
-    for key, value in payload.items():
-        setattr(db_nc, key, value)
-
-    service.db.commit()
-    service.db.refresh(db_nc)
     return db_nc
 
 
@@ -145,16 +121,3 @@ def update_capa(
     if not result:
         raise HTTPException(status_code=404, detail="CAPA not found")
     return result
-
-
-@capas_router.delete(
-    "/{capa_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Xóa CAPA",
-    description="Xóa vĩnh viễn một bản ghi CAPA khỏi hệ thống (Chủ yếu dùng cho việc dọn dẹp dữ liệu thử nghiệm).",
-)
-def delete_capa(capa_id: UUID, service: CAPAService = Depends(get_capa_service)):
-    success = service.delete_capa(capa_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="CAPA not found")
-    return None

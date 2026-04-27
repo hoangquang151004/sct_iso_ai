@@ -69,16 +69,6 @@ class PRPAuditCreate(PRPAuditData):
     pass
 
 
-class PRPAuditUpdate(BaseModel):
-    prp_program_id: Optional[UUID] = None
-    area_id: Optional[UUID] = None
-    audit_date: Optional[date] = None
-    total_score: Optional[float] = Field(None, ge=0)
-    compliance_rate: Optional[float] = Field(None, ge=0, le=100)
-    overall_result: Optional[str] = Field(None, max_length=50)
-    auditor_id: Optional[UUID] = None
-
-
 # --- CHECKLIST TEMPLATE SCHEMAS ---
 class PRPChecklistTemplateBase(BaseModel):
     question_text: str = Field(..., description="Nội dung câu hỏi kiểm tra")
@@ -155,6 +145,14 @@ class PRPAuditResponse(PRPAuditData):
 class PRPAuditFullCreate(BaseModel):
     audit_data: PRPAuditCreate
     details: list[PRPAuditDetailCreate]
+
+
+class PRPNCRequest(BaseModel):
+    org_id: UUID
+    source_ref_id: UUID
+    title: str
+    description: Optional[str] = None
+    severity: str = "MEDIUM"
 
 
 # --- SCHEDULING SCHEMAS ---

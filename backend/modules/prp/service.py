@@ -15,8 +15,6 @@ from database.models import (
     NonConformity,
 )
 from .schemas import (
-    PRPAuditCreate,
-    PRPAuditUpdate,
     PRPChecklistTemplateCreate,
     PRPAuditFullCreate,
     PRPProgramCreate,
@@ -24,6 +22,7 @@ from .schemas import (
     PRPChecklistTemplateUpdate,
     PRPScheduleRequest,
     PRPScheduleFrequency,
+    PRPNCRequest,
 )
 from core.event_bus import bus
 
@@ -32,17 +31,44 @@ class PRPAuditService:
     def __init__(self, db: Session):
         self.db = db
 
-    # --- MASTER DATA (Minimalist) ---
+    # --- 1. PROGRAM MANAGEMENT ---
     def get_all_programs(self) -> List[PRPProgram]:
         stmt = select(PRPProgram).where(PRPProgram.is_active)
         return list(self.db.scalars(stmt).all())
 
+    def get_program_by_id(self, program_id: UUID) -> Optional[PRPProgram]:
+        return self.db.get(PRPProgram, program_id)
+
+    def create_program(self, payload: PRPProgramCreate) -> PRPProgram:
+        """Tạo mới một chương trình PRP/SSOP/GHP."""
+        db_prog = PRPProgram(**payload.model_dump())
+        self.db.add(db_prog)
+        self.db.commit()
+        self.db.refresh(db_prog)
+        return db_prog
+
+    def update_program(
+        self, program_id: UUID, payload: PRPProgramUpdate
+    ) -> Optional[PRPProgram]:
+        db_prog = self.get_program_by_id(program_id)
+        if not db_prog:
+            return None
+
+        update_data = payload.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(db_prog, key, value)
+
+        self.db.commit()
+        self.db.refresh(db_prog)
+        return db_prog
+
+    # --- 2. LOCATION MANAGEMENT ---
     def get_all_locations(self) -> List[Location]:
         """Lấy danh sách khu vực dùng cho bộ lọc."""
         stmt = select(Location).where(Location.is_active)
         return list(self.db.scalars(stmt).all())
 
-    # --- TEMPLATE MANAGEMENT ---
+    # --- 3. TEMPLATE (CHECKLIST) MANAGEMENT ---
     def create_template(
         self, payload: PRPChecklistTemplateCreate
     ) -> PRPChecklistTemplate:
@@ -51,17 +77,6 @@ class PRPAuditService:
         self.db.commit()
         self.db.refresh(db_template)
         return db_template
-
-    def get_templates_by_program(self, program_id: UUID) -> List[PRPChecklistTemplate]:
-        stmt = (
-            select(PRPChecklistTemplate)
-            .where(
-                PRPChecklistTemplate.prp_program_id == program_id,
-                PRPChecklistTemplate.is_active,
-            )
-            .order_by(PRPChecklistTemplate.order_index)
-        )
-        return list(self.db.scalars(stmt).all())
 
     def get_templates_by_location(
         self, location_id: UUID, only_active: bool = True
@@ -76,11 +91,21 @@ class PRPAuditService:
         stmt = stmt.order_by(PRPChecklistTemplate.order_index)
         return list(self.db.scalars(stmt).all())
 
-    def get_all_templates(
-        self, skip: int = 0, limit: int = 100
-    ) -> List[PRPChecklistTemplate]:
-        stmt = select(PRPChecklistTemplate).offset(skip).limit(limit)
-        return list(self.db.scalars(stmt).all())
+    def update_template(
+        self, template_id: UUID, payload: PRPChecklistTemplateUpdate
+    ) -> Optional[PRPChecklistTemplate]:
+        """Cập nhật thông tin một hạng mục checklist."""
+        db_template = self.db.get(PRPChecklistTemplate, template_id)
+        if not db_template:
+            return None
+
+        update_data = payload.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(db_template, key, value)
+
+        self.db.commit()
+        self.db.refresh(db_template)
+        return db_template
 
     def delete_template(self, template_id: UUID) -> dict:
         """
@@ -113,50 +138,7 @@ class PRPAuditService:
             "message": "Đã xóa vĩnh viễn câu hỏi mẫu.",
         }
 
-    def update_template(
-        self, template_id: UUID, payload: PRPChecklistTemplateUpdate
-    ) -> Optional[PRPChecklistTemplate]:
-        """Cập nhật thông tin một hạng mục checklist."""
-        db_template = self.db.get(PRPChecklistTemplate, template_id)
-        if not db_template:
-            return None
-
-        update_data = payload.model_dump(exclude_unset=True)
-        for key, value in update_data.items():
-            setattr(db_template, key, value)
-
-        self.db.commit()
-        self.db.refresh(db_template)
-        return db_template
-
-    # --- PROGRAM MANAGEMENT ---
-    def create_program(self, payload: PRPProgramCreate) -> PRPProgram:
-        """Tạo mới một chương trình PRP/SSOP/GHP."""
-        db_prog = PRPProgram(**payload.model_dump())
-        self.db.add(db_prog)
-        self.db.commit()
-        self.db.refresh(db_prog)
-        return db_prog
-
-    def get_program_by_id(self, program_id: UUID) -> Optional[PRPProgram]:
-        return self.db.get(PRPProgram, program_id)
-
-    def update_program(
-        self, program_id: UUID, payload: PRPProgramUpdate
-    ) -> Optional[PRPProgram]:
-        db_prog = self.get_program_by_id(program_id)
-        if not db_prog:
-            return None
-
-        update_data = payload.model_dump(exclude_unset=True)
-        for key, value in update_data.items():
-            setattr(db_prog, key, value)
-
-        self.db.commit()
-        self.db.refresh(db_prog)
-        return db_prog
-
-    # --- AUDIT MANAGEMENT ---
+    # --- 4. AUDIT MANAGEMENT ---
     def get_audits(
         self,
         skip: int = 0,
@@ -176,7 +158,7 @@ class PRPAuditService:
             query = query.where(PRPAudit.org_id == org_id)
         if area_id:
             query = query.where(PRPAudit.area_id == area_id)
-        
+
         if audit_date:
             query = query.where(PRPAudit.audit_date == audit_date)
         elif month and year:
@@ -209,27 +191,30 @@ class PRPAuditService:
         self.db.flush()
 
         for detail_in in payload.details:
-            # Tách create_nc ra trước khi dump vào model database
             detail_data = detail_in.model_dump()
             should_create_nc = detail_data.pop("create_nc", False)
-            
+
             db_detail = PRPAuditDetail(audit_id=db_audit.id, **detail_data)
             self.db.add(db_detail)
-            
-            # Chỉ tạo NonConformity khi người dùng yêu cầu
+
             if should_create_nc:
                 checklist = self.db.get(PRPChecklistTemplate, detail_in.checklist_id)
-                q_text = checklist.question_text if checklist else "Hạng mục PRP không xác định"
-                
+                q_text = (
+                    checklist.question_text
+                    if checklist
+                    else "Hạng mục PRP không xác định"
+                )
+
                 nc = NonConformity(
                     org_id=db_audit.org_id,
                     source="PRP",
-                    source_ref_id=db_detail.id, # Tham chiếu trực tiếp đến dòng lỗi
+                    source_ref_id=db_detail.id,
                     title=f"Lỗi PRP: {q_text}",
-                    description=detail_in.observation or f"Phát hiện lỗi trong quá trình đánh giá PRP ngày {db_audit.audit_date}",
+                    description=detail_in.observation
+                    or f"Phát hiện lỗi trong quá trình đánh giá PRP ngày {db_audit.audit_date}",
                     severity="MEDIUM",
-                    status="OPEN",
-                    detected_at=datetime.now()
+                    status="WAITING",
+                    detected_at=datetime.now(),
                 )
                 self.db.add(nc)
 
@@ -248,40 +233,30 @@ class PRPAuditService:
 
         return db_audit
 
-    def create_audit(self, payload: PRPAuditCreate) -> PRPAudit:
-        db_audit = PRPAudit(**payload.model_dump())
-        self.db.add(db_audit)
+    def create_nc_from_audit(self, payload: PRPNCRequest) -> NonConformity:
+        """Tạo một điểm lỗi NC mới từ nguồn PRP."""
+        db_nc = NonConformity(
+            org_id=payload.org_id,
+            source="PRP",
+            source_ref_id=payload.source_ref_id,
+            title=payload.title,
+            description=payload.description,
+            severity=payload.severity,
+            status="WAITING",
+            detected_at=datetime.now(),
+        )
+        self.db.add(db_nc)
         self.db.commit()
-        self.db.refresh(db_audit)
-        return db_audit
+        self.db.refresh(db_nc)
+        return db_nc
 
-    def update_audit(
-        self, audit_id: UUID, payload: PRPAuditUpdate
-    ) -> Optional[PRPAudit]:
-        db_audit = self.get_audit_by_id(audit_id)
-        if not db_audit:
-            return None
-        update_data = payload.model_dump(exclude_unset=True)
-        for key, value in update_data.items():
-            setattr(db_audit, key, value)
-        self.db.commit()
-        self.db.refresh(db_audit)
-        return db_audit
-
-    def delete_audit(self, audit_id: UUID) -> bool:
-        db_audit = self.get_audit_by_id(audit_id)
-        if not db_audit:
-            return False
-        self.db.delete(db_audit)
-        self.db.commit()
-        return True
-
+    # --- 5. SCHEDULING MANAGEMENT ---
     def create_audit_schedule(self, req: PRPScheduleRequest) -> int:
         events = []
         current_date = req.start_date
         # Nếu không có ngày kết thúc, mặc định là ngày bắt đầu (chỉ tạo 1 lần)
         end_date = req.end_date or req.start_date
-        
+
         # Giới hạn tạo lịch tối đa 1 năm để tránh lặp vô hạn hoặc quá nhiều dữ liệu
         max_end_date = req.start_date + timedelta(days=366)
         if end_date > max_end_date:
@@ -293,28 +268,36 @@ class PRPAuditService:
             # Vòng lặp tạo lịch định kỳ
             while current_date <= end_date:
                 should_add = False
-                
+
                 if req.frequency == PRPScheduleFrequency.DAILY:
                     should_add = True
                 elif req.frequency == PRPScheduleFrequency.WEEKLY:
-                    if req.day_of_week is not None and current_date.weekday() == req.day_of_week:
+                    if (
+                        req.day_of_week is not None
+                        and current_date.weekday() == req.day_of_week
+                    ):
                         should_add = True
                 elif req.frequency == PRPScheduleFrequency.MONTHLY:
-                    if req.day_of_month is not None and current_date.day == req.day_of_month:
+                    if (
+                        req.day_of_month is not None
+                        and current_date.day == req.day_of_month
+                    ):
                         should_add = True
-                
+
                 if should_add:
                     events.append(self._build_calendar_event(req, current_date))
-                
+
                 current_date += timedelta(days=1)
 
         if events:
             self.db.add_all(events)
             self.db.commit()
-        
+
         return len(events)
 
-    def get_upcoming_schedules(self, org_id: UUID, limit: int = 20) -> List[CalendarEvent]:
+    def get_upcoming_schedules(
+        self, org_id: UUID, limit: int = 20
+    ) -> List[CalendarEvent]:
         """Lấy danh sách các lịch đánh giá PRP sắp tới."""
         stmt = (
             select(CalendarEvent)
@@ -322,30 +305,72 @@ class PRPAuditService:
                 CalendarEvent.org_id == org_id,
                 CalendarEvent.event_type == "PRP_AUDIT",
                 CalendarEvent.start_time >= datetime.now(),
-                CalendarEvent.status == "SCHEDULED"
+                CalendarEvent.status == "SCHEDULED",
             )
             .order_by(CalendarEvent.start_time.asc())
             .limit(limit)
         )
         return list(self.db.scalars(stmt).all())
 
-    def _build_calendar_event(self, req: PRPScheduleRequest, event_date: date) -> CalendarEvent:
-        # Chuẩn bị metadata để liên kết với PRP
+    def get_all_audit_schedules(
+        self, org_id: UUID, status: Optional[str] = None, limit: int = 100
+    ) -> List[dict]:
+        """Lấy toàn bộ danh sách lịch trình và tính toán trạng thái quá hạn."""
+        stmt = (
+            select(CalendarEvent)
+            .where(
+                CalendarEvent.org_id == org_id, CalendarEvent.event_type == "PRP_AUDIT"
+            )
+            .order_by(CalendarEvent.start_time.desc())
+            .limit(limit)
+        )
+        events = self.db.scalars(stmt).all()
+        now = datetime.now()
+
+        results = []
+        for e in events:
+            e_dict = {
+                "id": e.id,
+                "title": e.title,
+                "description": e.description,
+                "start_time": e.start_time,
+                "end_time": e.end_time,
+                "status": e.status,
+                "assigned_to": e.assigned_to,
+            }
+
+            if e.status == "SCHEDULED" and e.start_time < now:
+                e_dict["status"] = "OVERDUE"
+
+            if status:
+                if status == "OVERDUE":
+                    if e_dict["status"] != "OVERDUE":
+                        continue
+                elif status == "SCHEDULED":
+                    if e_dict["status"] != "SCHEDULED":
+                        continue
+                elif e.status != status:
+                    continue
+
+            results.append(e_dict)
+
+        return results
+
+    def _build_calendar_event(
+        self, req: PRPScheduleRequest, event_date: date
+    ) -> CalendarEvent:
         description_data = {
             "prp_program_id": str(req.prp_program_id),
             "location_id": str(req.location_id),
             "source": "PRP_MODULE",
-            "notes": req.description
+            "notes": req.description,
         }
-        
-        # Tạo title mặc định nếu không có
+
         title = req.title
         if not title:
             program = self.db.get(PRPProgram, req.prp_program_id)
-            location = self.db.get(Location, req.location_id)
             prog_name = program.name if program else "Chương trình PRP"
-            loc_name = location.name if location else "Khu vực"
-            title = f"Đánh giá {prog_name} tại {loc_name}"
+            title = f"Đánh giá {prog_name}"
 
         return CalendarEvent(
             org_id=req.org_id,
@@ -355,5 +380,5 @@ class PRPAuditService:
             start_time=datetime.combine(event_date, datetime.min.time()),
             end_time=datetime.combine(event_date, datetime.max.time()),
             status="SCHEDULED",
-            assigned_to=req.assigned_to
+            assigned_to=req.assigned_to,
         )

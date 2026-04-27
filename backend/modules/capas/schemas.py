@@ -13,6 +13,12 @@ class CAPAStatus(str, Enum):
     REJECTED = "REJECTED"  # Nếu thẩm tra không đạt
 
 
+class NCStatus(str, Enum):
+    WAITING = "WAITING"
+    OPEN = "OPEN"
+    CLOSED = "CLOSED"
+
+
 class CAPABase(BaseModel):
     org_id: UUID
     nc_id: Optional[UUID] = Field(
@@ -38,20 +44,18 @@ class CAPAUpdate(BaseModel):
     assigned_to: Optional[UUID] = None
 
 
+class NCUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    severity: Optional[str] = None
+    status: Optional[NCStatus] = None
+
+
 class CAPAResponse(CAPABase):
     id: UUID
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
-
-
-class NonConformityCreate(BaseModel):
-    org_id: UUID
-    source: str
-    source_ref_id: Optional[UUID] = None
-    title: str
-    description: Optional[str] = None
-    severity: str = "MEDIUM"
 
 
 class NonConformityResponse(BaseModel):
@@ -63,10 +67,14 @@ class NonConformityResponse(BaseModel):
     title: str
     description: Optional[str] = None
     severity: str
-    status: str
+    status: NCStatus
     detected_by: Optional[UUID] = None
     detected_at: datetime
     created_at: datetime
+    
+    # Thông tin CAPA liên kết (nếu có)
+    capa_id: Optional[UUID] = None
+    capa_status: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

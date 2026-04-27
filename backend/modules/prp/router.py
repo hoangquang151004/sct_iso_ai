@@ -6,10 +6,8 @@ from sqlalchemy.orm import Session
 from database import db_manager
 from .service import PRPAuditService
 from .schemas import (
-    PRPAuditCreate, 
-    PRPAuditUpdate, 
-    PRPAuditResponse, 
-    PRPChecklistTemplateCreate, 
+    PRPAuditResponse,
+    PRPChecklistTemplateCreate,
     PRPChecklistTemplateUpdate,
     PRPChecklistTemplateResponse,
     PRPAuditFullCreate,
@@ -17,7 +15,8 @@ from .schemas import (
     PRPProgramResponse,
     LocationResponse,
     PRPProgramUpdate,
-    PRPScheduleRequest
+    PRPScheduleRequest,
+    PRPNCRequest,
 )
 
 
@@ -29,6 +28,7 @@ def get_prp_audit_service(db: Session = Depends(db_manager.get_db)):
 
 
 # --- MASTER DATA ENDPOINTS ---
+
 
 @prp_router.get(
     "/programs",
@@ -98,8 +98,6 @@ def list_locations(
     return service.get_all_locations()
 
 
-# --- CHECKLIST TEMPLATE ENDPOINTS ---
-
 @prp_router.post(
     "/templates",
     response_model=PRPChecklistTemplateResponse,
@@ -130,20 +128,6 @@ def update_template(
     return template
 
 
-@prp_router.get(
-    "/templates",
-    response_model=List[PRPChecklistTemplateResponse],
-    summary="Lấy tất cả mẫu câu hỏi",
-    description="Lấy danh sách toàn bộ các hạng mục kiểm tra mẫu trong hệ thống.",
-)
-def list_templates(
-    skip: int = 0,
-    limit: int = 100,
-    service: PRPAuditService = Depends(get_prp_audit_service),
-):
-    return service.get_all_templates(skip=skip, limit=limit)
-
-
 @prp_router.delete(
     "/templates/{template_id}",
     summary="Xóa một hạng mục checklist.",
@@ -154,25 +138,11 @@ def delete_prp_template(
 ):
     result = service.delete_template(template_id)
     if not result["success"]:
-        # Nếu có lịch sử sử dụng (has_history=True) -> Trả về lỗi 409 Conflict
         if result.get("has_history"):
             raise HTTPException(status_code=409, detail=result["message"])
         raise HTTPException(status_code=404, detail=result["message"])
-    
-    return None # Trả về 200 OK mặc định (hoặc có thể dùng status_code=204)
 
-
-@prp_router.get(
-    "/templates/{program_id}",
-    response_model=List[PRPChecklistTemplateResponse],
-    summary="Lấy danh sách mẫu câu hỏi theo chương trình",
-    description="QA/QC lấy danh sách các hạng mục kiểm tra của một chương trình cụ thể.",
-)
-def get_templates(
-    program_id: UUID,
-    service: PRPAuditService = Depends(get_prp_audit_service),
-):
-    return service.get_templates_by_program(program_id)
+    return None
 
 
 @prp_router.get(
@@ -190,6 +160,18 @@ def get_templates_by_location(
 
 
 # --- AUDIT ENDPOINTS ---
+
+
+@prp_router.post(
+    "/nc",
+    summary="Tạo NC từ nguồn PRP",
+)
+def create_prp_nc(
+    payload: PRPNCRequest,
+    service: PRPAuditService = Depends(get_prp_audit_service),
+):
+    return service.create_nc_from_audit(payload)
+
 
 @prp_router.post(
     "/full",
@@ -221,25 +203,14 @@ def list_prp_audits(
     service: PRPAuditService = Depends(get_prp_audit_service),
 ):
     return service.get_audits(
-        skip=skip, 
-        limit=limit, 
-        org_id=org_id, 
-        area_id=area_id, 
+        skip=skip,
+        limit=limit,
+        org_id=org_id,
+        area_id=area_id,
         audit_date=audit_date,
         month=month,
-        year=year
+        year=year,
     )
-
-
-@prp_router.post(
-    "/",
-    response_model=PRPAuditResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def create_prp_audit(
-    payload: PRPAuditCreate, service: PRPAuditService = Depends(get_prp_audit_service)
-):
-    return service.create_audit(payload=payload)
 
 
 @prp_router.post("/schedule", status_code=status.HTTP_201_CREATED)
@@ -253,11 +224,22 @@ def create_prp_schedule(
 
 @prp_router.get("/upcoming-schedules")
 def list_upcoming_schedules(
-    org_id: UUID = Query(...),
-    service: PRPAuditService = Depends(get_prp_audit_service)
+    org_id: UUID = Query(...), service: PRPAuditService = Depends(get_prp_audit_service)
 ):
     """Lấy danh sách các buổi đánh giá đã lên lịch sắp tới."""
     return service.get_upcoming_schedules(org_id=org_id)
+
+
+@prp_router.get("/schedules")
+def list_all_schedules(
+    org_id: UUID = Query(...),
+    status: Optional[str] = Query(
+        None, description="Lọc theo trạng thái: SCHEDULED, COMPLETED, OVERDUE"
+    ),
+    service: PRPAuditService = Depends(get_prp_audit_service),
+):
+    """Lấy toàn bộ danh sách lịch đánh giá và tiến độ thực hiện."""
+    return service.get_all_audit_schedules(org_id=org_id, status=status)
 
 
 @prp_router.get("/{audit_id}", response_model=PRPAuditResponse)
@@ -268,26 +250,3 @@ def get_prp_audit(
     if not audit:
         raise HTTPException(status_code=404, detail="PRP Audit không tồn tại")
     return audit
-
-
-@prp_router.patch("/{audit_id}", response_model=PRPAuditResponse)
-def update_prp_audit(
-    audit_id: UUID,
-    payload: PRPAuditUpdate,
-    service: PRPAuditService = Depends(get_prp_audit_service),
-):
-    audit = service.update_audit(audit_id=audit_id, payload=payload)
-    if not audit:
-        raise HTTPException(status_code=404, detail="PRP Audit không tồn tại")
-    return audit
-
-
-@prp_router.delete("/{audit_id}", status_code=204)
-def delete_prp_audit(
-    audit_id: UUID, service: PRPAuditService = Depends(get_prp_audit_service)
-):
-    success = service.delete_audit(audit_id=audit_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="PRP Audit không tồn tại")
-    return None
-

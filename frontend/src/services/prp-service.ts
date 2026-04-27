@@ -90,3 +90,17 @@ export async function createSchedule(payload: any): Promise<{ message: string; c
 export async function getUpcomingSchedules(orgId: string): Promise<any[]> {
   return apiRequest<any[]>(`/prp/upcoming-schedules?org_id=${orgId}`);
 }
+
+export async function listSchedules(orgId: string, status?: string): Promise<any[]> {
+  const query = new URLSearchParams();
+  query.append("org_id", orgId);
+  if (status) query.append("status", status);
+  return apiRequest<any[]>(`/prp/schedules?${query.toString()}`);
+}
+
+export async function createNC(payload: any): Promise<any> {
+  return apiRequest<any>("/prp/nc", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}

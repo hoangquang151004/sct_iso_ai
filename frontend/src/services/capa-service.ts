@@ -28,21 +28,15 @@ export interface CAPA {
 }
 
 export const capaService = {
-  listNCs: async (orgId: string, status: string = "OPEN", source?: string): Promise<NonConformity[]> => {
-    let url = `/capa/ncs?org_id=${orgId}&status=${status}`;
+  listNCs: async (orgId: string, status?: string, source?: string): Promise<NonConformity[]> => {
+    let url = `/capa/ncs?org_id=${orgId}`;
+    if (status !== undefined) url += `&status=${status}`;
     if (source) url += `&source=${source}`;
     return apiRequest<NonConformity[]>(url);
   },
 
   createCAPA: async (payload: Partial<CAPA>): Promise<CAPA> => {
     return apiRequest<CAPA>("/capa/", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-  },
-
-  createNC: async (payload: Partial<NonConformity>): Promise<NonConformity> => {
-    return apiRequest<NonConformity>("/capa/nc", {
       method: "POST",
       body: JSON.stringify(payload),
     });
@@ -59,15 +53,6 @@ export const capaService = {
     if (sourceRefIds.length === 0) return [];
     const query = sourceRefIds.map(id => `source_ref_ids=${id}`).join("&");
     return apiRequest<string[]>(`/capa/nc/check?${query}`);
-  },
-
-  updateNC: async (id: string, payload: Partial<NonConformity>): Promise<NonConformity> => {
-    // Note: We might need a proper NC update endpoint if status needs to change to CLOSED
-    // For now, let's assume it's handled or we'll add it if needed.
-    return apiRequest<NonConformity>(`/capa/nc/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    });
   },
 
   getKPIs: async (orgId: string): Promise<any> => {
