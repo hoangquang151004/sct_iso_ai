@@ -45,6 +45,7 @@ export interface Document {
   version: string;
   lastModified: string;
   modifiedBy: string;
+  content?: string; // Nội dung tài liệu để xem trong wizard
 }
 
 export interface ProcessStage {
@@ -233,6 +234,29 @@ export const documents: Document[] = [
     version: "1.0",
     lastModified: "15/01/2024",
     modifiedBy: "Alice Brown",
+    content: `SỔ TAY CHẤT LƯỢNG QM-001
+
+1. MỤC TIÊU CHẤT LƯỢNG
+   - Đảm bảo an toàn thực phẩm theo ISO 22000
+   - Tuân thủ HACCP trong toàn bộ quy trình
+   - Giảm thiểu rủi ro ô nhiễm chéo
+
+2. PHẠM VI ÁP DỤNG
+   - Khu vực sản xuất chính
+   - Khu vực đóng gói
+   - Kho nguyên liệu và thành phẩm
+
+3. QUY TRÌNH HACCP CHÍNH
+   Bước 1: Tiếp nhận nguyên liệu - Kiểm tra nhiệt độ, độ ẩm
+   Bước 2: Sơ chế - CCP1: Kiểm soát nhiệt độ < 4°C
+   Bước 3: Chế biến - CCP2: Nhiệt độ nấu ≥ 72°C
+   Bước 4: Làm nguội - CCP3: Thời gian làm nguội < 2 giờ
+   Bước 5: Đóng gói - Kiểm tra seal và date code
+
+4. TIÊU CHUẨN PRP
+   - Vệ sinh cá nhân: Rửa tay, sử dụng PPE
+   - Vệ sinh thiết bị: Vệ sinh CIP hàng ngày
+   - Kiểm soát côn trùng: Bẫy hàng tuần`,
   },
   {
     id: "DOC-002",
@@ -244,6 +268,30 @@ export const documents: Document[] = [
     version: "2.0",
     lastModified: "10/02/2024",
     modifiedBy: "John Doe",
+    content: `QUY TRÌNH VỆ SINH SOP-005
+
+MỤC ĐÍCH: Đảm bảo vệ sinh trong khu vực sản xuất
+
+BƯỚC 1: Chuẩn bị
+   - Thu gom nguyên liệu thừa
+   - Tháo dỡ bộ phận có thể tháo rời
+   - Che phủ thiết bị điện
+
+BƯỚC 2: Làm sạch sơ bộ
+   - Quét mặt sàn, thu gom rác
+   - Xịt rửa bề mặt thiết bị
+   - Làm sạch mạt bẩn khô
+
+BƯỚC 3: Vệ sinh CIP
+   - Pha dung dịch kiềm 2%
+   - Tuần hoàn 30 phút ở 60°C
+   - Xả sạch bằng nước RO
+   - Khử trùng dung dịch clo 100ppm
+
+BƯỚC 4: Kiểm tra và ghi nhận
+   - Kiểm tra bằng mắt và giấy thử nền ATP
+   - Ghi nhận vào biểu mẫu VS-001
+   - Ký xác nhận bởi tổ trưởng`,
   },
   {
     id: "DOC-003",
@@ -255,6 +303,25 @@ export const documents: Document[] = [
     version: "1.0",
     lastModified: "05/03/2024",
     modifiedBy: "David Wilson",
+    content: `HƯỚNG DẪN PHÁT HIỆN KIM LOẠI WI-004
+
+1. THIẾT BỊ: Máy dò kim loại X-Ray Model XR-2000
+
+2. KIỂM TRA ĐẦU CA:
+   - Kiểm tra mẫu Fe: Ø 1.5mm
+   - Kiểm tra mẫu Non-Fe: Ø 2.0mm
+   - Kiểm tra mẫu SUS: Ø 2.5mm
+   - Tất cả phải phát hiện được 100%
+
+3. THÔNG SỐ CÀI ĐẶT:
+   - Độ nhạy Fe: 1.0mm
+   - Độ nhạy Non-Fe: 1.5mm
+   - Tốc độ băng tải: 25 m/phút
+
+4. XỬ LÝ KHI PHÁT HIỆN:
+   - Dừng máy ngay lập tức
+   - Cách ly sản phẩm nghi ngờ
+   - Kiểm tra lại toàn bộ lô`,
   },
   {
     id: "DOC-004",
@@ -266,6 +333,34 @@ export const documents: Document[] = [
     version: "1.0",
     lastModified: "28/01/2024",
     modifiedBy: "Emily White",
+    content: `QUY TRÌNH HIỆU CHUẨN SOP-002
+
+1. MỤC ĐÍCH
+   Đảm bảo tất cả thiết bị đo lường hoạt động chính xác
+
+2. PHẠM VI
+   - Nhiệt kế kỹ thuật số
+   - Máy đo pH
+   - Cân điện tử
+   - Máy đo áp suất
+
+3. TẦN SUẤT HIỆU CHUẨN
+   - Nhiệt kế: Hàng ngày (kiểm tra điểm 0°C)
+   - pH meter: Hàng tuần (2 điểm chuẩn)
+   - Cân: Hàng tháng (quả cân chuẩn F1/F2)
+   - Áp suất: Hàng quý
+
+4. TIÊU CHUẨN CHẤP NHẬN
+   - Nhiệt độ: ±0.5°C
+   - pH: ±0.1 pH
+   - Cân: ±0.1% trọng lượng
+   - Áp suất: ±2%
+
+5. XỬ LÝ KHI KHÔNG ĐẠT
+   - Cách ly thiết bị
+   - Điều chỉnh hoặc sửa chữa
+   - Hiệu chuẩn lại sau sửa chữa
+   - Kiểm tra lại sản phẩm sản xuất từ lần hiệu chuẩn cuối`,
   },
   {
     id: "DOC-005",
@@ -277,6 +372,33 @@ export const documents: Document[] = [
     version: "2.0",
     lastModified: "18/02/2024",
     modifiedBy: "Jamel Khan",
+    content: `KIỂM SOÁT CÔN TRÙNG SOP-007
+
+1. BIỆN PHÁP NGĂN NGỪA
+   - Rèm cửa từ tính tại tất cả lối vào
+   - Đèn UV bắt côn trùng trong khu vực chế biến
+   - Màng chắn cửa sổ mesh < 1.5mm
+   - Nhà vệ sinh cách ly xa khu vực sản xuất
+
+2. BẪY VÀ GIÁM SÁT
+   - Bẫy pheromone: Kiểm tra hàng tuần
+   - Bẫy đèn UV: Vệ sinh và ghi nhận hàng tuần
+   - Bản đồ bẫy: Cập nhật mỗi tháng
+
+3. NGƯỠNG HÀNH ĐỘNG
+   - Ruồi: > 2 con/bẫy/tuần → Kiểm tra ngay
+   - Chuột: Dấu hiệu bất kỳ → Đóng cửa nhà máy
+   - Gián: 1 con → Xử lý khẩn cấp
+
+4. NHÀ CUNG CẤP DỊCH VỤ
+   - Kiểm tra định kỳ: 2 lần/tháng
+   - Báo cáo: Nộp sau mỗi lần kiểm tra
+   - Chứng nhận: Kiểm tra hàng năm
+
+5. GHI NHẬN
+   - Biểu mẫu CT-001: Bẫy côn trùng
+   - Biểu mẫu CT-002: Phun thuốc
+   - Biểu mẫu CT-003: Kiểm tra nhà cung cấp`,
   },
   {
     id: "DOC-006",
@@ -687,7 +809,135 @@ export const exportSchedule = [
 // USER MANAGEMENT DATA
 // ============================================================================
 
-/** Tham chiếu CONTEXT.md mục 10 — đủ 5 vai trò chuẩn RBAC (mock/demo UI). */
+// Mock current user for HACCP approval and other operations
+export const currentUser = {
+  id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  email: "admin@company.com",
+  fullName: "Quản trị viên",
+  role: "ADMIN"
+};
+
+// ============================================================================
+// MOCK USERS - For CCP responsible_user and testing
+// ============================================================================
+
+export interface MockUser {
+  id: string;
+  username: string;
+  email: string;
+  full_name: string;
+  department: string;
+  position: string;
+  phone?: string;
+  role: string;
+  is_active: boolean;
+}
+
+export const mockUsers: MockUser[] = [
+  {
+    id: "550e8400-e29b-41d4-a716-446655440001",
+    username: "nguyen.van.a",
+    email: "nguyen.van.a@company.com",
+    full_name: "Nguyễn Văn A",
+    department: "Phòng QA/QC",
+    position: "Trưởng phòng QA/QC",
+    phone: "0901234567",
+    role: "QA_MANAGER",
+    is_active: true
+  },
+  {
+    id: "550e8400-e29b-41d4-a716-446655440002",
+    username: "tran.thi.b",
+    email: "tran.thi.b@company.com",
+    full_name: "Trần Thị B",
+    department: "Phòng QA/QC",
+    position: "Nhân viên kiểm tra chất lượng",
+    phone: "0912345678",
+    role: "QA_STAFF",
+    is_active: true
+  },
+  {
+    id: "550e8400-e29b-41d4-a716-446655440003",
+    username: "le.van.c",
+    email: "le.van.c@company.com",
+    full_name: "Lê Văn C",
+    department: "Phòng Sản xuất",
+    position: "Quản đốc phân xưởng",
+    phone: "0923456789",
+    role: "PRODUCTION_MANAGER",
+    is_active: true
+  },
+  {
+    id: "550e8400-e29b-41d4-a716-446655440004",
+    username: "pham.thi.d",
+    email: "pham.thi.d@company.com",
+    full_name: "Phạm Thị D",
+    department: "Phòng Sản xuất",
+    position: "Tổ trưởng dây chuyền",
+    phone: "0934567890",
+    role: "LINE_LEADER",
+    is_active: true
+  },
+  {
+    id: "550e8400-e29b-41d4-a716-446655440005",
+    username: "hoang.van.e",
+    email: "hoang.van.e@company.com",
+    full_name: "Hoàng Văn E",
+    department: "Phòng ISO",
+    position: "ISO Manager",
+    phone: "0945678901",
+    role: "ISO_MANAGER",
+    is_active: true
+  },
+  {
+    id: "550e8400-e29b-41d4-a716-446655440006",
+    username: "nguyen.thi.f",
+    email: "nguyen.thi.f@company.com",
+    full_name: "Nguyễn Thị F",
+    department: "Phòng HACCP",
+    position: "Chuyên viên HACCP",
+    phone: "0956789012",
+    role: "HACCP_SPECIALIST",
+    is_active: true
+  },
+  {
+    id: "550e8400-e29b-41d4-a716-446655440007",
+    username: "tran.van.g",
+    email: "tran.van.g@company.com",
+    full_name: "Trần Văn G",
+    department: "Phòng Kỹ thuật",
+    position: "Kỹ sư bảo trì",
+    phone: "0967890123",
+    role: "TECHNICIAN",
+    is_active: true
+  },
+  {
+    id: "550e8400-e29b-41d4-a716-446655440008",
+    username: "le.thi.h",
+    email: "le.thi.h@company.com",
+    full_name: "Lê Thị H",
+    department: "Phòng Nhân sự",
+    position: "Chuyên viên đào tạo",
+    phone: "0978901234",
+    role: "HR_SPECIALIST",
+    is_active: true
+  }
+];
+
+// Helper functions for user data
+export const getUserById = (id: string): MockUser | undefined => {
+  return mockUsers.find(u => u.id === id);
+};
+
+export const getUserDisplayName = (id: string): string => {
+  const user = getUserById(id);
+  return user ? `${user.full_name} (${user.position})` : id;
+};
+
+export const getActiveUsers = (): MockUser[] => {
+  return mockUsers.filter(u => u.is_active);
+};
+
 export const userRoles: UserRole[] = [
   {
     name: "Quản trị viên",
@@ -699,15 +949,11 @@ export const userRoles: UserRole[] = [
   },
   {
     name: "QA/QC",
-    permissions: { view: true, edit: true, delete: false },
-  },
-  {
-    name: "Auditor",
     permissions: { view: true, edit: false, delete: false },
   },
   {
     name: "Người dùng",
-    permissions: { view: true, edit: true, delete: false },
+    permissions: { view: true, edit: false, delete: false },
   },
 ];
 
@@ -746,9 +992,13 @@ export const passwordPolicy = {
 // ============================================================================
 
 export const haccpSidebarButtons = [
-  { id: "process-flow", label: "Sơ đồ quy trình", active: true },
+  { id: "plans-list", label: "Danh sách Kế hoạch", active: true },
+  { id: "process-flow", label: "Sơ đồ Quy trình", active: false },
+  { id: "hazards", label: "Phân tích Mối nguy", active: false },
   { id: "ccps", label: "CCP & CL", active: false },
   { id: "monitoring", label: "Kế hoạch giám sát", active: false },
+  { id: "monitoring-logs", label: "Nhật ký Giám sát", active: false },
+  { id: "deviations", label: "Độ lệch CCP", active: false },
 ];
 
 // ============================================================================

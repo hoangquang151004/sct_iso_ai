@@ -51,17 +51,18 @@ def create_user(
 
 @users_router.get("", response_model=list[UserResponse])
 def list_users(
-    org_id: UUID = Query(...),
+    org_id: UUID | None = Query(default=None),
     role_id: UUID | None = Query(default=None),
     is_active: bool | None = Query(default=None),
     department: str | None = Query(default=None),
     principal: AuthPrincipal = Depends(require_permissions("users.read")),
     db: Session = Depends(get_db),
 ) -> list[UserResponse]:
-    ensure_org_scope(principal.org_id, org_id)
+    effective_org_id = org_id or principal.org_id
+    ensure_org_scope(principal.org_id, effective_org_id)
     result = user_service.list_users(
         db=db,
-        org_id=org_id,
+        org_id=effective_org_id,
         role_id=role_id,
         is_active=is_active,
         department=department,

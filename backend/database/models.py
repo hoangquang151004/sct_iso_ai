@@ -247,6 +247,20 @@ class HACCPPlan(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class HACCPPlanVersion(Base):
+    __tablename__ = "haccp_plan_versions"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    plan_id: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.haccp_plans.id", ondelete="CASCADE"))
+    version: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    scope: Mapped[Optional[str]] = mapped_column(Text)
+    product_id: Mapped[Optional[UUID]] = mapped_column(ForeignKey("sct_iso.products.id"))
+    status: Mapped[str] = mapped_column(String(50), default="ARCHIVED")
+    created_by: Mapped[Optional[UUID]] = mapped_column(ForeignKey("sct_iso.users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class ProcessStep(Base):
     __tablename__ = "process_steps"
 
@@ -315,6 +329,31 @@ class CCPMonitoringLog(Base):
     verified_by: Mapped[Optional[UUID]] = mapped_column(ForeignKey("sct_iso.users.id"))
     verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     iot_device_id: Mapped[Optional[str]] = mapped_column(String(100))
+
+    # Deviation management fields
+    deviation_severity: Mapped[Optional[str]] = mapped_column(String(20))  # LOW, MEDIUM, HIGH, CRITICAL
+    deviation_status: Mapped[Optional[str]] = mapped_column(String(30))  # NEW, INVESTIGATING, CORRECTIVE_ACTION, RESOLVED, CLOSED
+    corrective_action: Mapped[Optional[str]] = mapped_column(Text)
+    root_cause: Mapped[Optional[str]] = mapped_column(Text)
+    handled_by: Mapped[Optional[UUID]] = mapped_column(ForeignKey("sct_iso.users.id"))
+    handled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    resolution_note: Mapped[Optional[str]] = mapped_column(Text)
+
+
+class HaccpVerification(Base):
+    __tablename__ = "haccp_verifications"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    haccp_plan_id: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.haccp_plans.id", ondelete="CASCADE"))
+    verification_type: Mapped[Optional[str]] = mapped_column(String(50))  # VERIFICATION or VALIDATION
+    period_from: Mapped[Optional[date]] = mapped_column(Date)
+    period_to: Mapped[Optional[date]] = mapped_column(Date)
+    result: Mapped[Optional[str]] = mapped_column(Text)
+    conclusion: Mapped[Optional[str]] = mapped_column(String(50))  # PASSED, FAILED, NEEDS_IMPROVEMENT
+    report_url: Mapped[Optional[str]] = mapped_column(String(500))
+    conducted_by: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.users.id"))
+    approved_by: Mapped[Optional[UUID]] = mapped_column(ForeignKey("sct_iso.users.id"))
+    conducted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 # =============================================================================

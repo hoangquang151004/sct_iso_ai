@@ -16,7 +16,7 @@ class ProductBase(BaseModel):
 
 
 class ProductCreate(ProductBase):
-    org_id: UUID
+    org_id: UUID | None = None
 
 
 class ProductUpdate(BaseModel):
@@ -46,8 +46,8 @@ class HaccpPlanBase(BaseModel):
 
 
 class HaccpPlanCreate(HaccpPlanBase):
-    org_id: UUID
-    created_by: UUID
+    org_id: UUID | None = None
+    created_by: UUID | None = None
 
 
 class HaccpPlanUpdate(BaseModel):
@@ -56,6 +56,10 @@ class HaccpPlanUpdate(BaseModel):
     version: str | None = Field(None, max_length=20)
     scope: str | None = None
     status: str | None = Field(None, pattern="^(DRAFT|ACTIVE|ARCHIVED)$")
+
+
+class HaccpPlanApprove(BaseModel):
+    approved_by: UUID | None = None
 
 
 class HaccpPlanResponse(HaccpPlanBase):
@@ -72,6 +76,40 @@ class HaccpPlanResponse(HaccpPlanBase):
 
 
 # =============================================================================
+# HACCP PLAN VERSION SCHEMAS
+# =============================================================================
+class HaccpPlanVersionResponse(BaseModel):
+    id: UUID
+    plan_id: UUID
+    version: str
+    name: str
+    scope: str | None = None
+    product_id: UUID | None = None
+    status: str
+    created_by: UUID | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class HaccpPlanVersionCreate(BaseModel):
+    version: str
+    name: str
+    scope: str | None = None
+    product_id: UUID | None = None
+    created_by: UUID | None = None  # Will be filled from token
+
+
+class CreateNewVersionRequest(BaseModel):
+    """Request to create a new version from current ACTIVE plan"""
+    new_version: str = Field(..., pattern=r"^\d+\.\d+$", description="Version format: x.y (e.g., 2.0, 1.1)")
+    updated_by: UUID | None = None
+    name: str | None = Field(None, max_length=255, description="Tên kế hoạch mới (nếu muốn thay đổi)")
+    scope: str | None = Field(None, description="Phạm vi kế hoạch mới (nếu muốn thay đổi)")
+    product_id: UUID | None = Field(None, description="Sản phẩm mới (nếu muốn thay đổi)")
+
+
+# =============================================================================
 # PROCESS STEP SCHEMAS
 # =============================================================================
 class ProcessStepBase(BaseModel):
@@ -84,7 +122,7 @@ class ProcessStepBase(BaseModel):
 
 
 class ProcessStepCreate(ProcessStepBase):
-    haccp_plan_id: UUID
+    haccp_plan_id: UUID | None = None
 
 
 class ProcessStepUpdate(BaseModel):
@@ -119,7 +157,7 @@ class HazardAnalysisBase(BaseModel):
 
 
 class HazardAnalysisCreate(HazardAnalysisBase):
-    step_id: UUID
+    step_id: UUID | None = None
 
 
 class HazardAnalysisUpdate(BaseModel):
@@ -159,7 +197,7 @@ class CCPBase(BaseModel):
 
 
 class CCPCreate(CCPBase):
-    haccp_plan_id: UUID
+    haccp_plan_id: UUID | None = None
     step_id: UUID | None = None
     hazard_id: UUID | None = None
 
@@ -200,11 +238,17 @@ class CCPMonitoringLogBase(BaseModel):
     is_within_limit: bool | None = None
     deviation_note: str | None = None
     iot_device_id: str | None = Field(None, max_length=100)
+    # Deviation management fields
+    deviation_severity: str | None = Field(None, pattern="^(LOW|MEDIUM|HIGH|CRITICAL)$")
+    deviation_status: str | None = Field(None, pattern="^(NEW|INVESTIGATING|CORRECTIVE_ACTION|RESOLVED|CLOSED)$")
+    corrective_action: str | None = None
+    root_cause: str | None = None
+    resolution_note: str | None = None
 
 
 class CCPMonitoringLogCreate(CCPMonitoringLogBase):
     ccp_id: UUID
-    recorded_by: UUID
+    recorded_by: UUID | None = None
 
 
 class CCPMonitoringLogUpdate(BaseModel):
@@ -215,6 +259,13 @@ class CCPMonitoringLogUpdate(BaseModel):
     is_within_limit: bool | None = None
     deviation_note: str | None = None
     verified_by: UUID | None = None
+    # Deviation management update fields
+    deviation_severity: str | None = Field(None, pattern="^(LOW|MEDIUM|HIGH|CRITICAL)$")
+    deviation_status: str | None = Field(None, pattern="^(NEW|INVESTIGATING|CORRECTIVE_ACTION|RESOLVED|CLOSED)$")
+    corrective_action: str | None = None
+    root_cause: str | None = None
+    resolution_note: str | None = None
+    handled_by: UUID | None = None
 
 
 class CCPMonitoringLogResponse(CCPMonitoringLogBase):
@@ -224,8 +275,22 @@ class CCPMonitoringLogResponse(CCPMonitoringLogBase):
     recorded_at: datetime
     verified_by: UUID | None = None
     verified_at: datetime | None = None
+    # Deviation management response fields
+    handled_by: UUID | None = None
+    handled_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# Schema đặc biệt cho việc xử lý độ lệch
+class DeviationHandleRequest(BaseModel):
+    """Request schema để xử lý một độ lệch"""
+    deviation_status: str = Field(..., pattern="^(NEW|INVESTIGATING|CORRECTIVE_ACTION|RESOLVED|CLOSED)$")
+    deviation_severity: str | None = Field(None, pattern="^(LOW|MEDIUM|HIGH|CRITICAL)$")
+    corrective_action: str | None = None
+    root_cause: str | None = None
+    resolution_note: str | None = None
+    handled_by: UUID | None = None
 
 
 # =============================================================================
@@ -242,7 +307,7 @@ class HaccpVerificationBase(BaseModel):
 
 class HaccpVerificationCreate(HaccpVerificationBase):
     haccp_plan_id: UUID
-    conducted_by: UUID
+    conducted_by: UUID | None = None
     approved_by: UUID | None = None
 
 
@@ -264,4 +329,3 @@ class HaccpVerificationResponse(HaccpVerificationBase):
     conducted_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
-

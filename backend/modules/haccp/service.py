@@ -1,42 +1,32 @@
 """
-HACCP Module Service Layer
-Business logic for HACCP management including products, plans, process steps,
-hazard analysis, CCPs, monitoring logs, and verifications.
+HACCP Module Service Layer — kết nối PostgreSQL thật qua SQLAlchemy.
 """
-
-from datetime import date, datetime, timedelta
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 from typing import List, Optional
 
+from sqlalchemy.orm import Session
+
+from database.models import (
+    Product as ProductModel,
+    HACCPPlan,
+    HACCPPlanVersion,
+    ProcessStep as ProcessStepModel,
+    HazardAnalysis as HazardAnalysisModel,
+    CCP as CCPModel,
+    CCPMonitoringLog,
+    HaccpVerification as HaccpVerificationModel,
+    User,
+)
 from .schemas import (
-    # Product
-    ProductCreate,
-    ProductUpdate,
-    ProductResponse,
-    # HACCP Plan
-    HaccpPlanCreate,
-    HaccpPlanUpdate,
-    HaccpPlanResponse,
-    # Process Step
-    ProcessStepCreate,
-    ProcessStepUpdate,
-    ProcessStepResponse,
-    # Hazard Analysis
-    HazardAnalysisCreate,
-    HazardAnalysisUpdate,
-    HazardAnalysisResponse,
-    # CCP
-    CCPCreate,
-    CCPUpdate,
-    CCPResponse,
-    # CCP Monitoring
-    CCPMonitoringLogCreate,
-    CCPMonitoringLogUpdate,
-    CCPMonitoringLogResponse,
-    # Verification
-    HaccpVerificationCreate,
-    HaccpVerificationUpdate,
-    HaccpVerificationResponse,
+    ProductCreate, ProductUpdate, ProductResponse,
+    HaccpPlanCreate, HaccpPlanUpdate, HaccpPlanResponse,
+    HaccpPlanVersionResponse, CreateNewVersionRequest,
+    ProcessStepCreate, ProcessStepUpdate, ProcessStepResponse,
+    HazardAnalysisCreate, HazardAnalysisUpdate, HazardAnalysisResponse,
+    CCPCreate, CCPUpdate, CCPResponse,
+    CCPMonitoringLogCreate, CCPMonitoringLogUpdate, CCPMonitoringLogResponse,
+    HaccpVerificationCreate, HaccpVerificationUpdate, HaccpVerificationResponse,
 )
 
 
@@ -44,25 +34,25 @@ from .schemas import (
 # PRODUCT SERVICE
 # =============================================================================
 class ProductService:
-    """Service layer for Product management."""
-
     @staticmethod
     def list_products(
+        db: Session,
         org_id: UUID | None = None,
         is_active: bool | None = None,
         category: str | None = None,
     ) -> List[ProductResponse]:
-        """List all products with optional filters."""
-        # TODO: Implement database query
-        # Filter by org_id, is_active, category
-        return []
+        q = db.query(ProductModel)
+        if org_id:
+            q = q.filter(ProductModel.org_id == org_id)
+        if is_active is not None:
+            q = q.filter(ProductModel.is_active == is_active)
+        if category:
+            q = q.filter(ProductModel.category == category)
+        return [ProductResponse.model_validate(p) for p in q.all()]
 
     @staticmethod
-    def create_product(payload: ProductCreate) -> ProductResponse:
-        """Create a new product."""
-        # TODO: Validate unique code within org
-        # TODO: Insert to database
-        return ProductResponse(
+    def create_product(db: Session, payload: ProductCreate) -> ProductResponse:
+        obj = ProductModel(
             id=uuid4(),
             org_id=payload.org_id,
             name=payload.name,
@@ -70,38 +60,35 @@ class ProductService:
             category=payload.category,
             description=payload.description,
             is_active=payload.is_active,
-            created_at=datetime.utcnow(),
         )
+        db.add(obj)
+        db.commit()
+        db.refresh(obj)
+        return ProductResponse.model_validate(obj)
 
     @staticmethod
-    def get_product(product_id: UUID) -> ProductResponse | None:
-        """Get a product by ID."""
-        # TODO: Query database by product_id
-        return None
+    def get_product(db: Session, product_id: UUID) -> ProductResponse | None:
+        obj = db.query(ProductModel).filter(ProductModel.id == product_id).first()
+        return ProductResponse.model_validate(obj) if obj else None
 
     @staticmethod
-    def update_product(
-        product_id: UUID, payload: ProductUpdate
-    ) -> ProductResponse | None:
-        """Update a product."""
-        # TODO: Validate product exists
-        # TODO: Validate unique code if code is being changed
-        # TODO: Update database
-        return None
+    def update_product(db: Session, product_id: UUID, payload: ProductUpdate) -> ProductResponse | None:
+        obj = db.query(ProductModel).filter(ProductModel.id == product_id).first()
+        if not obj:
+            return None
+        for k, v in payload.model_dump(exclude_unset=True).items():
+            setattr(obj, k, v)
+        db.commit()
+        db.refresh(obj)
+        return ProductResponse.model_validate(obj)
 
     @staticmethod
-    def delete_product(product_id: UUID) -> bool:
-        """Delete a product (soft delete via is_active=False)."""
-        # TODO: Check if product is used in any HACCP plans
-        # TODO: Soft delete (set is_active=False) or hard delete
-        return True
-
-    @staticmethod
-    def validate_product_code(
-        org_id: UUID, code: str, exclude_id: UUID | None = None
-    ) -> bool:
-        """Validate that product code is unique within organization."""
-        # TODO: Query database to check uniqueness
+    def delete_product(db: Session, product_id: UUID) -> bool:
+        obj = db.query(ProductModel).filter(ProductModel.id == product_id).first()
+        if not obj:
+            return False
+        db.delete(obj)
+        db.commit()
         return True
 
 
@@ -109,26 +96,25 @@ class ProductService:
 # HACCP PLAN SERVICE
 # =============================================================================
 class HaccpPlanService:
-    """Service layer for HACCP Plan management."""
-
     @staticmethod
     def list_haccp_plans(
+        db: Session,
         org_id: UUID | None = None,
         product_id: UUID | None = None,
         status: str | None = None,
     ) -> List[HaccpPlanResponse]:
-        """List all HACCP plans with optional filters."""
-        # TODO: Implement database query with filters
-        return []
+        q = db.query(HACCPPlan)
+        if org_id:
+            q = q.filter(HACCPPlan.org_id == org_id)
+        if product_id:
+            q = q.filter(HACCPPlan.product_id == product_id)
+        if status:
+            q = q.filter(HACCPPlan.status == status)
+        return [HaccpPlanResponse.model_validate(p) for p in q.order_by(HACCPPlan.created_at.desc()).all()]
 
     @staticmethod
-    def create_haccp_plan(payload: HaccpPlanCreate) -> HaccpPlanResponse:
-        """Create a new HACCP plan."""
-        # TODO: Validate product_id belongs to org
-        # TODO: Validate version format
-        # TODO: Insert to database
-        now = datetime.utcnow()
-        return HaccpPlanResponse(
+    def create_haccp_plan(db: Session, payload: HaccpPlanCreate) -> HaccpPlanResponse:
+        obj = HACCPPlan(
             id=uuid4(),
             org_id=payload.org_id,
             product_id=payload.product_id,
@@ -137,109 +123,154 @@ class HaccpPlanService:
             scope=payload.scope,
             status="DRAFT",
             created_by=payload.created_by,
-            approved_by=None,
-            approved_at=None,
-            created_at=now,
-            updated_at=now,
         )
+        db.add(obj)
+        db.commit()
+        db.refresh(obj)
+        return HaccpPlanResponse.model_validate(obj)
 
     @staticmethod
-    def get_haccp_plan(plan_id: UUID) -> HaccpPlanResponse | None:
-        """Get a HACCP plan by ID."""
-        # TODO: Query database with related data
-        return None
+    def get_haccp_plan(db: Session, plan_id: UUID) -> HaccpPlanResponse | None:
+        obj = db.query(HACCPPlan).filter(HACCPPlan.id == plan_id).first()
+        return HaccpPlanResponse.model_validate(obj) if obj else None
 
     @staticmethod
-    def update_haccp_plan(
-        plan_id: UUID, payload: HaccpPlanUpdate
-    ) -> HaccpPlanResponse | None:
-        """Update a HACCP plan."""
-        # TODO: Validate plan exists and is in DRAFT status
-        # TODO: Prevent version change if plan is ACTIVE
-        # TODO: Update database
-        return None
+    def update_haccp_plan(db: Session, plan_id: UUID, payload: HaccpPlanUpdate) -> HaccpPlanResponse | None:
+        obj = db.query(HACCPPlan).filter(HACCPPlan.id == plan_id).first()
+        if not obj:
+            return None
+        for k, v in payload.model_dump(exclude_unset=True).items():
+            setattr(obj, k, v)
+        db.commit()
+        db.refresh(obj)
+        return HaccpPlanResponse.model_validate(obj)
 
     @staticmethod
-    def delete_haccp_plan(plan_id: UUID) -> bool:
-        """Delete a HACCP plan."""
-        # TODO: Check plan status (only allow delete if DRAFT)
-        # TODO: Check for related process steps, CCPs
+    def delete_haccp_plan(db: Session, plan_id: UUID) -> bool:
+        obj = db.query(HACCPPlan).filter(HACCPPlan.id == plan_id).first()
+        if not obj:
+            return False
+        db.delete(obj)
+        db.commit()
         return True
 
     @staticmethod
-    def approve_haccp_plan(
-        plan_id: UUID, approved_by: UUID
-    ) -> HaccpPlanResponse | None:
-        """Approve a HACCP plan."""
-        # TODO: Validate plan exists and is in DRAFT status
-        # TODO: Validate user has approval permission
-        # TODO: Update status to ACTIVE, set approved_by and approved_at
-        now = datetime.utcnow()
-        return HaccpPlanResponse(
-            id=plan_id,
-            org_id=uuid4(),
-            product_id=uuid4(),
-            name="HACCP Plan - Approved",
-            version="1.0",
-            scope="Dây chuyền chế biến",
-            status="ACTIVE",
-            created_by=uuid4(),
-            approved_by=approved_by,
-            approved_at=now,
-            created_at=now,
-            updated_at=now,
-        )
+    def approve_haccp_plan(db: Session, plan_id: UUID, approved_by: UUID | None = None) -> HaccpPlanResponse | None:
+        obj = db.query(HACCPPlan).filter(HACCPPlan.id == plan_id).first()
+        if not obj:
+            return None
+        obj.status = "ACTIVE"
+        if approved_by:
+            obj.approved_by = approved_by
+        obj.approved_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(obj)
+        return HaccpPlanResponse.model_validate(obj)
 
     @staticmethod
-    def archive_haccp_plan(plan_id: UUID) -> HaccpPlanResponse | None:
-        """Archive an active HACCP plan."""
-        # TODO: Validate plan is ACTIVE
-        # TODO: Update status to ARCHIVED
-        return None
+    def create_version_snapshot(db: Session, plan_id: UUID, created_by: UUID | None = None) -> HACCPPlanVersion | None:
+        """Save current plan state as a version snapshot"""
+        obj = db.query(HACCPPlan).filter(HACCPPlan.id == plan_id).first()
+        if not obj:
+            return None
 
-    @staticmethod
-    def duplicate_haccp_plan(
-        plan_id: UUID, new_version: str, created_by: UUID
-    ) -> HaccpPlanResponse:
-        """Duplicate an existing HACCP plan with new version."""
-        # TODO: Copy plan, steps, hazards, CCPs
-        # TODO: Create new plan with DRAFT status
-        now = datetime.utcnow()
-        return HaccpPlanResponse(
+        # Validate created_by exists in users table, if not set to None
+        if created_by:
+            user_exists = db.query(User).filter(User.id == created_by).first()
+            if not user_exists:
+                print(f"[SERVICE] User {created_by} not found, setting created_by to None")
+                created_by = None
+
+        version = HACCPPlanVersion(
             id=uuid4(),
-            org_id=uuid4(),
-            product_id=uuid4(),
-            name="HACCP Plan - Copy",
-            version=new_version,
-            scope="Dây chuyền chế biến",
-            status="DRAFT",
+            plan_id=plan_id,
+            version=obj.version,
+            name=obj.name,
+            scope=obj.scope,
+            product_id=obj.product_id,
+            status="ARCHIVED",
             created_by=created_by,
-            approved_by=None,
-            approved_at=None,
-            created_at=now,
-            updated_at=now,
         )
+        db.add(version)
+        db.commit()
+        db.refresh(version)
+        return version
+
+    @staticmethod
+    def create_new_version_from_active(
+        db: Session,
+        plan_id: UUID,
+        payload: CreateNewVersionRequest
+    ) -> HaccpPlanResponse | None:
+        """Create a new version from an ACTIVE plan - archives current and creates new draft"""
+        print(f"[SERVICE] Starting create_new_version_from_active for plan {plan_id}")
+
+        obj = db.query(HACCPPlan).filter(HACCPPlan.id == plan_id).first()
+        if not obj:
+            return None
+
+        # Only ACTIVE plans can be versioned
+        if obj.status != "ACTIVE":
+            raise ValueError("Only ACTIVE plans can create new versions")
+
+        # Save current state as archived version
+        HaccpPlanService.create_version_snapshot(db, plan_id, payload.updated_by)
+
+        # Update plan with new version info
+        obj.version = payload.new_version
+        obj.status = "DRAFT"
+        obj.approved_by = None
+        obj.approved_at = None
+        obj.updated_at = datetime.now(timezone.utc)
+
+        # Apply optional field updates if provided
+        if payload.name is not None and payload.name.strip() != "":
+            obj.name = payload.name
+        if payload.scope is not None:
+            new_scope = payload.scope if payload.scope.strip() != "" else None
+            obj.scope = new_scope
+        if payload.product_id is not None:
+            obj.product_id = payload.product_id
+
+        db.commit()
+        db.refresh(obj)
+        return HaccpPlanResponse.model_validate(obj)
+
+    @staticmethod
+    def list_plan_versions(db: Session, plan_id: UUID) -> List[HaccpPlanVersionResponse]:
+        """Get all versions of a plan"""
+        versions = (
+            db.query(HACCPPlanVersion)
+            .filter(HACCPPlanVersion.plan_id == plan_id)
+            .order_by(HACCPPlanVersion.created_at.desc())
+            .all()
+        )
+        return [HaccpPlanVersionResponse.model_validate(v) for v in versions]
+
+    @staticmethod
+    def get_plan_version(db: Session, version_id: UUID) -> HaccpPlanVersionResponse | None:
+        """Get a specific version by ID"""
+        version = db.query(HACCPPlanVersion).filter(HACCPPlanVersion.id == version_id).first()
+        return HaccpPlanVersionResponse.model_validate(version) if version else None
 
 
 # =============================================================================
 # PROCESS STEP SERVICE
 # =============================================================================
 class ProcessStepService:
-    """Service layer for Process Step management."""
+    @staticmethod
+    def list_process_steps(db: Session, haccp_plan_id: UUID) -> List[ProcessStepResponse]:
+        rows = (
+            db.query(ProcessStepModel)
+            .filter(ProcessStepModel.haccp_plan_id == haccp_plan_id)
+            .order_by(ProcessStepModel.step_order)
+            .all()
+        )
+        return [ProcessStepResponse.model_validate(r) for r in rows]
 
     @staticmethod
-    def list_process_steps(haccp_plan_id: UUID) -> List[ProcessStepResponse]:
-        """List all process steps for a HACCP plan."""
-        # TODO: Query by haccp_plan_id, order by step_order
-        return []
-
-    @staticmethod
-    def create_process_step(payload: ProcessStepCreate) -> ProcessStepResponse:
-        """Create a new process step."""
-        # TODO: Validate haccp_plan_id exists
-        # TODO: Validate step_order is unique within plan
-        # TODO: Insert to database
-        return ProcessStepResponse(
+    def create_process_step(db: Session, payload: ProcessStepCreate) -> ProcessStepResponse:
+        obj = ProcessStepModel(
             id=uuid4(),
             haccp_plan_id=payload.haccp_plan_id,
             step_order=payload.step_order,
@@ -248,59 +279,51 @@ class ProcessStepService:
             step_type=payload.step_type,
             is_ccp=payload.is_ccp,
             parent_step_id=payload.parent_step_id,
-            created_at=datetime.utcnow(),
         )
+        db.add(obj)
+        db.commit()
+        db.refresh(obj)
+        return ProcessStepResponse.model_validate(obj)
 
     @staticmethod
-    def get_process_step(step_id: UUID) -> ProcessStepResponse | None:
-        """Get a process step by ID."""
-        return None
+    def get_process_step(db: Session, step_id: UUID) -> ProcessStepResponse | None:
+        obj = db.query(ProcessStepModel).filter(ProcessStepModel.id == step_id).first()
+        return ProcessStepResponse.model_validate(obj) if obj else None
 
     @staticmethod
-    def update_process_step(
-        step_id: UUID, payload: ProcessStepUpdate
-    ) -> ProcessStepResponse | None:
-        """Update a process step."""
-        # TODO: Validate step exists
-        # TODO: If is_ccp changed to False, check for related CCPs
-        return None
+    def update_process_step(db: Session, step_id: UUID, payload: ProcessStepUpdate) -> ProcessStepResponse | None:
+        obj = db.query(ProcessStepModel).filter(ProcessStepModel.id == step_id).first()
+        if not obj:
+            return None
+        for k, v in payload.model_dump(exclude_unset=True).items():
+            setattr(obj, k, v)
+        db.commit()
+        db.refresh(obj)
+        return ProcessStepResponse.model_validate(obj)
 
     @staticmethod
-    def delete_process_step(step_id: UUID) -> bool:
-        """Delete a process step."""
-        # TODO: Check for related hazards, CCPs
-        # TODO: Reorder remaining steps
+    def delete_process_step(db: Session, step_id: UUID) -> bool:
+        obj = db.query(ProcessStepModel).filter(ProcessStepModel.id == step_id).first()
+        if not obj:
+            return False
+        db.delete(obj)
+        db.commit()
         return True
-
-    @staticmethod
-    def reorder_steps(
-        plan_id: UUID, step_orders: dict[UUID, int]
-    ) -> List[ProcessStepResponse]:
-        """Reorder process steps within a plan."""
-        # TODO: Validate all steps belong to plan
-        # TODO: Update step_order for each step
-        return []
 
 
 # =============================================================================
 # HAZARD ANALYSIS SERVICE
 # =============================================================================
 class HazardAnalysisService:
-    """Service layer for Hazard Analysis management."""
+    @staticmethod
+    def list_hazards(db: Session, step_id: UUID) -> List[HazardAnalysisResponse]:
+        rows = db.query(HazardAnalysisModel).filter(HazardAnalysisModel.step_id == step_id).all()
+        return [HazardAnalysisResponse.model_validate(r) for r in rows]
 
     @staticmethod
-    def list_hazards(step_id: UUID) -> List[HazardAnalysisResponse]:
-        """List all hazard analyses for a process step."""
-        return []
-
-    @staticmethod
-    def create_hazard(payload: HazardAnalysisCreate) -> HazardAnalysisResponse:
-        """Create a new hazard analysis."""
-        # TODO: Validate step_id exists
-        # TODO: Validate likelihood (1-5), severity (1-5)
-        # TODO: Auto-calculate risk_score = likelihood * severity
-        # TODO: Auto-set is_significant if risk_score >= threshold
-        return HazardAnalysisResponse(
+    def create_hazard(db: Session, payload: HazardAnalysisCreate) -> HazardAnalysisResponse:
+        risk = payload.likelihood * payload.severity
+        obj = HazardAnalysisModel(
             id=uuid4(),
             step_id=payload.step_id,
             hazard_type=payload.hazard_type,
@@ -308,71 +331,63 @@ class HazardAnalysisService:
             description=payload.description,
             likelihood=payload.likelihood,
             severity=payload.severity,
-            risk_score=payload.likelihood * payload.severity,
+            risk_score=risk,
             control_measure=payload.control_measure,
-            is_significant=payload.is_significant
-            or (payload.likelihood * payload.severity >= 12),
+            is_significant=payload.is_significant or risk >= 12,
             ai_suggestion=payload.ai_suggestion,
-            created_at=datetime.utcnow(),
         )
+        db.add(obj)
+        db.commit()
+        db.refresh(obj)
+        return HazardAnalysisResponse.model_validate(obj)
 
     @staticmethod
-    def get_hazard(hazard_id: UUID) -> HazardAnalysisResponse | None:
-        """Get a hazard analysis by ID."""
-        return None
+    def get_hazard(db: Session, hazard_id: UUID) -> HazardAnalysisResponse | None:
+        obj = db.query(HazardAnalysisModel).filter(HazardAnalysisModel.id == hazard_id).first()
+        return HazardAnalysisResponse.model_validate(obj) if obj else None
 
     @staticmethod
-    def update_hazard(
-        hazard_id: UUID, payload: HazardAnalysisUpdate
-    ) -> HazardAnalysisResponse | None:
-        """Update a hazard analysis."""
-        # TODO: Recalculate risk_score if likelihood or severity changed
-        return None
+    def update_hazard(db: Session, hazard_id: UUID, payload: HazardAnalysisUpdate) -> HazardAnalysisResponse | None:
+        obj = db.query(HazardAnalysisModel).filter(HazardAnalysisModel.id == hazard_id).first()
+        if not obj:
+            return None
+        updates = payload.model_dump(exclude_unset=True)
+        for k, v in updates.items():
+            setattr(obj, k, v)
+        # Recalculate risk_score
+        obj.risk_score = obj.likelihood * obj.severity
+        db.commit()
+        db.refresh(obj)
+        return HazardAnalysisResponse.model_validate(obj)
 
     @staticmethod
-    def delete_hazard(hazard_id: UUID) -> bool:
-        """Delete a hazard analysis."""
-        # TODO: Check for related CCPs
+    def delete_hazard(db: Session, hazard_id: UUID) -> bool:
+        obj = db.query(HazardAnalysisModel).filter(HazardAnalysisModel.id == hazard_id).first()
+        if not obj:
+            return False
+        db.delete(obj)
+        db.commit()
         return True
-
-    @staticmethod
-    def get_significant_hazards(plan_id: UUID) -> List[HazardAnalysisResponse]:
-        """Get all significant hazards for a HACCP plan."""
-        # TODO: Query hazards where is_significant = True
-        # by joining with process_steps
-        return []
-
-    @staticmethod
-    def suggest_control_measures(hazard_id: UUID) -> str:
-        """AI-suggested control measures for a hazard."""
-        # TODO: Call AI service to analyze hazard and suggest controls
-        return "AI suggested control measure"
 
 
 # =============================================================================
 # CCP SERVICE
 # =============================================================================
 class CCPService:
-    """Service layer for Critical Control Point management."""
+    @staticmethod
+    def list_ccps(db: Session, haccp_plan_id: UUID) -> List[CCPResponse]:
+        rows = db.query(CCPModel).filter(CCPModel.haccp_plan_id == haccp_plan_id).all()
+        return [CCPResponse.model_validate(r) for r in rows]
 
     @staticmethod
-    def list_ccps(haccp_plan_id: UUID) -> List[CCPResponse]:
-        """List all CCPs for a HACCP plan."""
-        return []
-
-    @staticmethod
-    def create_ccp(payload: CCPCreate) -> CCPResponse:
-        """Create a new CCP."""
-        # TODO: Validate haccp_plan_id exists
-        # TODO: Validate ccp_code is unique within plan
-        # TODO: Validate step_id and hazard_id if provided
-        return CCPResponse(
+    def create_ccp(db: Session, payload: CCPCreate) -> CCPResponse:
+        obj = CCPModel(
             id=uuid4(),
             haccp_plan_id=payload.haccp_plan_id,
-            ccp_code=payload.ccp_code,
-            name=payload.name,
             step_id=payload.step_id,
             hazard_id=payload.hazard_id,
+            ccp_code=payload.ccp_code,
+            name=payload.name,
             critical_limit=payload.critical_limit,
             monitoring_method=payload.monitoring_method,
             monitoring_frequency=payload.monitoring_frequency,
@@ -381,63 +396,71 @@ class CCPService:
             corrective_action=payload.corrective_action,
             verification_procedure=payload.verification_procedure,
             ai_suggestion=payload.ai_suggestion,
-            created_at=datetime.utcnow(),
         )
+        db.add(obj)
+        db.commit()
+        db.refresh(obj)
+        return CCPResponse.model_validate(obj)
 
     @staticmethod
-    def get_ccp(ccp_id: UUID) -> CCPResponse | None:
-        """Get a CCP by ID."""
-        return None
+    def get_ccp(db: Session, ccp_id: UUID) -> CCPResponse | None:
+        obj = db.query(CCPModel).filter(CCPModel.id == ccp_id).first()
+        return CCPResponse.model_validate(obj) if obj else None
 
     @staticmethod
-    def update_ccp(ccp_id: UUID, payload: CCPUpdate) -> CCPResponse | None:
-        """Update a CCP."""
-        return None
+    def update_ccp(db: Session, ccp_id: UUID, payload: CCPUpdate) -> CCPResponse | None:
+        obj = db.query(CCPModel).filter(CCPModel.id == ccp_id).first()
+        if not obj:
+            return None
+        try:
+            update_data = payload.model_dump(exclude_unset=True)
+            print(f"[CCP Update] ID={ccp_id}, Data={update_data}")
+            for k, v in update_data.items():
+                setattr(obj, k, v)
+            db.commit()
+            db.refresh(obj)
+            result = CCPResponse.model_validate(obj)
+            print(f"[CCP Update] Success: {result}")
+            return result
+        except Exception as e:
+            import traceback
+            print(f"[CCP Update] Error after commit: {e}")
+            print(traceback.format_exc())
+            raise
 
     @staticmethod
-    def delete_ccp(ccp_id: UUID) -> bool:
-        """Delete a CCP."""
-        # TODO: Check for monitoring logs
+    def delete_ccp(db: Session, ccp_id: UUID) -> bool:
+        obj = db.query(CCPModel).filter(CCPModel.id == ccp_id).first()
+        if not obj:
+            return False
+        db.delete(obj)
+        db.commit()
         return True
-
-    @staticmethod
-    def validate_ccp_code(
-        haccp_plan_id: UUID, ccp_code: str, exclude_id: UUID | None = None
-    ) -> bool:
-        """Validate that CCP code is unique within HACCP plan."""
-        return True
-
-    @staticmethod
-    def get_ccp_by_iot_device(iot_device_id: str) -> CCPResponse | None:
-        """Find CCP associated with an IoT device."""
-        return None
 
 
 # =============================================================================
 # CCP MONITORING LOG SERVICE
 # =============================================================================
 class CCPMonitoringLogService:
-    """Service layer for CCP Monitoring Log management."""
-
     @staticmethod
     def list_ccp_logs(
+        db: Session,
         ccp_id: UUID,
         batch_number: str | None = None,
         shift: str | None = None,
         limit: int = 100,
     ) -> List[CCPMonitoringLogResponse]:
-        """List monitoring logs for a CCP."""
-        # TODO: Query by ccp_id, optional batch_number/shift filters
-        # TODO: Order by recorded_at DESC
-        return []
+        q = db.query(CCPMonitoringLog).filter(CCPMonitoringLog.ccp_id == ccp_id)
+        if batch_number:
+            q = q.filter(CCPMonitoringLog.batch_number == batch_number)
+        if shift:
+            q = q.filter(CCPMonitoringLog.shift == shift)
+        rows = q.order_by(CCPMonitoringLog.recorded_at.desc()).limit(limit).all()
+        return [CCPMonitoringLogResponse.model_validate(r) for r in rows]
 
     @staticmethod
-    def create_ccp_log(payload: CCPMonitoringLogCreate) -> CCPMonitoringLogResponse:
-        """Create a new CCP monitoring log."""
-        # TODO: Validate ccp_id exists
-        # TODO: If iot_device_id provided, validate device exists
-        # TODO: Auto-check against critical limits if value provided
-        return CCPMonitoringLogResponse(
+    def create_ccp_log(db: Session, payload: CCPMonitoringLogCreate) -> CCPMonitoringLogResponse:
+        obj = CCPMonitoringLog(
             id=uuid4(),
             ccp_id=payload.ccp_id,
             batch_number=payload.batch_number,
@@ -447,74 +470,124 @@ class CCPMonitoringLogService:
             is_within_limit=payload.is_within_limit,
             deviation_note=payload.deviation_note,
             recorded_by=payload.recorded_by,
-            recorded_at=datetime.utcnow(),
-            verified_by=None,
-            verified_at=None,
             iot_device_id=payload.iot_device_id,
+            # Deviation management fields
+            deviation_severity=payload.deviation_severity,
+            deviation_status="NEW" if payload.is_within_limit == False else None,
         )
+        db.add(obj)
+        db.commit()
+        db.refresh(obj)
+        return CCPMonitoringLogResponse.model_validate(obj)
 
     @staticmethod
-    def get_ccp_log(log_id: UUID) -> CCPMonitoringLogResponse | None:
-        """Get a CCP monitoring log by ID."""
-        return None
+    def get_ccp_log(db: Session, log_id: UUID) -> CCPMonitoringLogResponse | None:
+        obj = db.query(CCPMonitoringLog).filter(CCPMonitoringLog.id == log_id).first()
+        return CCPMonitoringLogResponse.model_validate(obj) if obj else None
 
     @staticmethod
-    def update_ccp_log(
-        log_id: UUID, payload: CCPMonitoringLogUpdate
-    ) -> CCPMonitoringLogResponse | None:
-        """Update a CCP monitoring log."""
-        # TODO: Set verified_at if verified_by is provided
-        return None
+    def update_ccp_log(db: Session, log_id: UUID, payload: CCPMonitoringLogUpdate) -> CCPMonitoringLogResponse | None:
+        obj = db.query(CCPMonitoringLog).filter(CCPMonitoringLog.id == log_id).first()
+        if not obj:
+            return None
+        updates = payload.model_dump(exclude_unset=True)
+        if "verified_by" in updates and updates["verified_by"]:
+            obj.verified_at = datetime.now(timezone.utc)
+        for k, v in updates.items():
+            setattr(obj, k, v)
+        db.commit()
+        db.refresh(obj)
+        return CCPMonitoringLogResponse.model_validate(obj)
 
     @staticmethod
     def list_ccp_deviations(
+        db: Session,
         org_id: UUID | None = None,
+        status: str | None = None,
+        severity: str | None = None,
         limit: int = 100,
     ) -> List[CCPMonitoringLogResponse]:
-        """List all CCP deviations (logs where is_within_limit = False)."""
-        # TODO: Query logs where is_within_limit = False
-        # TODO: Join with CCPs, HACCP plans for org filter
-        return []
+        q = db.query(CCPMonitoringLog).filter(CCPMonitoringLog.is_within_limit == False)  # noqa: E712
+        if status:
+            q = q.filter(CCPMonitoringLog.deviation_status == status)
+        if severity:
+            q = q.filter(CCPMonitoringLog.deviation_severity == severity)
+        rows = q.order_by(CCPMonitoringLog.recorded_at.desc()).limit(limit).all()
+        return [CCPMonitoringLogResponse.model_validate(r) for r in rows]
 
     @staticmethod
-    def get_deviation_stats(ccp_id: UUID, days: int = 30) -> dict:
-        """Get deviation statistics for a CCP."""
-        # TODO: Calculate total logs, deviation count, deviation rate
-        return {
-            "total_logs": 100,
-            "deviation_count": 5,
-            "deviation_rate": 5.0,
-            "period_days": days,
-        }
-
-    @staticmethod
-    def auto_verify_from_iot(
-        log_id: UUID, iot_device_id: str
+    def handle_deviation(
+        db: Session,
+        log_id: UUID,
+        payload,
     ) -> CCPMonitoringLogResponse | None:
-        """Auto-verify a log entry from trusted IoT device."""
-        # TODO: Mark as verified if device is trusted
-        return None
+        """Xử lý một độ lệch: cập nhật trạng thái, mức độ, hành động khắc phục"""
+        obj = db.query(CCPMonitoringLog).filter(CCPMonitoringLog.id == log_id).first()
+        if not obj:
+            return None
+
+        updates = payload.model_dump(exclude_unset=True)
+
+        # Tự động cập nhật thời gian xử lý nếu có người xử lý
+        if "handled_by" in updates and updates["handled_by"]:
+            obj.handled_at = datetime.now(timezone.utc)
+
+        for k, v in updates.items():
+            setattr(obj, k, v)
+
+        db.commit()
+        db.refresh(obj)
+        return CCPMonitoringLogResponse.model_validate(obj)
+
+    @staticmethod
+    def get_deviation_stats(
+        db: Session,
+        org_id: UUID | None = None,
+    ) -> dict:
+        """Thống kê độ lệch theo trạng thái và mức độ"""
+        from sqlalchemy import func
+
+        # Stats by status
+        status_counts = db.query(
+            CCPMonitoringLog.deviation_status,
+            func.count(CCPMonitoringLog.id).label('count')
+        ).filter(
+            CCPMonitoringLog.is_within_limit == False  # noqa: E712
+        ).group_by(CCPMonitoringLog.deviation_status).all()
+
+        # Stats by severity
+        severity_counts = db.query(
+            CCPMonitoringLog.deviation_severity,
+            func.count(CCPMonitoringLog.id).label('count')
+        ).filter(
+            CCPMonitoringLog.is_within_limit == False  # noqa: E712
+        ).group_by(CCPMonitoringLog.deviation_severity).all()
+
+        return {
+            "by_status": {s: c for s, c in status_counts if s},
+            "by_severity": {s: c for s, c in severity_counts if s},
+            "total": sum(c for _, c in status_counts),
+            "pending": sum(c for s, c in status_counts if s in ["NEW", "INVESTIGATING", "CORRECTIVE_ACTION"])
+        }
 
 
 # =============================================================================
 # HACCP VERIFICATION SERVICE
 # =============================================================================
 class HaccpVerificationService:
-    """Service layer for HACCP Verification management."""
+    @staticmethod
+    def list_verifications(db: Session, haccp_plan_id: UUID) -> List[HaccpVerificationResponse]:
+        rows = (
+            db.query(HaccpVerificationModel)
+            .filter(HaccpVerificationModel.haccp_plan_id == haccp_plan_id)
+            .order_by(HaccpVerificationModel.conducted_at.desc())
+            .all()
+        )
+        return [HaccpVerificationResponse.model_validate(r) for r in rows]
 
     @staticmethod
-    def list_verifications(haccp_plan_id: UUID) -> List[HaccpVerificationResponse]:
-        """List all verifications for a HACCP plan."""
-        return []
-
-    @staticmethod
-    def create_verification(
-        payload: HaccpVerificationCreate,
-    ) -> HaccpVerificationResponse:
-        """Create a new HACCP verification."""
-        # TODO: Validate haccp_plan_id exists
-        # TODO: Validate conducted_by user exists
-        return HaccpVerificationResponse(
+    def create_verification(db: Session, payload: HaccpVerificationCreate) -> HaccpVerificationResponse:
+        obj = HaccpVerificationModel(
             id=uuid4(),
             haccp_plan_id=payload.haccp_plan_id,
             verification_type=payload.verification_type,
@@ -525,68 +598,24 @@ class HaccpVerificationService:
             conducted_by=payload.conducted_by,
             approved_by=payload.approved_by,
             report_url=payload.report_url,
-            conducted_at=datetime.utcnow(),
         )
+        db.add(obj)
+        db.commit()
+        db.refresh(obj)
+        return HaccpVerificationResponse.model_validate(obj)
 
     @staticmethod
-    def get_verification(verification_id: UUID) -> HaccpVerificationResponse | None:
-        """Get a HACCP verification by ID."""
-        return None
+    def get_verification(db: Session, verification_id: UUID) -> HaccpVerificationResponse | None:
+        obj = db.query(HaccpVerificationModel).filter(HaccpVerificationModel.id == verification_id).first()
+        return HaccpVerificationResponse.model_validate(obj) if obj else None
 
     @staticmethod
-    def update_verification(
-        verification_id: UUID, payload: HaccpVerificationUpdate
-    ) -> HaccpVerificationResponse | None:
-        """Update a HACCP verification."""
-        return None
-
-    @staticmethod
-    def generate_verification_report(verification_id: UUID) -> str:
-        """Generate PDF report for a verification."""
-        # TODO: Generate PDF from verification data
-        # TODO: Upload to storage and return URL
-        return "https://storage.example.com/reports/verification.pdf"
-
-    @staticmethod
-    def schedule_verification_reminder(haccp_plan_id: UUID, due_date: date) -> None:
-        """Schedule a reminder for upcoming verification."""
-        # TODO: Create calendar event for verification
-        # TODO: Set reminder notifications
-        pass
-
-
-# =============================================================================
-# HACCP DASHBOARD SERVICE
-# =============================================================================
-class HaccpDashboardService:
-    """Service layer for HACCP dashboard and analytics."""
-
-    @staticmethod
-    def get_plan_summary(org_id: UUID) -> dict:
-        """Get HACCP plan summary for dashboard."""
-        # TODO: Count plans by status
-        return {
-            "total_plans": 10,
-            "draft_count": 2,
-            "active_count": 6,
-            "archived_count": 2,
-        }
-
-    @staticmethod
-    def get_ccp_summary(org_id: UUID) -> dict:
-        """Get CCP summary for dashboard."""
-        return {
-            "total_ccps": 25,
-            "monitored_today": 23,
-            "deviations_today": 2,
-        }
-
-    @staticmethod
-    def get_overdue_verifications(org_id: UUID) -> List[HaccpVerificationResponse]:
-        """Get list of overdue verifications."""
-        return []
-
-    @staticmethod
-    def get_pending_approvals(org_id: UUID) -> List[HaccpPlanResponse]:
-        """Get list of HACCP plans pending approval."""
-        return []
+    def update_verification(db: Session, verification_id: UUID, payload: HaccpVerificationUpdate) -> HaccpVerificationResponse | None:
+        obj = db.query(HaccpVerificationModel).filter(HaccpVerificationModel.id == verification_id).first()
+        if not obj:
+            return None
+        for k, v in payload.model_dump(exclude_unset=True).items():
+            setattr(obj, k, v)
+        db.commit()
+        db.refresh(obj)
+        return HaccpVerificationResponse.model_validate(obj)
