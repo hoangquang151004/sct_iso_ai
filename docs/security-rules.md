@@ -4,13 +4,13 @@ Ngày cập nhật: 2026-04-21.
 
 ## 1) Trạng thái đã triển khai
 - Auth API thật: `/auth/login`, `/auth/me`, `/auth/refresh`, `/auth/logout`.
-- Refresh token dùng cookie `httpOnly`, `path=/auth`, `secure/samesite` theo config.
+- Refresh token dùng cookie `httpOnly`, `path=/`, `secure/samesite` theo config.
 - RBAC theo permission guard `require_permissions`.
 - Rate limit đã bật cho `login` và `refresh`.
 - Audit log đã có (`audit_log` + `GET /audit/logs`).
 - Token invalidation theo `users.token_version` + claim `tv`.
 - Session theo thiết bị đã có (`/auth/sessions/*` và admin revoke-all).
-- Frontend: middleware edge (`frontend/src/middleware.ts`) không đọc cookie refresh (cookie gắn origin API, `path=/auth`); bắt buộc đăng nhập và kiểm tra quyền route do **AuthGate** + principal sau `GET /auth/me`. Modal **phiên hết hạn** khi refresh token thất bại (xử lý trong `api-client` / `AuthProvider`).
+- Frontend: middleware edge (`frontend/src/middleware.ts`) không đọc cookie refresh (cookie gắn origin FE khi dùng proxy dev `/api-backend`, `path=/`); bắt buộc đăng nhập và kiểm tra quyền route do **AuthGate** + principal sau `GET /auth/me`. Modal **phiên hết hạn** khi refresh token thất bại (xử lý trong `api-client` / `AuthProvider`).
 
 ## 2) Quy tắc bắt buộc
 1. Không log dữ liệu nhạy cảm (password, raw token, secret).
@@ -22,7 +22,7 @@ Ngày cập nhật: 2026-04-21.
 ## 3) Cookie/Session rules
 - Refresh cookie:
   - `HttpOnly=true`
-  - `Path=/auth`
+  - `Path=/`
   - `Secure` theo `REFRESH_COOKIE_SECURE`
   - `SameSite` theo `REFRESH_COOKIE_SAMESITE`
 - Bắt buộc:

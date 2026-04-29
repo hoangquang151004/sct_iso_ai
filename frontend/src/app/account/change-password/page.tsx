@@ -5,8 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import AppShell from "@/components/layout/app-shell";
 import { changeMyPassword } from "@/services";
-import { ApiClientError } from "@/lib/api-client";
-import { getMessageByErrorCode } from "@/lib/users-error-map";
+import { ApiClientError } from "@/api/api-client";
+import { getMessageByErrorCode } from "@/api/users-error-map";
 
 const isStrongEnough = (password: string) =>
   password.length >= 8 && /[A-Za-z]/.test(password) && /\d/.test(password);

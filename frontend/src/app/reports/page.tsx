@@ -21,7 +21,7 @@ import {
 import {
   type KpiSnapshotDto,
   listKpiSnapshots,
-} from "@/lib/reports-api";
+} from "@/api/reports-api";
 
 type ReportKpiRow = {
   label: string;

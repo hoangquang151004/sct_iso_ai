@@ -1,4 +1,4 @@
-import { apiRequest, clearAccessToken, setAccessToken } from "@/lib/api-client";
+import { apiRequest, clearAccessToken, setAccessToken } from "@/api/api-client";
 import type { AuthPrincipal, AuthTokenResponse } from "@/types";
 
 type LoginPayload = {

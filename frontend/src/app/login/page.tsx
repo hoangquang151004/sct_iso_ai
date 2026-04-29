@@ -4,11 +4,11 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
-import { ApiClientError } from "@/lib/api-client";
+import { ApiClientError } from "@/api/api-client";
 import { useAuth } from "@/hooks";
 import { getCurrentPrincipal } from "@/services";
 import { AUTH_DEFAULT_AFTER_LOGIN } from "@/lib/auth-routes";
-import { getMessageByErrorCode } from "@/lib/users-error-map";
+import { getMessageByErrorCode } from "@/api/users-error-map";
 
 export default function LoginPage() {
   const router = useRouter();

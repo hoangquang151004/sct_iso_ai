@@ -72,7 +72,7 @@ export type CCPMonitoringLog = {
   is_within_limit?: boolean;
   deviation_note?: string;
   iot_device_id?: string;
-  recorded_by: string;
+  recorded_by?: string;
   recorded_at: string;
   verified_by?: string;
   verified_at?: string;

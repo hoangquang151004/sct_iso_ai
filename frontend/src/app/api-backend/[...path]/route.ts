@@ -11,6 +11,14 @@ const backendBase = () =>
 
 type RouteCtx = { params: Promise<{ path?: string[] }> };
 
+function copyUpstreamCookies(upstream: Response, out: Headers): void {
+  const raw = upstream.headers as Headers & { getSetCookie?: () => string[] };
+  const cookies = raw.getSetCookie?.() ?? [];
+  for (const line of cookies) {
+    out.append("set-cookie", line);
+  }
+}
+
 async function proxy(req: NextRequest, pathSegments: string[]) {
   const path = pathSegments.length ? pathSegments.join("/") : "";
   const url = `${backendBase()}/${path}${req.nextUrl.search}`;
@@ -20,6 +28,10 @@ async function proxy(req: NextRequest, pathSegments: string[]) {
   if (ct) headers.set("content-type", ct);
   const accept = req.headers.get("accept");
   if (accept) headers.set("accept", accept);
+  const cookie = req.headers.get("cookie");
+  if (cookie) headers.set("cookie", cookie);
+  const authorization = req.headers.get("authorization");
+  if (authorization) headers.set("authorization", authorization);
 
   const init: RequestInit = {
     method: req.method,
@@ -48,6 +60,9 @@ async function proxy(req: NextRequest, pathSegments: string[]) {
   const out = new Headers();
   const ctOut = upstream.headers.get("content-type");
   if (ctOut) out.set("content-type", ctOut);
+  const xRequestId = upstream.headers.get("x-request-id");
+  if (xRequestId) out.set("x-request-id", xRequestId);
+  copyUpstreamCookies(upstream, out);
 
   return new NextResponse(upstream.body, {
     status: upstream.status,

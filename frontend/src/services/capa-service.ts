@@ -1,4 +1,4 @@
-import { apiRequest } from "@/lib/api-client";
+import { apiRequest } from "@/api/api-client";
 
 export interface NonConformity {
   id: string;
@@ -10,6 +10,8 @@ export interface NonConformity {
   description?: string;
   severity: string;
   status: string;
+  /** Trạng thái CAPA liên kết (nếu API trả về) */
+  capa_status?: string;
   detected_at: string;
   created_at: string;
 }

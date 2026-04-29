@@ -23,6 +23,8 @@ export interface PRPChecklistTemplate {
   document_id?: string;
   question_text: string;
   answer_type: "BOOLEAN" | "TEXT" | "NUMBER" | "SELECT";
+  /** Mục tiêu số (ví dụ ngưỡng tuân thủ) khi answer_type là NUMBER */
+  target_value?: number;
   options?: Record<string, any>;
   requirement?: string;
   order_index: number;

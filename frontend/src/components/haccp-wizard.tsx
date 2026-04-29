@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { apiFetch } from "../lib/api-client";
+import { apiFetch } from "@/api/api-client";
 import Modal from "./ui/modal";
 import { documents, Document } from "../lib/mock-data";
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { apiFetch } from "../api-client";
-import { HaccpPlan, ProcessStep, CCP, HazardAnalysis, CCPMonitoringLog, HaccpVerification } from "../types";
+import { apiFetch } from "@/api/api-client";
+import { HaccpPlan, ProcessStep, CCP, HazardAnalysis, CCPMonitoringLog, HaccpVerification } from "@/lib/types";
 
 // ============================================================================
 // HACCP PLAN HOOKS
@@ -149,7 +149,7 @@ export function useCCPLogs(ccpId: string | null) {
 // ============================================================================
 // ALL CCP LOGS FOR PLAN HOOK
 // ============================================================================
-export function useAllCCPLogs(planId: string | null) {
+export function useAllCCPLogs(planId: string | null, enabled: boolean = true) {
   const [logs, setLogs] = useState<CCPMonitoringLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -162,10 +162,16 @@ export function useAllCCPLogs(planId: string | null) {
       const ccps = await apiFetch<CCP[]>(`/haccp/plans/${planId}/ccps`);
       const allLogs: CCPMonitoringLog[] = [];
       for (const ccp of ccps) {
-        const logs = await apiFetch<CCPMonitoringLog[]>(`/haccp/ccps/${ccp.id}/logs?limit=100`);
-        allLogs.push(...logs);
+        const logsChunk = await apiFetch<CCPMonitoringLog[]>(
+          `/haccp/ccps/${ccp.id}/logs?limit=100`,
+        );
+        allLogs.push(...logsChunk);
       }
-      setLogs(allLogs.sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime()));
+      setLogs(
+        allLogs.sort(
+          (a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime(),
+        ),
+      );
       setError(null);
     } catch (err) {
       setError(err as Error);
@@ -175,8 +181,18 @@ export function useAllCCPLogs(planId: string | null) {
   }, [planId]);
 
   useEffect(() => {
-    fetchAllLogs();
-  }, [fetchAllLogs]);
+    if (!enabled) {
+      setLogs([]);
+      setLoading(false);
+      return;
+    }
+    if (!planId) {
+      setLogs([]);
+      setLoading(false);
+      return;
+    }
+    void fetchAllLogs();
+  }, [fetchAllLogs, enabled, planId]);
 
   return { logs, loading, error, refetch: fetchAllLogs };
 }
@@ -189,7 +205,11 @@ export interface DeviationFilters {
   severity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 }
 
-export function useDeviations(orgId: string | null, filters?: DeviationFilters) {
+export function useDeviations(
+  orgId: string | null,
+  filters?: DeviationFilters,
+  enabled: boolean = true,
+) {
   const [deviations, setDeviations] = useState<CCPMonitoringLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -198,15 +218,15 @@ export function useDeviations(orgId: string | null, filters?: DeviationFilters) 
     try {
       setLoading(true);
       const params = new URLSearchParams();
-      params.set('limit', '500');
+      params.set("limit", "500");
       if (orgId) {
-        params.set('org_id', orgId);
+        params.set("org_id", orgId);
       }
       if (filters?.status) {
-        params.set('status', filters.status);
+        params.set("status", filters.status);
       }
       if (filters?.severity) {
-        params.set('severity', filters.severity);
+        params.set("severity", filters.severity);
       }
       const data = await apiFetch<CCPMonitoringLog[]>(`/haccp/deviations?${params.toString()}`);
       setDeviations(data);
@@ -219,8 +239,13 @@ export function useDeviations(orgId: string | null, filters?: DeviationFilters) 
   }, [orgId, filters?.status, filters?.severity]);
 
   useEffect(() => {
-    fetchDeviations();
-  }, [fetchDeviations]);
+    if (!enabled) {
+      setDeviations([]);
+      setLoading(false);
+      return;
+    }
+    void fetchDeviations();
+  }, [fetchDeviations, enabled]);
 
   return { deviations, loading, error, refetch: fetchDeviations };
 }
@@ -235,7 +260,7 @@ export interface DeviationStats {
   pending: number;
 }
 
-export function useDeviationStats(orgId: string | null) {
+export function useDeviationStats(orgId: string | null, enabled: boolean = true) {
   const [stats, setStats] = useState<DeviationStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -245,7 +270,7 @@ export function useDeviationStats(orgId: string | null) {
       setLoading(true);
       const params = new URLSearchParams();
       if (orgId) {
-        params.set('org_id', orgId);
+        params.set("org_id", orgId);
       }
       const data = await apiFetch<DeviationStats>(`/haccp/deviations/stats?${params.toString()}`);
       setStats(data);
@@ -258,8 +283,13 @@ export function useDeviationStats(orgId: string | null) {
   }, [orgId]);
 
   useEffect(() => {
-    fetchStats();
-  }, [fetchStats]);
+    if (!enabled) {
+      setStats(null);
+      setLoading(false);
+      return;
+    }
+    void fetchStats();
+  }, [fetchStats, enabled]);
 
   return { stats, loading, error, refetch: fetchStats };
 }
@@ -377,7 +407,7 @@ export interface ProcessStepWithPlan extends ProcessStep {
   hazards?: HazardAnalysis[];
 }
 
-export function useAllProcessStepsWithHazards() {
+export function useAllProcessStepsWithHazards(enabled: boolean = true) {
   const [allStepsWithHazards, setAllStepsWithHazards] = useState<ProcessStepWithPlan[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -385,43 +415,41 @@ export function useAllProcessStepsWithHazards() {
   const fetchAllData = useCallback(async () => {
     try {
       setLoading(true);
-      
-      // 1. Lấy tất cả kế hoạch HACCP
+
       const plans = await apiFetch<HaccpPlan[]>("/haccp/plans");
-      
-      // 2. Với mỗi kế hoạch, lấy các công đoạn và mối nguy
+
       const allStepsData: ProcessStepWithPlan[] = [];
-      
+
       for (const plan of plans) {
         try {
-          // Lấy công đoạn của kế hoạch này
           const steps = await apiFetch<ProcessStep[]>(`/haccp/plans/${plan.id}/steps`);
-          
-          // Với mỗi công đoạn, lấy mối nguy
-          for (const step of steps) {
-            try {
-              const hazards = await apiFetch<HazardAnalysis[]>(`/haccp/steps/${step.id}/hazards`);
-              allStepsData.push({
-                ...step,
-                plan_id: plan.id,
-                plan_name: plan.name,
-                hazards: hazards || []
-              });
-            } catch {
-              // Nếu lỗi, vẫn thêm công đoạn nhưng không có mối nguy
-              allStepsData.push({
-                ...step,
-                plan_id: plan.id,
-                plan_name: plan.name,
-                hazards: []
-              });
-            }
-          }
+
+          const withHazards = await Promise.all(
+            steps.map(async (step) => {
+              try {
+                const hazards = await apiFetch<HazardAnalysis[]>(`/haccp/steps/${step.id}/hazards`);
+                return {
+                  ...step,
+                  plan_id: plan.id,
+                  plan_name: plan.name,
+                  hazards: hazards || [],
+                } as ProcessStepWithPlan;
+              } catch {
+                return {
+                  ...step,
+                  plan_id: plan.id,
+                  plan_name: plan.name,
+                  hazards: [],
+                } as ProcessStepWithPlan;
+              }
+            }),
+          );
+          allStepsData.push(...withHazards);
         } catch {
           // Skip failed plans
         }
       }
-      
+
       setAllStepsWithHazards(allStepsData);
       setError(null);
     } catch (err) {
@@ -432,8 +460,13 @@ export function useAllProcessStepsWithHazards() {
   }, []);
 
   useEffect(() => {
-    fetchAllData();
-  }, [fetchAllData]);
+    if (!enabled) {
+      setAllStepsWithHazards([]);
+      setLoading(false);
+      return;
+    }
+    void fetchAllData();
+  }, [fetchAllData, enabled]);
 
   return { allStepsWithHazards, loading, error, refetch: fetchAllData };
 }
@@ -441,7 +474,7 @@ export function useAllProcessStepsWithHazards() {
 // ============================================================================
 // ALL CCPS HOOK - Fetch CCPs from all plans
 // ============================================================================
-export function useAllCCPs() {
+export function useAllCCPs(enabled: boolean = true) {
   const [allCcps, setAllCcps] = useState<CCP[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -449,25 +482,20 @@ export function useAllCCPs() {
   const fetchAllCcps = useCallback(async () => {
     try {
       setLoading(true);
-      
-      // Lấy tất cả các kế hoạch
+
       const plans = await apiFetch<HaccpPlan[]>("/haccp/plans");
-      
-      const allCcpData: CCP[] = [];
-      
-      // Lấy CCP từ tất cả các kế hoạch
-      for (const plan of plans) {
-        try {
-          const ccps = await apiFetch<CCP[]>(`/haccp/plans/${plan.id}/ccps`);
-          if (ccps && ccps.length > 0) {
-            allCcpData.push(...ccps);
+
+      const ccpLists = await Promise.all(
+        plans.map(async (plan) => {
+          try {
+            return await apiFetch<CCP[]>(`/haccp/plans/${plan.id}/ccps`);
+          } catch {
+            return [];
           }
-        } catch {
-          // Skip failed plans
-        }
-      }
-      
-      setAllCcps(allCcpData);
+        }),
+      );
+
+      setAllCcps(ccpLists.flat());
       setError(null);
     } catch (err) {
       setError(err as Error);
@@ -477,8 +505,13 @@ export function useAllCCPs() {
   }, []);
 
   useEffect(() => {
-    fetchAllCcps();
-  }, [fetchAllCcps]);
+    if (!enabled) {
+      setAllCcps([]);
+      setLoading(false);
+      return;
+    }
+    void fetchAllCcps();
+  }, [fetchAllCcps, enabled]);
 
   return { allCcps, loading, error, refetch: fetchAllCcps };
 }

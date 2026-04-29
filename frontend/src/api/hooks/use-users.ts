@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch } from "@/api/api-client";
 
 export interface User {
   id: string;
@@ -14,32 +14,38 @@ export interface User {
   role_id: string | null;
 }
 
-export function useUsers(filters?: { is_active?: boolean }) {
+export function useUsers(filters?: { is_active?: boolean }, enabled: boolean = true) {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!enabled) {
+      setUsers([]);
+      setLoading(false);
+      return;
+    }
+
     const fetchUsers = async () => {
       setLoading(true);
       try {
         const params = new URLSearchParams();
         if (filters?.is_active !== undefined) params.append("is_active", String(filters.is_active));
-        
+
         const url = `/users${params.toString() ? `?${params.toString()}` : ""}`;
-        const data = await apiFetch(url) as User[];
+        const data = (await apiFetch(url)) as User[];
         setUsers(data || []);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("[useUsers] Error:", err);
-        setError(err.message);
+        setError(err instanceof Error ? err.message : "Unknown error");
         setUsers([]);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchUsers();
-  }, [filters?.is_active]);
+    void fetchUsers();
+  }, [filters?.is_active, enabled]);
 
   return { users, loading, error };
 }

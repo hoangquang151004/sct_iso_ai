@@ -3,12 +3,11 @@
 import { useState, useEffect } from "react";
 import AppShell from "@/components/layout/app-shell";
 import { haccpSidebarButtons, currentUser, getUserDisplayName } from "@/lib/mock-data";
-import { useUsers, User } from "@/lib/hooks/use-users";
+import { useUsers, User } from "@/api/hooks/use-users";
 import { 
   useHaccpPlans, 
   useProcessSteps, 
   useCCPs, 
-  useHazards,
   useAllCCPLogs,
   useDeviations,
   useDeviationStats,
@@ -21,14 +20,25 @@ import {
   DeviationFilters,
   HandleDeviationPayload,
   HaccpPlanVersion
-} from "@/lib/hooks/use-haccp";
+} from "@/api/hooks/use-haccp";
 import { CCPMonitoringLog, HazardAnalysis, CCP } from "@/lib/types";
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch } from "@/api/api-client";
 import HaccpWizard from "@/components/haccp-wizard";
 import Modal from "@/components/ui/modal";
 
 export default function HaccpCompliancePage() {
   const [activeTab, setActiveTab] = useState(haccpSidebarButtons[0]?.id ?? "process-flow");
+  /** Chỉ tải dữ liệu nặng khi tab cần — tránh bão request mỗi lần mở trang. */
+  const loadAllCcpsData =
+    activeTab === "ccps" || activeTab === "monitoring-logs" || activeTab === "monitoring";
+  const loadFullHazardAnalysis = activeTab === "hazards";
+  const loadDeviationsData = activeTab === "deviations";
+  const loadMonitoringLogsData = activeTab === "monitoring-logs";
+  const loadUsersForForms =
+    activeTab === "monitoring" ||
+    activeTab === "monitoring-logs" ||
+    activeTab === "deviations";
+
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [wizardPlanId, setWizardPlanId] = useState<string | null>(null);
   
@@ -86,50 +96,32 @@ export default function HaccpCompliancePage() {
   const { ccps, loading: ccpsLoading } = useCCPs(selectedPlanId);
   
   // Hook for all CCPs (for the CCPs tab showing all plans)
-  const { allCcps, loading: allCcpsLoading, refetch: refetchAllCcps } = useAllCCPs();
+  const { allCcps, loading: allCcpsLoading, refetch: refetchAllCcps } = useAllCCPs(loadAllCcpsData);
 
   // Hook for users (for monitoring logs form)
-  const { users, loading: usersLoading } = useUsers({ is_active: true });
+  const { users, loading: usersLoading } = useUsers({ is_active: true }, loadUsersForForms);
 
   // New hooks for all features
-  const { logs: allLogs, loading: logsLoading, refetch: refetchLogs } = useAllCCPLogs(selectedPlanId);
-  
+  const { logs: allLogs, loading: logsLoading, refetch: refetchLogs } = useAllCCPLogs(
+    selectedPlanId,
+    loadMonitoringLogsData,
+  );
+
   // Deviation management state
   const [deviationFilters, setDeviationFilters] = useState<DeviationFilters>({});
-  const { deviations, loading: deviationsLoading, refetch: refetchDeviations } = useDeviations(null, deviationFilters);
-  const { stats: deviationStats, loading: deviationStatsLoading, refetch: refetchDeviationStats } = useDeviationStats(null);
+  const { deviations, loading: deviationsLoading, refetch: refetchDeviations } = useDeviations(
+    null,
+    deviationFilters,
+    loadDeviationsData,
+  );
+  const { stats: deviationStats, loading: deviationStatsLoading, refetch: refetchDeviationStats } =
+    useDeviationStats(null, loadDeviationsData);
   const [selectedDeviation, setSelectedDeviation] = useState<CCPMonitoringLog | null>(null);
   const [isHandleDeviationModalOpen, setIsHandleDeviationModalOpen] = useState(false);
-  
+
   // Hook lấy tất cả công đoạn và mối nguy từ tất cả kế hoạch cho phân tích đầy đủ
-  const { allStepsWithHazards, loading: allHazardsFullLoading } = useAllProcessStepsWithHazards();
-
-  // We are currently picking the first step to fetch hazards as a demo
-  const firstStepId = steps && steps.length > 0 ? steps[0].id : null;
-  const { hazards: firstStepHazards, loading: hazardsLoading } = useHazards(firstStepId);
-
-  // Fetch all hazards for all steps
-  const [allHazards, setAllHazards] = useState<Record<string, any[]>>({});
-  const [allHazardsLoading, setAllHazardsLoading] = useState(false);
-
-  useEffect(() => {
-    const fetchAllHazards = async () => {
-      if (!steps || steps.length === 0) return;
-      setAllHazardsLoading(true);
-      const hazardsMap: Record<string, any[]> = {};
-      for (const step of steps) {
-        try {
-          const data = await apiFetch<any[]>(`/haccp/steps/${step.id}/hazards`);
-          hazardsMap[step.id] = data;
-        } catch {
-          hazardsMap[step.id] = [];
-        }
-      }
-      setAllHazards(hazardsMap);
-      setAllHazardsLoading(false);
-    };
-    fetchAllHazards();
-  }, [steps]);
+  const { allStepsWithHazards, loading: allHazardsFullLoading } =
+    useAllProcessStepsWithHazards(loadFullHazardAnalysis);
 
   const hazardColor = (hazardType: string) => {
     if (hazardType === "BIOLOGICAL") return "bg-orange-500";
@@ -191,12 +183,6 @@ export default function HaccpCompliancePage() {
     } catch (err: any) {
       alert("Lỗi khi xóa: " + err.message);
     }
-  };
-
-  // Helper to get step name by ID
-  const getStepName = (stepId: string) => {
-    const step = steps.find(s => s.id === stepId);
-    return step?.name || "Không xác định";
   };
 
   // Helper to get CCP info by ID
@@ -1174,8 +1160,13 @@ export default function HaccpCompliancePage() {
 
                 {/* MONITORING PLAN TAB */}
                 {activeTab === "monitoring" && (
-                  <MonitoringPlanEditor 
-                    plans={plans} 
+                  <MonitoringPlanEditor
+                    plans={plans}
+                    allCcps={allCcps}
+                    allCcpsLoading={allCcpsLoading}
+                    refetchAllCcps={refetchAllCcps}
+                    users={users}
+                    usersLoading={usersLoading}
                     onCreateLog={(ccpId) => {
                       setLogFormData(prev => ({ ...prev, ccp_id: ccpId }));
                       setActiveTab("monitoring-logs");
@@ -1537,9 +1528,23 @@ function ProcessFlowDisplay({ planId, compact = false }: { planId: string | null
   );
 }
 
-function MonitoringPlanEditor({ plans, onCreateLog }: { plans: any[]; onCreateLog?: (ccpId: string) => void }) {
-  const { allCcps: ccps, loading: ccpsLoading, refetch } = useAllCCPs();
-  const { users, loading: usersLoading } = useUsers({ is_active: true });
+function MonitoringPlanEditor({
+  plans,
+  onCreateLog,
+  allCcps: ccps,
+  allCcpsLoading: ccpsLoading,
+  refetchAllCcps: refetch,
+  users,
+  usersLoading,
+}: {
+  plans: any[];
+  onCreateLog?: (ccpId: string) => void;
+  allCcps: CCP[];
+  allCcpsLoading: boolean;
+  refetchAllCcps: () => void | Promise<void>;
+  users: User[];
+  usersLoading: boolean;
+}) {
   const [selectedCcpId, setSelectedCcpId] = useState<string | null>(null);
   const [editableCcp, setEditableCcp] = useState<any>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -1595,17 +1600,12 @@ function MonitoringPlanEditor({ plans, onCreateLog }: { plans: any[]; onCreateLo
         corrective_action: editableCcp.corrective_action?.trim() || null,
         verification_procedure: editableCcp.verification_procedure?.trim() || null,
       };
-      
-      console.log("[MonitoringPlan] Saving:", payload);
-      
-      const response = await apiFetch(`/haccp/ccps/${editableCcp.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify(payload)
+
+      await apiFetch(`/haccp/ccps/${editableCcp.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
       });
-      
-      console.log("[MonitoringPlan] Saved:", response);
-      
-      // Refresh data
+
       await refetch();
       
       // Show success and return to list
@@ -2089,7 +2089,7 @@ function DeviationManagementPanel({
                         <span>📦 Lô: {dev.batch_number || "N/A"}</span>
                         <span>🕐 Ca: {dev.shift || "N/A"}</span>
                         <span>📊 Giá trị: {dev.measured_value} {dev.unit}</span>
-                        <span>👤 Ghi nhận: {getUserDisplayName(dev.recorded_by)}</span>
+                        <span>👤 Ghi nhận: {dev.recorded_by ? getUserDisplayName(dev.recorded_by) : "—"}</span>
                       </div>
 
                       {dev.deviation_note && (

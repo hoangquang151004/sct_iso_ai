@@ -61,6 +61,10 @@ const getNCStatusBadge = (nc: any) => {
   }
 };
 
+/** NC/CAPA coi là đã đóng: ẩn khỏi danh sách open (đồng bộ status NC với CAPA đã CLOSED). */
+const isOpenPRPNc = (nc: NonConformity) =>
+  nc.status !== "CLOSED" && nc.capa_status !== "CLOSED";
+
 export default function PrpAuditPage() {
   const toast = useToast();
   const { principal } = useAuth();
@@ -109,7 +113,7 @@ export default function PrpAuditPage() {
           ]);
           setUpcomingSchedules(upcomings);
           // Chỉ lấy OPEN, IN_PROGRESS, VERIFYING (ẩn CLOSED)
-          setOpenNCs(ncs.filter((nc: any) => nc.status !== "CLOSED"));
+          setOpenNCs(ncs.filter(isOpenPRPNc));
           setKpis(kpiData);
         }
       } catch (error) {
@@ -141,7 +145,7 @@ export default function PrpAuditPage() {
   const refreshNCs = async () => {
     if (orgId) {
       const ncs = await capaService.listNCs(orgId, "", "PRP");
-      setOpenNCs(ncs.filter((nc: any) => nc.status !== "CLOSED"));
+      setOpenNCs(ncs.filter(isOpenPRPNc));
     }
   };
 
@@ -272,14 +276,14 @@ export default function PrpAuditPage() {
               <div className="flex-1 flex flex-col justify-center">
                 <div className="text-5xl font-black text-[#1e8b9b] mb-1">
                   {audits.length > 0 
-                    ? Math.round(audits.reduce((acc, a) => acc + a.compliance_rate, 0) / audits.length) 
+                    ? Math.round(audits.reduce((acc, a) => acc + (a.compliance_rate ?? 0), 0) / audits.length) 
                     : 0}%
                 </div>
                 <p className="text-xs text-slate-500 font-medium">Tỉ lệ tuân thủ trung bình</p>
                 <div className="mt-4 h-2 w-full bg-slate-100 rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-[#1e8b9b] rounded-full" 
-                    style={{ width: `${audits.length > 0 ? audits.reduce((acc, a) => acc + a.compliance_rate, 0) / audits.length : 0}%` }}
+                    style={{ width: `${audits.length > 0 ? audits.reduce((acc, a) => acc + (a.compliance_rate ?? 0), 0) / audits.length : 0}%` }}
                   ></div>
                 </div>
               </div>
@@ -934,7 +938,15 @@ function ScheduleModal({ locations, programs, onClose, onSuccess }: any) {
 }
 
 // Modal components
-function AuditDetailModal({ auditId, onClose }: { auditId: string; onClose: () => void }) {
+function AuditDetailModal({
+  auditId,
+  onClose,
+  onSuccess,
+}: {
+  auditId: string;
+  onClose: () => void;
+  onSuccess?: () => void;
+}) {
   const toast = useToast();
   const { principal } = useAuth();
   const [audit, setAudit] = useState<PRPAudit | null>(null);
@@ -983,6 +995,7 @@ function AuditDetailModal({ auditId, onClose }: { auditId: string; onClose: () =
       toast.success("Đã gửi yêu cầu CAPA sang bộ phận xử lý!");
       setSelectedDetailForCAPA(null);
       setManagerReason("");
+      onSuccess?.();
     } catch (error) {
       console.error("Failed to create NC:", error);
       toast.error("Lỗi khi tạo yêu cầu CAPA.");

@@ -1,4 +1,4 @@
-import type { KpiSnapshotDto } from "./reports-api";
+import type { KpiSnapshotDto } from "@/api/reports-api";
 
 type KpiRow = { label: string; value: number | string; unit: string };
 

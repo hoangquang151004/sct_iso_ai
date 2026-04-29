@@ -67,11 +67,12 @@ class NonConformityResponse(BaseModel):
     title: str
     description: Optional[str] = None
     severity: str
-    status: NCStatus
+    # DB / nghiệp vụ có thể mở rộng (đồng bộ với bảng non_conformities.status).
+    status: str
     detected_by: Optional[UUID] = None
     detected_at: datetime
     created_at: datetime
-    
+
     # Thông tin CAPA liên kết (nếu có)
     capa_id: Optional[UUID] = None
     capa_status: Optional[str] = None

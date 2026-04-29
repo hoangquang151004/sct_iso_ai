@@ -33,8 +33,8 @@ import type {
   UserResponse,
   UserUpdatePayload,
 } from "@/types";
-import { ApiClientError } from "@/lib/api-client";
-import { getMessageByErrorCode } from "@/lib/users-error-map";
+import { ApiClientError } from "@/api/api-client";
+import { getMessageByErrorCode } from "@/api/users-error-map";
 
 // Icons 
 const EyeIcon = () => (
@@ -1106,7 +1106,7 @@ const TrashIcon = () => (
 
 type RbacDrawerMode = "none" | "create" | "edit";
 
-function AuditPanel({ orgId }: { orgId: string }) {
+function AuditPanel({ orgId, onBack }: { orgId: string; onBack?: () => void }) {
   const [auditLogs, setAuditLogs] = useState<AuditLogResponse[]>([]);
   const [actorNameById, setActorNameById] = useState<Record<string, string>>({});
   const [actorRoleById, setActorRoleById] = useState<Record<string, string>>({});
@@ -1153,8 +1153,15 @@ function AuditPanel({ orgId }: { orgId: string }) {
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-      <div className="px-6 py-4 border-b border-slate-100 bg-white flex justify-between items-center">
+      <div className="px-6 py-4 border-b border-slate-100 bg-white flex justify-between items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          {onBack ? (
+            <button type="button" onClick={onBack} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50">
+              ← Quay lại
+            </button>
+          ) : null}
          <h2 className="text-sm font-bold text-slate-800">NHẬT KÝ HOẠT ĐỘNG</h2>
+        </div>
          <span className="text-[10px] font-medium text-slate-400 bg-slate-50 px-2 py-1 rounded border border-slate-100 tracking-tight">200 sự kiện mới nhất</span>
       </div>
 
@@ -1227,7 +1234,7 @@ function AuditPanel({ orgId }: { orgId: string }) {
     </div>
   );
 }
-function RbacPanel({ orgId, canManage }: { orgId: string; canManage: boolean }) {
+function RbacPanel({ orgId, canManage, onBack }: { orgId: string; canManage: boolean; onBack?: () => void }) {
   const [roles, setRoles] = useState<RoleResponse[]>([]);
   const [permissions, setPermissions] = useState<PermissionResponse[]>([]);
   const [drawerMode, setDrawerMode] = useState<RbacDrawerMode>("none");
@@ -1359,6 +1366,11 @@ function RbacPanel({ orgId, canManage }: { orgId: string; canManage: boolean }) 
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
         <div className="flex items-center gap-2">
+          {onBack ? (
+            <button type="button" onClick={onBack} className="mr-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50">
+              ← Quay lại
+            </button>
+          ) : null}
            <div className="w-1.5 h-6 bg-cyan-600 rounded-full"></div>
            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Danh sách Vai trò & Nhóm quyền</h3>
         </div>

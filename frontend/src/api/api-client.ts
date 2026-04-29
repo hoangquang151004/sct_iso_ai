@@ -12,9 +12,19 @@ export class ApiClientError extends Error {
   }
 }
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ||
-  "http://localhost:8000";
+/**
+ * - Có NEXT_PUBLIC_API_BASE_URL: gọi trực tiếp URL đó (CORS do backend).
+ * - Trình duyệt mặc định: `/api-backend` → Route Handler proxy (cùng origin, không phụ thuộc 127.0.0.1 từ browser).
+ * - SSR/máy chủ Node: `http://127.0.0.1:8000`.
+ */
+const apiPublicBaseUrl = (): string => {
+  const fromEnv = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "").trim();
+  if (fromEnv) return fromEnv;
+  if (typeof window !== "undefined") {
+    return "/api-backend";
+  }
+  return "http://127.0.0.1:8000";
+};
 
 const fallbackErrorDetail: ApiErrorDetail = {
   message: "Không thể kết nối tới máy chủ.",
@@ -83,7 +93,7 @@ export async function apiRequest<T>(
     const timeoutMs = options?.timeoutMs ?? 30_000;
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      return await fetch(`${API_BASE_URL}${path}`, {
+      return await fetch(`${apiPublicBaseUrl()}${path}`, {
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
@@ -100,7 +110,7 @@ export async function apiRequest<T>(
 
   let response = await makeRequest(accessToken);
   if (response.status === 401 && !shouldSkipRefresh) {
-    const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
+    const refreshResponse = await fetch(`${apiPublicBaseUrl()}/auth/refresh`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },

@@ -36,9 +36,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const me = await getCurrentPrincipal();
       setPrincipal(me);
-    } catch (err) {
-      // DEV BYPASS: Allow testing without real auth in development
-      if (process.env.NODE_ENV === "development") {
+    } catch {
+      // DEV BYPASS: Allow testing without real auth in development (disabled for E2E via env).
+      if (
+        process.env.NODE_ENV === "development" &&
+        process.env.NEXT_PUBLIC_DISABLE_AUTH_BYPASS !== "true"
+      ) {
         console.warn("[AUTH] Bypass mode active: Using mock Admin principal for testing.");
         setPrincipal({
           user_id: "11111111-1111-1111-1111-111111111111",

@@ -9,7 +9,7 @@ import {
   listDocumentVersions,
   resolvePublicFileUrl,
   updateDocument,
-} from "@/lib/documents-api";
+} from "@/api/documents-api";
 
 type EditDocumentModalProps = {
   isOpen: boolean;

@@ -36,7 +36,7 @@ Từ đó hỗ trợ:
 - admin revoke-all (`/users/{id}/sessions/revoke-all`)
 
 ## 4) Frontend auth architecture
-- **Middleware edge:** `frontend/src/middleware.ts` (Next.js khuyến nghị đặt trong `src/` khi project dùng thư mục `src/`). Hiện tại chỉ xử lý tối thiểu (ví dụ redirect `/` → `/login`). Cookie refresh gắn API (`path=/auth`) **không** dùng để xác thực tại edge; bắt buộc đăng nhập và kiểm tra route do tầng client.
+- **Middleware edge:** `frontend/src/middleware.ts` (Next.js khuyến nghị đặt trong `src/` khi project dùng thư mục `src/`). Hiện tại chỉ xử lý tối thiểu (ví dụ redirect `/` → `/login`). Cookie refresh (`path=/`, cùng origin FE khi dev qua `/api-backend`) **không** dùng để xác thực tại edge; bắt buộc đăng nhập và kiểm tra route do tầng client.
 - **`AuthProvider`** (`frontend/src/lib/auth-context.tsx`): principal, loading, modal `sessionExpired`.
 - **`api-client`** (`frontend/src/lib/api-client.ts`): tự refresh khi 401; phát event khi refresh thất bại.
 - **`AuthGate`** (`frontend/src/components/shared/auth-gate.tsx`) + **`auth-routes`**: sau khi bootstrap, redirect `/login?next=…` nếu chưa có principal; kiểm tra `*.read` theo route cho các module chính.

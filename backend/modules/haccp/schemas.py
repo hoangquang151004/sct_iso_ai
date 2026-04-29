@@ -271,13 +271,16 @@ class CCPMonitoringLogUpdate(BaseModel):
 class CCPMonitoringLogResponse(CCPMonitoringLogBase):
     id: UUID
     ccp_id: UUID
-    recorded_by: UUID
+    recorded_by: UUID | None = None
     recorded_at: datetime
     verified_by: UUID | None = None
     verified_at: datetime | None = None
     # Deviation management response fields
     handled_by: UUID | None = None
     handled_at: datetime | None = None
+    # Giá trị legacy trong DB có thể không khớp pattern ở Base — response chấp nhận mọi chuỗi.
+    deviation_severity: str | None = None
+    deviation_status: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

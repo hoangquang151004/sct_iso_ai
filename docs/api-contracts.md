@@ -29,7 +29,7 @@ Ngày cập nhật: 2026-04-20.
 }
 ```
 - Response 200: `{ access_token, token_type, expires_at }`.
-- Set-Cookie: refresh token (`httpOnly`, `path=/auth`, `secure/samesite` theo config).
+- Set-Cookie: refresh token (`httpOnly`, `path=/`, `secure/samesite` theo config).
 - Error codes: `AUTH_INVALID_CREDENTIALS`, `RATE_LIMITED`.
 
 ### `GET /auth/me`

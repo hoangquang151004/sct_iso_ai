@@ -141,11 +141,11 @@ class AuthService:
             secure=self._refresh_cookie_secure,
             samesite=self._refresh_cookie_samesite,
             expires=int(expires_at.timestamp()),
-            path="/auth",
+            path="/",
         )
 
     def clear_refresh_cookie(self, response: Response) -> None:
-        response.delete_cookie(key=self._refresh_cookie_name, path="/auth")
+        response.delete_cookie(key=self._refresh_cookie_name, path="/")
 
     def rotate_refresh_token(self, db: Session, raw_token: str) -> tuple[AuthPrincipal, RefreshToken]:
         token_hash = self._hash_refresh_token(raw_token)

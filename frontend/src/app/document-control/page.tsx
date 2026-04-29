@@ -21,7 +21,7 @@ import {
   listDocuments,
   resolvePublicFileUrl,
   syncDocumentUiContext,
-} from "@/lib/documents-api";
+} from "@/api/documents-api";
 
 const DOC_TYPE_LABELS: Record<string, string> = {
   Manual: "Sổ tay chất lượng",
