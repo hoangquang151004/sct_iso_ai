@@ -5,7 +5,7 @@ Tài liệu này chia thành 2 lớp quy ước:
 - Áp dụng ngay: phải tuân theo codebase hiện tại.
 - Mục tiêu chuẩn hóa: áp dụng khi refactor hoặc mở rộng kiến trúc.
 
-Ngày cập nhật: 2026-04-21.
+Ngày cập nhật: 2026-04-29.
 
 ---
 
@@ -27,25 +27,80 @@ Lưu ý quan trọng:
 
 ### 1.2 Quy ước API backend
 
-- Mỗi module có `router.py` và `schemas.py`.
+- Mỗi domain module đặt trong `backend/modules/<domain>/`.
+- Mỗi module thường có `router.py`, `schemas.py`, `service.py`, và `__init__.py`.
+- Module nào cần nhiều router thì đặt router phụ cùng thư mục domain, ví dụ `backend/modules/auth/sessions_router.py`.
+- Router của domain được đăng ký tập trung qua `backend/modules/__init__.py`.
+- SQLAlchemy model hiện tập trung trong `backend/database/models.py`; không tự tạo file model riêng trong domain nếu chưa cập nhật kiến trúc.
+- Migration đặt trong `backend/alembic/versions/`.
+- Cross-cutting backend helper đặt trong `backend/core/` hoặc dependency module hiện có, không đặt lẫn vào domain không liên quan.
 - Endpoint hiện tại chủ yếu trả dữ liệu mô phỏng theo schema.
 - Route handler hiện tại dùng `def` đồng bộ (chưa ép `async def`).
+- Khi sửa module hiện có, theo pattern cục bộ của module đó trước; không refactor toàn repo sang pattern mới nếu task không yêu cầu.
+
+Mẫu module backend hiện tại:
+
+```text
+backend/modules/<domain>/
+  __init__.py
+  router.py
+  schemas.py
+  service.py
+```
+
+Ví dụ trách nhiệm:
+
+- `router.py`: khai báo `APIRouter`, dependency auth/RBAC/DB, HTTP status, mapping request/response.
+- `schemas.py`: Pydantic request/response schema cho API contract.
+- `service.py`: nghiệp vụ, truy vấn DB, audit helper hoặc thao tác domain không nên nhét trực tiếp vào router.
+- `__init__.py`: export router hoặc đối tượng cần đăng ký ở `backend/modules/__init__.py`.
 
 ### 1.3 Quy ước frontend hiện tại
 
 - Dùng TypeScript cho toàn bộ trang trong `frontend/src`.
 - Thành phần trang đặt theo App Router (`frontend/src/app/`, `page.tsx`, `layout.tsx`).
 - Middleware Next.js: `frontend/src/middleware.ts` (cùng cấp `app/` trong `src/`).
+- Route màn hình chính đặt tại `frontend/src/app/<route>/page.tsx`.
+- Nhiều route hiện vẫn là `page.tsx` lớn; khi tách mới, component chỉ dùng cho một route nên đặt cạnh route trong `frontend/src/app/<route>/_components/`.
 - Component theo lớp:
   - `frontend/src/components/layout/` — khung trang (ví dụ `app-shell`).
   - `frontend/src/components/shared/` — block dùng chung nhiều màn (ví dụ `auth-gate`, `require-permissions`, biểu đồ).
   - `frontend/src/components/ui/` — component hiển thị thuần / base (mở rộng dần).
-- Gọi HTTP tới FastAPI: `frontend/src/services/` (theo domain: auth, users, rbac, sessions).
-- Kiểu dùng chung: `frontend/src/types/`.
-- Custom hooks: `frontend/src/hooks/`.
-- Tiện ích nền (API client, auth context, route config, mock): `frontend/src/lib/` (ví dụ `api-client.ts`, `auth-context.tsx`, `auth-routes.ts`, `mock-data.ts`).
+- `frontend/src/components/` hiện còn một số component theo tính năng ở root (ví dụ modal tài liệu, `haccp-wizard`); không thêm component route-only mới vào root nếu chỉ phục vụ một màn.
+- API client chính: `frontend/src/api/api-client.ts` (`apiRequest`, `apiFetch`, `ApiClientError`).
+- Typed API module, error map và API-specific hook đặt trong `frontend/src/api/` (ví dụ `documents-api.ts`, `reports-api.ts`, `users-error-map.ts`, `api/hooks/use-haccp.ts`).
+- Domain services đặt trong `frontend/src/services/` và thường gọi `@/api/api-client` (ví dụ auth, users, rbac, sessions, prp, capa, haccp).
+- Kiểu dùng chung theo domain: `frontend/src/types/`.
+- Kiểu dùng chung rộng đã tồn tại: `frontend/src/lib/types.ts`; chỉ mở rộng file này khi phù hợp với pattern hiện tại.
+- Custom hooks app-wide: `frontend/src/hooks/`.
+- API-specific hooks: `frontend/src/api/hooks/`.
+- Tiện ích nền/context/config/helper/mock/export đặt trong `frontend/src/lib/` (ví dụ `auth-context.tsx`, `auth-routes.ts`, `mock-data.ts`, `reports-export.ts`, `haccp-critical-limit.ts`, `types.ts`).
 - Barrel exports: `frontend/src/components/index.ts`, `frontend/src/services/index.ts`, `frontend/src/hooks/index.ts`, `frontend/src/types/index.ts` (import có thể dùng `@/services`, `@/hooks`, `@/types`, `@/components/...`).
+- Không phải mọi service đều đã được barrel-export; kiểm tra `index.ts` trước khi import từ `@/services` (một số service hiện import trực tiếp như `@/services/capa-service`).
 - Một phần màn hình demo vẫn đọc mock từ `frontend/src/lib/mock-data.ts`; luồng auth/users/RBAC đã gọi API thật qua `services/`.
+
+Mẫu route frontend khi cần tách màn hình:
+
+```text
+frontend/src/app/<route>/
+  page.tsx
+  _components/
+    domain-panel.tsx
+    domain-form.tsx
+```
+
+Chọn nơi đặt frontend code:
+
+- Màn hình có URL: `frontend/src/app/<route>/page.tsx`.
+- Component chỉ dùng trong màn hình đó: `frontend/src/app/<route>/_components/` khi tách mới từ `page.tsx`.
+- Component dùng lại nhiều màn: `frontend/src/components/shared/` hoặc `frontend/src/components/ui/` tùy mức độ trừu tượng.
+- Layout/shell/navigation: `frontend/src/components/layout/`.
+- API client chung, typed API module, error map, API-specific hook: `frontend/src/api/`.
+- Domain service gọi backend qua API client: `frontend/src/services/`.
+- Hook dùng nhiều nơi: `frontend/src/hooks/`.
+- Hook gắn chặt với API client: `frontend/src/api/hooks/`.
+- Type dùng chung: `frontend/src/types/`; type nền hoặc lịch sử đang dùng rộng: `frontend/src/lib/types.ts`.
+- Utility/context/config/helper/mock/export: `frontend/src/lib/`.
 
 ### 1.4 Quy ước kiểu dữ liệu
 
@@ -57,13 +112,15 @@ Lưu ý quan trọng:
 
 #### FastAPI database session
 
-Luôn inject database session theo pattern `Depends(get_db)`. Không tạo session trực tiếp trong router.
+Luôn inject database session theo pattern `Depends(...)`. Không tạo session trực tiếp trong router.
+
+Repo hiện có nhiều helper DB đang cùng tồn tại (`backend/db_session.py`, `backend/database/deps.py`, `db_manager.get_db`). Khi sửa module hiện có, dùng helper mà module đó đang dùng, trừ khi task yêu cầu chuẩn hóa DB session toàn repo.
 
 ```python
 # ✅ Đúng
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from backend.database.get_database import get_db
+from db_session import get_db
 
 router = APIRouter()
 
@@ -83,12 +140,12 @@ def list_users():
 #### Quy ước import giữa các module domain
 
 - Không import trực tiếp từ module domain khác trong `router.py`.
-- Nếu cần dùng model hoặc schema từ module khác, import từ `backend.database.models` (shared models) hoặc tạo schema dùng chung.
+- Nếu cần dùng model hoặc schema từ module khác, import từ `database.models` (shared models) hoặc tạo schema dùng chung.
 - Không import vòng tròn: module A không được import từ module B nếu B đã import từ A.
 
 ```python
 # ✅ Đúng — import từ shared models
-from backend.database.models import User, Document
+from database.models import User, Document
 
 # ❌ Sai — import chéo trực tiếp giữa module domain
 from backend.modules.users.router import some_function
