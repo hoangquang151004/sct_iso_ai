@@ -7,11 +7,9 @@ const isStaticPath = (pathname: string) =>
   STATIC_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 
 /**
- * Cookie refresh thường thuộc origin API (path=/auth), không gửi kèm request tới
- * Next.js — không dùng cookie để bắt buộc đăng nhập ở đây. Việc chặn route do
- * AuthGate + /auth/me trên client.
+ * Next.js 16+ Proxy convention (replacing Middleware)
  */
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (isStaticPath(pathname)) {
