@@ -37,27 +37,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const me = await getCurrentPrincipal();
       setPrincipal(me);
     } catch {
-      // DEV BYPASS: Allow testing without real auth in development (disabled for E2E via env).
-      if (
-        process.env.NODE_ENV === "development" &&
-        process.env.NEXT_PUBLIC_DISABLE_AUTH_BYPASS !== "true"
-      ) {
-        console.warn("[AUTH] Bypass mode active: Using mock Admin principal for testing.");
-        setPrincipal({
-          user_id: "11111111-1111-1111-1111-111111111111",
-          username: "admin_tester",
-          role_ids: ["admin"],
-          permissions: [
-            "dashboard.read", "dashboard.manage", "documents.read", "documents.manage",
-            "haccp.read", "haccp.manage", "prp.read", "prp.manage",
-            "capa.read", "capa.manage", "analytics.read", "users.read", "audit.read"
-          ],
-          org_id: "11111111-1111-1111-1111-111111111111",
-          exp: Math.floor(Date.now() / 1000) + 86400,
-        });
-      } else {
-        setPrincipal(null);
-      }
+      setPrincipal(null);
     } finally {
       setLoading(false);
     }

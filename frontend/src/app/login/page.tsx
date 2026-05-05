@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 import { ApiClientError } from "@/api/api-client";
 import { useAuth } from "@/hooks";
@@ -12,20 +12,13 @@ import { getMessageByErrorCode } from "@/api/users-error-map";
 
 export default function LoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { login, principal, loading } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const nextPath = useMemo(() => {
-    const value = searchParams.get("next");
-    if (!value || !value.startsWith("/") || value.startsWith("//")) {
-      return AUTH_DEFAULT_AFTER_LOGIN;
-    }
-    return value;
-  }, [searchParams]);
+  const landingPath = useMemo(() => AUTH_DEFAULT_AFTER_LOGIN, []);
 
   useEffect(() => {
     if (loading || !principal) {
@@ -35,8 +28,8 @@ export default function LoginPage() {
       router.replace("/account/change-password");
       return;
     }
-    router.replace(nextPath);
-  }, [loading, principal, router, nextPath]);
+    router.replace(landingPath);
+  }, [loading, principal, router, landingPath]);
 
   if (!loading && principal) {
     return (
@@ -56,7 +49,7 @@ export default function LoginPage() {
       if (principal.must_change_password) {
         router.replace("/account/change-password");
       } else {
-        router.replace(nextPath || AUTH_DEFAULT_AFTER_LOGIN);
+        router.replace(landingPath);
       }
     } catch (error) {
       if (error instanceof ApiClientError) {

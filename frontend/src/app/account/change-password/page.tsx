@@ -7,6 +7,7 @@ import AppShell from "@/components/layout/app-shell";
 import { changeMyPassword } from "@/services";
 import { ApiClientError } from "@/api/api-client";
 import { getMessageByErrorCode } from "@/api/users-error-map";
+import { AUTH_DEFAULT_AFTER_LOGIN } from "@/lib/auth-routes";
 
 const isStrongEnough = (password: string) =>
   password.length >= 8 && /[A-Za-z]/.test(password) && /\d/.test(password);
@@ -24,7 +25,7 @@ export default function ChangePasswordPage() {
   const nextPath = useMemo(() => {
     const value = searchParams.get("next");
     if (!value || !value.startsWith("/") || value.startsWith("//")) {
-      return "/user-management";
+      return AUTH_DEFAULT_AFTER_LOGIN;
     }
     return value;
   }, [searchParams]);

@@ -64,7 +64,9 @@ class UserService:
 
     def _get_user_or_404(self, db: Session, user_id: UUID, org_id: UUID | None = None) -> User:
         result = db.scalar(select(User).where(User.id == user_id))
-        if result is None or (org_id is not None and result.org_id != str(org_id)):
+        # Normalize both values to string because SQLAlchemy may return UUID or str
+        # depending on dialect/column config. Direct UUID-vs-str comparison causes false 404.
+        if result is None or (org_id is not None and str(result.org_id) != str(org_id)):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=self._error_detail("Không tìm thấy người dùng.", "USER_NOT_FOUND"),
@@ -102,7 +104,9 @@ class UserService:
         if role_id is None:
             return None
         role = db.scalar(select(Role).where(Role.id == role_id))
-        if role is None or (role.org_id not in {None, str(org_id)}):
+        # Normalize org identifiers to string to avoid false invalid-role checks
+        # when DB driver returns UUID objects.
+        if role is None or (role.org_id is not None and str(role.org_id) != str(org_id)):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=self._error_detail("Vai trò không hợp lệ.", "USER_ROLE_INVALID"),
