@@ -38,7 +38,7 @@ export const capaService = {
   },
 
   createCAPA: async (payload: Partial<CAPA>): Promise<CAPA> => {
-    return apiRequest<CAPA>("/capa/", {
+    return apiRequest<CAPA>("/capa", {
       method: "POST",
       body: JSON.stringify(payload),
     });

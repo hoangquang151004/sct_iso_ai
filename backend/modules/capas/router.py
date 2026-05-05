@@ -56,7 +56,7 @@ def check_ncs(
 
 # Removed create_manual_nc - NCs must be created through source modules (PRP/HACCP)
 @capas_router.post(
-    "/",
+    "",
     response_model=CAPAResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Tạo mới CAPA",
