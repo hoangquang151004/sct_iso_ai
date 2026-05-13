@@ -36,6 +36,12 @@ MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
 DOC_TYPE_CODE_PREFIX = {"Manual": "MAN", "SOP": "SOP", "WI": "WI", "Form": "FORM"}
 
+ALLOWED_ATTACHMENT_EXTS = frozenset(
+    {"pdf", "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"}
+)
+
+DOCUMENT_ATTACHMENT_ALLOWED_MSG = "Chỉ Cho Tải File PDF Và ảnh"
+
 
 class DocumentService:
     def __init__(self) -> None:
@@ -183,6 +189,36 @@ class DocumentService:
         base = re.sub(r"[^a-zA-Z0-9._-]", "_", base).strip("._") or "file"
         return base[:120]
 
+    @classmethod
+    def _attachment_ext_from_filename(cls, filename: str | None) -> str | None:
+        if not filename or "." not in filename:
+            return None
+        return filename.rsplit(".", 1)[-1].lower()
+
+    @classmethod
+    def _is_allowed_attachment(
+        cls,
+        filename: str | None,
+        content_type: str | None,
+    ) -> bool:
+        ext = cls._attachment_ext_from_filename(filename)
+        if ext and ext in ALLOWED_ATTACHMENT_EXTS:
+            return True
+        ct = (content_type or "").lower().strip()
+        if ct == "application/pdf":
+            return True
+        if ct.startswith("image/"):
+            return True
+        return False
+
+    @classmethod
+    def _public_file_url_allowed(cls, file_url: str) -> bool:
+        path = file_url.split("?", maxsplit=1)[0].lower()
+        for ext in ALLOWED_ATTACHMENT_EXTS:
+            if path.endswith(f".{ext}"):
+                return True
+        return False
+
     @staticmethod
     def _upload_root() -> Path:
         return Path(__file__).resolve().parents[2] / "uploads"
@@ -282,6 +318,11 @@ class DocumentService:
         self._change_logs.setdefault(document.id, [])
 
         if upload_bytes and upload_filename:
+            if not self._is_allowed_attachment(upload_filename, upload_content_type):
+                raise HTTPException(
+                    status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                    detail=DOCUMENT_ATTACHMENT_ALLOWED_MSG,
+                )
             file_url = self._persist_upload(
                 document.id, upload_bytes, upload_filename, upload_content_type
             )
@@ -388,7 +429,12 @@ class DocumentService:
     def create_document_version(
         self, db: Session, document_id: UUID, payload: DocumentVersionCreate
     ) -> DocumentVersionResponse:
-        current = self._get_document_or_404(db, document_id)
+        self._get_document_or_404(db, document_id)
+        if not self._public_file_url_allowed(payload.file_url):
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail=DOCUMENT_ATTACHMENT_ALLOWED_MSG,
+            )
         version = DocumentVersion(
             document_id=document_id,
             version=payload.version,

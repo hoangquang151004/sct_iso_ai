@@ -46,10 +46,53 @@ export function isImageFileForPreview(
   return /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(path);
 }
 
+/** Chỉ PDF và ảnh — đồng bộ với backend khi upload tài liệu. */
+export const DOCUMENT_ATTACHMENT_ALLOWED_MESSAGE =
+  "Chỉ Cho Tải File PDF Và ảnh";
+
+const ALLOWED_UPLOAD_EXTS = new Set([
+  "pdf",
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "svg",
+  "bmp",
+]);
+
+export function isAllowedDocumentUploadFile(file: File): boolean {
+  if (file.type === "application/pdf") return true;
+  if (file.type.startsWith("image/")) return true;
+  const name = file.name.split("?")[0].toLowerCase();
+  const dot = name.lastIndexOf(".");
+  if (dot < 0) return false;
+  const ext = name.slice(dot + 1);
+  return ALLOWED_UPLOAD_EXTS.has(ext);
+}
+
+/** URL hoặc đường dẫn tệp đính kèm có thể xem inline (PDF / ảnh). */
+export function isPdfOrImageAttachmentUrl(
+  fileUrl: string | null | undefined,
+): boolean {
+  if (fileUrl == null || fileUrl === "") return false;
+  const path = fileUrl.split("?")[0].toLowerCase();
+  return /\.(pdf|png|jpe?g|gif|webp|svg|bmp)$/i.test(path);
+}
+
 async function parseError(res: Response): Promise<string> {
   try {
     const data = (await res.json()) as { detail?: unknown };
     if (typeof data.detail === "string") return data.detail;
+    if (
+      typeof data.detail === "object" &&
+      data.detail !== null &&
+      !Array.isArray(data.detail) &&
+      "message" in data.detail &&
+      typeof (data.detail as { message?: unknown }).message === "string"
+    ) {
+      return (data.detail as { message: string }).message;
+    }
     if (Array.isArray(data.detail)) {
       return data.detail.map((e) => JSON.stringify(e)).join("; ");
     }

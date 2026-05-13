@@ -20,6 +20,15 @@ async function parseError(res: Response): Promise<string> {
   try {
     const data = (await res.json()) as { detail?: unknown };
     if (typeof data.detail === "string") return data.detail;
+    if (
+      typeof data.detail === "object" &&
+      data.detail !== null &&
+      !Array.isArray(data.detail) &&
+      "message" in data.detail &&
+      typeof (data.detail as { message?: unknown }).message === "string"
+    ) {
+      return (data.detail as { message: string }).message;
+    }
     if (Array.isArray(data.detail)) {
       return data.detail.map((e) => JSON.stringify(e)).join("; ");
     }

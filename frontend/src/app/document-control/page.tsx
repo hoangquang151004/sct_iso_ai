@@ -16,6 +16,7 @@ import {
   deleteDocument,
   getDocument,
   isImageFileForPreview,
+  isPdfOrImageAttachmentUrl,
   listDocumentCategories,
   listDocumentVersions,
   listDocuments,
@@ -29,6 +30,9 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   WI: "WI",
   Form: "Biểu mẫu",
 };
+
+/** Tạm thời ẩn nút “Đặt lịch tự động” và luồng liên quan (chưa dùng). Đặt true khi cần bật lại. */
+const SHOW_DOCUMENT_AUTO_SCHEDULE_UI = false;
 
 function isRejected(doc: DocumentDto): boolean {
   return (doc.status ?? "").toUpperCase() === "REJECTED";
@@ -134,6 +138,9 @@ export default function DocumentControlPage() {
     [],
   );
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [previewName, setPreviewName] = useState("Tài liệu");
 
   /** Tránh kẹt “Đang lấy cấu hình…” khi React Strict Mode hủy effect trước khi fetch xong. */
   const bootstrapGen = useRef(0);
@@ -203,6 +210,10 @@ export default function DocumentControlPage() {
   }, [contextReady, loadData]);
 
   useEffect(() => {
+    if (!SHOW_DOCUMENT_AUTO_SCHEDULE_UI) {
+      setAutoSchedule(null);
+      return;
+    }
     if (!effectiveOrgId || typeof window === "undefined") {
       setAutoSchedule(null);
       return;
@@ -285,6 +296,18 @@ export default function DocumentControlPage() {
     setDetailError(null);
   }, []);
 
+  const openFilePreview = useCallback((fileUrl: string, displayName: string) => {
+    setPreviewUrl(resolvePublicFileUrl(fileUrl));
+    setPreviewName(displayName || "Tài liệu");
+    setPreviewOpen(true);
+  }, []);
+
+  const closeFilePreview = useCallback(() => {
+    setPreviewOpen(false);
+    setPreviewUrl("");
+    setPreviewName("Tài liệu");
+  }, []);
+
   const configMissing =
     contextReady &&
     (!!contextError || !effectiveOrgId || !effectiveUserId);
@@ -300,14 +323,16 @@ export default function DocumentControlPage() {
           Quản lý tài liệu
         </h1>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            disabled={!contextReady || configMissing}
-            onClick={() => setScheduleModalOpen(true)}
-            className="cursor-pointer rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:border-cyan-300 hover:bg-cyan-50/50 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Đặt lịch tự động
-          </button>
+          {SHOW_DOCUMENT_AUTO_SCHEDULE_UI ? (
+            <button
+              type="button"
+              disabled={!contextReady || configMissing}
+              onClick={() => setScheduleModalOpen(true)}
+              className="cursor-pointer rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:border-cyan-300 hover:bg-cyan-50/50 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Đặt lịch tự động
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={!contextReady || configMissing}
@@ -319,7 +344,8 @@ export default function DocumentControlPage() {
         </div>
       </div>
 
-      {!configMissing &&
+      {SHOW_DOCUMENT_AUTO_SCHEDULE_UI &&
+      !configMissing &&
       effectiveOrgId &&
       autoSchedule &&
       (autoSchedule.enabled || autoSchedule.updatedAt) ? (
@@ -337,12 +363,14 @@ export default function DocumentControlPage() {
         </div>
       ) : null}
 
-      <DocumentScheduleModal
-        isOpen={scheduleModalOpen}
-        onClose={() => setScheduleModalOpen(false)}
-        orgId={effectiveOrgId}
-        onSaved={handleScheduleSaved}
-      />
+      {SHOW_DOCUMENT_AUTO_SCHEDULE_UI ? (
+        <DocumentScheduleModal
+          isOpen={scheduleModalOpen}
+          onClose={() => setScheduleModalOpen(false)}
+          orgId={effectiveOrgId}
+          onSaved={handleScheduleSaved}
+        />
+      ) : null}
 
       {configMissing ? (
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
@@ -717,13 +745,25 @@ export default function DocumentControlPage() {
                                 ) : null}
                                 <a
                                   href={resolvePublicFileUrl(v.file_url)}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
                                   download
                                   className="text-cyan-600 underline hover:text-cyan-800"
                                 >
-                                  Mở / tải tệp
+                                  Tải
                                 </a>
+                                {isPdfOrImageAttachmentUrl(v.file_url) ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      openFilePreview(
+                                        v.file_url,
+                                        `${detailDoc.title} - v${v.version}`,
+                                      )
+                                    }
+                                    className="w-fit text-cyan-600 underline hover:text-cyan-800"
+                                  >
+                                    Xem
+                                  </button>
+                                ) : null}
                                 {v.file_type ? (
                                   <span className="text-slate-400">
                                     ({v.file_type})
@@ -755,6 +795,72 @@ export default function DocumentControlPage() {
             >
               Đóng
             </button>
+          </div>
+        </div>
+      ) : null}
+
+      {previewOpen ? (
+        <div
+          className="fixed inset-0 z-[63] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeFilePreview();
+          }}
+        >
+          <div
+            className="flex h-[90vh] w-full max-w-5xl flex-col rounded-2xl bg-white shadow-2xl"
+            role="dialog"
+            aria-labelledby="file-preview-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+              <h2
+                id="file-preview-title"
+                className="truncate text-sm font-semibold text-slate-800"
+                title={previewName}
+              >
+                Xem tài liệu: {previewName}
+              </h2>
+              <div className="flex items-center gap-2">
+                <a
+                  href={previewUrl}
+                  download
+                  className="rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-700"
+                >
+                  Tải về
+                </a>
+                <button
+                  type="button"
+                  onClick={closeFilePreview}
+                  className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 bg-slate-50">
+              {isPdfOrImageAttachmentUrl(previewUrl) ? (
+                <iframe
+                  src={previewUrl}
+                  title={previewName}
+                  className="h-full w-full border-0"
+                />
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+                  <p className="text-sm text-slate-600">
+                    Trình duyệt không thể hiển thị trực tiếp định dạng tệp này.
+                  </p>
+                  <a
+                    href={previewUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700"
+                  >
+                    Mở ở tab mới
+                  </a>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       ) : null}
@@ -871,12 +977,25 @@ export default function DocumentControlPage() {
                           ) : null}
                           <a
                             href={resolvePublicFileUrl(doc.attachment_url)}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            download
                             className="text-xs font-medium text-cyan-600 underline hover:text-cyan-800"
                           >
-                            Tải / mở
+                            Tải
                           </a>
+                          {isPdfOrImageAttachmentUrl(doc.attachment_url) ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openFilePreview(
+                                  doc.attachment_url,
+                                  `${doc.title} - v${doc.current_version}`,
+                                )
+                              }
+                              className="w-fit text-xs font-medium text-cyan-600 underline hover:text-cyan-800"
+                            >
+                              Xem
+                            </button>
+                          ) : null}
                         </div>
                       ) : (
                         <span className="text-slate-400">—</span>

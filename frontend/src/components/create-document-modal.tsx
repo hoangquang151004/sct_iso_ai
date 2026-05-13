@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createDocument } from "@/api/documents-api";
+import {
+  createDocument,
+  DOCUMENT_ATTACHMENT_ALLOWED_MESSAGE,
+  isAllowedDocumentUploadFile,
+} from "@/api/documents-api";
 
 type CreateDocumentModalProps = {
   isOpen: boolean;
@@ -66,6 +70,10 @@ export default function CreateDocumentModal({
     setError(null);
     if (!version.trim() || !title.trim()) {
       setError("Phiên bản và tiêu đề là bắt buộc.");
+      return;
+    }
+    if (file && !isAllowedDocumentUploadFile(file)) {
+      setError(DOCUMENT_ATTACHMENT_ALLOWED_MESSAGE);
       return;
     }
     setSubmitting(true);
@@ -216,7 +224,7 @@ export default function CreateDocumentModal({
 
           <div className="mt-4 space-y-1.5">
             <label className="text-sm font-semibold text-slate-700">
-              Tệp đính kèm (DOCX, PDF, IMG)
+              Tệp đính kèm (PDF, ảnh)
             </label>
             <div className="flex w-full items-center justify-center">
               {!file ? (
@@ -247,15 +255,25 @@ export default function CreateDocumentModal({
                       hoặc kéo thả vào đây
                     </p>
                     <p className="px-2 text-xs text-slate-400">
-                      Hỗ trợ: PDF, DOCX, DOC, ảnh
+                      Chỉ PDF và ảnh (PNG, JPG, …)
                     </p>
                   </div>
                   <input
                     id="dropzone-file"
                     type="file"
                     className="hidden"
-                    accept=".pdf,.doc,.docx,image/*"
-                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                    accept="application/pdf,image/*,.pdf"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null;
+                      if (f && !isAllowedDocumentUploadFile(f)) {
+                        setError(DOCUMENT_ATTACHMENT_ALLOWED_MESSAGE);
+                        setFile(null);
+                        e.target.value = "";
+                        return;
+                      }
+                      setError(null);
+                      setFile(f);
+                    }}
                   />
                 </label>
               ) : (
@@ -329,7 +347,7 @@ export default function CreateDocumentModal({
                 {file.type.startsWith("image/") ? null : (
                   <span className="text-slate-400">
                     {" "}
-                    (PDF/DOC: tải lên để lưu, không xem trước tại đây)
+                    (PDF: xem sau khi lưu; ảnh xem trước tại đây)
                   </span>
                 )}
               </p>
