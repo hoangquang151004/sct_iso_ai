@@ -888,9 +888,9 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
                           onChange={e => updateHazard(h.id, 'type', e.target.value)}
                           className="text-xs rounded border border-slate-300 px-2 py-1 outline-none focus:border-amber-500 bg-white"
                         >
-                          <option value="BIOLOGICAL">Sinh h\u1ecdc</option>
-                          <option value="CHEMICAL">H\u00f3a h\u1ecdc</option>
-                          <option value="PHYSICAL">V\u1eadt l\u00fd</option>
+                          <option value="BIOLOGICAL">Sinh học</option>
+                          <option value="CHEMICAL">Hóa học</option>
+                          <option value="PHYSICAL">Vật lý</option>
                         </select>
                       </td>
                       <td className="px-4 py-3">
@@ -899,11 +899,11 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
                             type="text"
                             value={h.name}
                             onChange={e => updateHazard(h.id, 'name', e.target.value)}
-                            placeholder="M\u00f4 t\u1ea3 m\u1ed1i nguy..."
+                            placeholder="Mô tả mối nguy..."
                             className="w-full text-xs rounded border border-slate-300 px-2 py-1 outline-none focus:border-amber-500"
                           />
                           <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded inline-block">
-                            \ud83d\udccd {step?.name || "Ch\u01b0a g\u00e1n b\u01b0\u1edbc"}
+                            📍 {step?.name || "Chưa gán bước"}
                           </span>
                         </div>
                       </td>
@@ -935,7 +935,7 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
                         <button
                           onClick={() => removeHazard(h.id)}
                           className="text-slate-400 hover:text-red-500 transition-colors"
-                          title="X\u00f3a"
+                          title="Xóa"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
