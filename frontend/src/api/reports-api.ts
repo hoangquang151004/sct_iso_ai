@@ -71,3 +71,96 @@ export async function listKpiSnapshots(
   if (!res.ok) throw new Error(await parseError(res));
   return res.json() as Promise<KpiSnapshotDto[]>;
 }
+
+export type ReportLocationDto = {
+  id: string;
+  org_id: string;
+  name: string;
+  is_active: boolean;
+};
+
+export type InternalSignalDto = {
+  level: string;
+  message: string;
+};
+
+export type InternalAuditSummaryDto = {
+  location_id: string | null;
+  location_name: string;
+  period_days: number;
+  prp_audit_count: number;
+  prp_avg_compliance: number | null;
+  prp_low_compliance_sessions: number;
+  open_nc_org_count: number;
+  haccp_deviation_org_count: number;
+  signals: InternalSignalDto[];
+};
+
+export type KpiDrilldownRowDto = {
+  row_id: string;
+  title: string;
+  subtitle: string | null;
+  metric_primary: string;
+  metric_secondary: string | null;
+  severity: string;
+};
+
+export type KpiDrilldownBlockDto = {
+  dimension: string;
+  rows: KpiDrilldownRowDto[];
+};
+
+export type KpiDrilldownDto = {
+  kpi_type: string;
+  headline_label: string;
+  headline_value: string;
+  period_days: number;
+  is_low_signal: boolean;
+  ai_insights: string[];
+  blocks: KpiDrilldownBlockDto[];
+};
+
+export async function listReportLocations(
+  orgId: string,
+): Promise<ReportLocationDto[]> {
+  const qs = new URLSearchParams({ org_id: orgId });
+  const res = await fetch(`${apiPath("/reports/locations")}?${qs}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json() as Promise<ReportLocationDto[]>;
+}
+
+export async function getInternalAuditSummary(
+  orgId: string,
+  locationId?: string,
+  periodDays = 120,
+): Promise<InternalAuditSummaryDto> {
+  const qs = new URLSearchParams({
+    org_id: orgId,
+    period_days: String(periodDays),
+  });
+  if (locationId) qs.set("location_id", locationId);
+  const res = await fetch(`${apiPath("/reports/internal-audit-summary")}?${qs}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json() as Promise<InternalAuditSummaryDto>;
+}
+
+export async function getKpiDrilldown(
+  orgId: string,
+  kpiType: "prp" | "haccp" | "capa",
+  periodDays = 120,
+): Promise<KpiDrilldownDto> {
+  const qs = new URLSearchParams({
+    org_id: orgId,
+    kpi_type: kpiType,
+    period_days: String(periodDays),
+  });
+  const res = await fetch(`${apiPath("/reports/kpi-drilldown")}?${qs}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json() as Promise<KpiDrilldownDto>;
+}

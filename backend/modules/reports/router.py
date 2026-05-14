@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from db_session import get_db
 
 from .schemas import (
+    InternalAuditSummaryResponse,
+    KpiDrilldownResponse,
     KpiSnapshotCreate,
     KpiSnapshotResponse,
     ReportConfigCreate,
@@ -13,6 +15,7 @@ from .schemas import (
     ReportConfigUpdate,
     ReportHistoryCreate,
     ReportHistoryResponse,
+    ReportLocationResponse,
 )
 from .service import report_service
 
@@ -126,3 +129,45 @@ def list_kpi_snapshots(
     db: Session = Depends(get_db),
 ) -> list[KpiSnapshotResponse]:
     return report_service.list_kpi_snapshots(db=db, org_id=org_id, period_type=period_type)
+
+
+@report_router.get(
+    "/locations",
+    response_model=list[ReportLocationResponse],
+    description="Danh sách khu vực (locations) của tổ chức — dùng lọc báo cáo đánh giá nội bộ",
+)
+def list_report_locations(
+    org_id: UUID,
+    db: Session = Depends(get_db),
+) -> list[ReportLocationResponse]:
+    return report_service.list_locations_for_org(db, org_id)
+
+
+@report_router.get(
+    "/internal-audit-summary",
+    response_model=InternalAuditSummaryResponse,
+    description="Tóm tắt & thông báo đánh giá nội bộ theo khu vực (PRP) và chỉ số cấp tổ chức",
+)
+def get_internal_audit_summary(
+    org_id: UUID,
+    location_id: UUID | None = Query(default=None),
+    period_days: int = Query(default=120, ge=7, le=730),
+    db: Session = Depends(get_db),
+) -> InternalAuditSummaryResponse:
+    return report_service.internal_audit_summary(
+        db, org_id, location_id, period_days
+    )
+
+
+@report_router.get(
+    "/kpi-drilldown",
+    response_model=KpiDrilldownResponse,
+    description="Drill-down KPI: phân rã theo khu vực, lô, thiết bị (PRP / HACCP / CAPA)",
+)
+def get_kpi_drilldown(
+    org_id: UUID,
+    kpi_type: str = Query(..., description="prp | haccp | capa"),
+    period_days: int = Query(default=120, ge=7, le=730),
+    db: Session = Depends(get_db),
+) -> KpiDrilldownResponse:
+    return report_service.kpi_drilldown(db, org_id, kpi_type.strip().lower(), period_days)
