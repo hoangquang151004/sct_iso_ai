@@ -167,8 +167,8 @@ export default function AssessmentPanel({
           <button
             onClick={() => setViewTab("draft")}
             className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${viewTab === "draft"
-                ? "bg-white text-cyan-700 shadow-sm"
-                : "text-slate-500 hover:text-slate-700"
+              ? "bg-white text-cyan-700 shadow-sm"
+              : "text-slate-500 hover:text-slate-700"
               }`}
           >
             Bản nháp ({draftAssessments.length})
@@ -176,8 +176,8 @@ export default function AssessmentPanel({
           <button
             onClick={() => setViewTab("submitted")}
             className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${viewTab === "submitted"
-                ? "bg-white text-cyan-700 shadow-sm"
-                : "text-slate-500 hover:text-slate-700"
+              ? "bg-white text-cyan-700 shadow-sm"
+              : "text-slate-500 hover:text-slate-700"
               }`}
           >
             Đã gửi ({submittedAssessments.length})
@@ -740,8 +740,8 @@ function FillAssessmentModal({
                     <div className="flex flex-wrap items-center gap-2 mb-1">
                       <span
                         className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded ${item.item_type === "GENERAL"
-                            ? "bg-violet-100 text-violet-800"
-                            : "bg-orange-100 text-orange-800"
+                          ? "bg-violet-100 text-violet-800"
+                          : "bg-orange-100 text-orange-800"
                           }`}
                       >
                         {item.item_type === "GENERAL" ? "Tự soạn" : "CCP"}
@@ -887,38 +887,37 @@ function FillAssessmentModal({
             </div>
           </div>
 
-        </div>
-      </div>
+        </div> {/* End Body */}
 
+        <div className="p-6 pt-4 shrink-0 border-t border-slate-100 mt-auto">
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800"
+            >
+              Hủy
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={saving}
+              className="px-4 py-2 bg-cyan-600 text-white rounded-md text-sm hover:bg-cyan-700 disabled:opacity-50 flex items-center gap-2"
+            >
+              {saving && (
+                <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              )}
+              {saving ? "Đang đánh giá bằng AI..." : "Gửi phiếu đánh giá"}
+            </button>
+          </div>
+        </div>
+      </div> {/* End Modal Container */}
       <datalist id="batch-suggestions">
         {suggestedBatches.map(b => (
           <option key={b} value={b} />
         ))}
       </datalist>
-
-      <div className="p-6 pt-4 shrink-0 border-t border-slate-100 mt-2">
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800"
-          >
-            Hủy
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={saving}
-            className="px-4 py-2 bg-cyan-600 text-white rounded-md text-sm hover:bg-cyan-700 disabled:opacity-50 flex items-center gap-2"
-          >
-            {saving && (
-              <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-            )}
-            {saving ? "Đang đánh giá bằng AI..." : "Gửi phiếu đánh giá"}
-          </button>
-        </div>
-      </div>
     </div>
   );
 
@@ -1094,7 +1093,7 @@ function AssessmentDetailModal({
                 <span className="w-2 h-4 bg-cyan-600 rounded-full"></span>
                 Khu vực dành cho Người duyệt / Quản lý
               </h4>
-              
+
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Trạng thái phiếu</label>

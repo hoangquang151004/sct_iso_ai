@@ -1,7 +1,8 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { apiFetch } from "@/api/api-client";
 import Modal from "./ui/modal";
-import { documents, Document } from "../lib/mock-data";
+import { listDocuments, DocumentDto, resolvePublicFileUrl, isImageFileForPreview } from "@/api/documents-api";
+import { useAuth } from "@/hooks";
 
 // ============================================================================
 // DOCUMENT CONTENT PARSER - Trích xuất dữ liệu từ nội dung tài liệu
@@ -13,7 +14,7 @@ interface ParsedStep {
   isCcp: boolean;
   ccpCode?: string;
   ccpName?: string;
-  criticalLimit?: string;
+  criticalLimits?: string[];
 }
 
 interface ParsedHazard {
@@ -64,7 +65,7 @@ function parseDocumentSteps(content: string): ParsedStep[] {
 
         // Extract critical limit if mentioned
         const limitMatch = description.match(/([<>]?=?\s*\d+[°\.]?\w*\s*(?:°C|°F|%|ppm|phút|giờ|mm)?)/i);
-        const criticalLimit = limitMatch ? limitMatch[1] : undefined;
+        const criticalLimits = limitMatch ? [limitMatch[1]] : undefined;
 
         // Build CCP name
         const ccpName = isCcp ? (description.split('-')[0]?.trim() || `Kiểm soát ${stepName}`) : undefined;
@@ -75,7 +76,7 @@ function parseDocumentSteps(content: string): ParsedStep[] {
           isCcp,
           ccpCode,
           ccpName,
-          criticalLimit
+          criticalLimits
         });
         break;
       }
@@ -144,8 +145,8 @@ interface HaccpWizardProps {
 interface WizardData {
   planInfo: { name: string; version: string; scope: string };
   steps: { id: string; name: string; type: string; isCcp: boolean }[];
-  hazards: { id: string; stepId: string; type: "BIOLOGICAL" | "CHEMICAL" | "PHYSICAL"; name: string; likelihood: number; severity: number; isSignificant: boolean }[];
-  ccps: { id: string; stepId: string; hazardId: string; ccpCode: string; name: string; criticalLimit: string }[];
+  hazards: { id: string; stepId: string; type: "BIOLOGICAL" | "CHEMICAL" | "PHYSICAL"; name: string; likelihood: number; severity: number; isSignificant: boolean; criticalLimits: string[] }[];
+  ccps: { id: string; stepId: string; hazardId: string; ccpCode: string; name: string; criticalLimits: string[] }[];
   selectedDocumentId: string | null;
 }
 
@@ -166,11 +167,58 @@ const STEP_TITLES = [
 ];
 
 export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: HaccpWizardProps) {
+  const { principal } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
+  const [realDocuments, setRealDocuments] = useState<DocumentDto[]>([]);
+  const [docsLoading, setDocsLoading] = useState(false);
   const [data, setData] = useState<WizardData>(INITIAL_DATA);
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(false);
   const [showDocumentViewer, setShowDocumentViewer] = useState(false); // Toggle document viewer
+  const [imageZoom, setImageZoom] = useState(1); // Mức độ zoom ảnh
+  const imageContainerRef = useRef<HTMLDivElement>(null);
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const dragStart = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
+
+  const handleImageMouseDown = (e: React.MouseEvent) => {
+    setIsDraggingImage(true);
+    dragStart.current = {
+      x: e.pageX,
+      y: e.pageY,
+      scrollLeft: imageContainerRef.current?.scrollLeft || 0,
+      scrollTop: imageContainerRef.current?.scrollTop || 0
+    };
+  };
+
+  const handleImageMouseMove = (e: React.MouseEvent) => {
+    if (!isDraggingImage || !imageContainerRef.current) return;
+    e.preventDefault();
+    const walkX = (e.pageX - dragStart.current.x) * 1.5;
+    const walkY = (e.pageY - dragStart.current.y) * 1.5;
+    imageContainerRef.current.scrollLeft = dragStart.current.scrollLeft - walkX;
+    imageContainerRef.current.scrollTop = dragStart.current.scrollTop - walkY;
+  };
+
+  const handleImageMouseUp = () => setIsDraggingImage(false);
+
+
+  // Load real documents
+  useEffect(() => {
+    if (isOpen && principal?.org_id) {
+      const loadDocs = async () => {
+        setDocsLoading(true);
+        try {
+          const docs = await listDocuments(principal.org_id);
+          setRealDocuments(docs);
+        } catch (err) {
+          console.error("Failed to load documents:", err);
+        } finally {
+          setDocsLoading(false);
+        }
+      };
+      loadDocs();
+    }
+  }, [isOpen, principal?.org_id]);
 
   // Load existing data if planId is provided
   useEffect(() => {
@@ -191,13 +239,17 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
           }));
 
           // 3. Hazards (fetch for all steps)
-          const wizardHazards: any[] = [];
+          const wizardHazards: { id: string; stepId: string; type: "BIOLOGICAL" | "CHEMICAL" | "PHYSICAL"; name: string; likelihood: number; severity: number; isSignificant: boolean; criticalLimits: string[] }[] = [];
           console.log('[Wizard Load] Fetching hazards for', stepsData.length, 'steps');
           for (const s of stepsData) {
             console.log(`[Wizard Load] Fetching hazards for step ${s.id} (${s.name})`);
             const hData = await apiFetch<any[]>(`/haccp/steps/${s.id}/hazards`);
             console.log(`[Wizard Load] Step ${s.name}: found ${hData.length} hazards`, hData);
             hData.forEach(h => {
+              // Phục hồi criticalLimits từ control_measure (dạng "A; B; C")
+              const savedLimits = h.control_measure
+                ? h.control_measure.split(";").map((l: string) => l.trim()).filter(Boolean)
+                : [""];
               wizardHazards.push({
                 id: h.id,
                 stepId: s.id,
@@ -205,11 +257,13 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
                 name: h.hazard_name,
                 likelihood: h.likelihood,
                 severity: h.severity,
-                isSignificant: h.is_significant
+                isSignificant: h.is_significant,
+                criticalLimits: savedLimits
               });
             });
           }
           console.log('[Wizard Load] Total hazards loaded:', wizardHazards.length);
+
 
           // 4. CCPs
           const ccpsData = await apiFetch<any[]>(`/haccp/plans/${planId}/ccps`);
@@ -219,7 +273,10 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
             hazardId: c.hazard_id,
             ccpCode: c.ccp_code,
             name: c.name,
-            criticalLimit: c.critical_limit
+            // Phục hồi criticalLimits từ critical_limit (dạng "A; B; C")
+            criticalLimits: c.critical_limit
+              ? c.critical_limit.split(";").map((l: string) => l.trim()).filter(Boolean)
+              : [""]
           }));
 
           setData({
@@ -359,7 +416,8 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
           hazard_name: h.name || "Mối nguy chưa xác nhận",
           likelihood: h.likelihood,
           severity: h.severity,
-          is_significant: h.isSignificant
+          is_significant: h.isSignificant,
+          control_measure: h.criticalLimits?.filter(l => l.trim()).join("; ") || undefined
         };
         console.log('[Wizard Save] Creating hazard:', hazardBody);
 
@@ -402,7 +460,8 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
           hazard_id: dbHazardId,
           ccp_code: c.ccpCode,
           name: c.name || "Điểm KS",
-          critical_limit: c.criticalLimit || "Không có"
+          // Join mảng giới hạn thành string để lưu vào DB
+          critical_limit: c.criticalLimits?.filter(l => l.trim()).join("; ") || "Chưa thiết lập"
         };
 
         console.log(`[Wizard] Saving CCP ${c.ccpCode}:`, ccpBody);
@@ -448,25 +507,23 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
     // Helper function to handle document selection
     const handleDocumentSelect = (docId: string) => {
       if (docId === "") {
-        // Clear document selection
         updateData('selectedDocumentId', null);
         return;
       }
 
-      const selectedDoc = documents.find(d => d.id === docId);
+      const selectedDoc = realDocuments.find(d => d.id === docId);
       if (selectedDoc) {
-        // Auto-fill plan info from document
         updateData('selectedDocumentId', docId);
         updateData('planInfo', {
           ...data.planInfo,
-          name: selectedDoc.name,
-          version: selectedDoc.version,
-          scope: `Phòng ban: ${selectedDoc.department} | Tiêu chuẩn: ${selectedDoc.standard}`
+          name: selectedDoc.title,
+          version: selectedDoc.current_version,
+          scope: `Phòng ban: ${selectedDoc.department || "—"} | Mã số: ${selectedDoc.doc_code}`
         });
       }
     };
 
-    const selectedDoc = documents.find(d => d.id === data.selectedDocumentId);
+    const selectedDoc = realDocuments.find(d => d.id === data.selectedDocumentId);
 
     return (
       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
@@ -481,12 +538,13 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
           <select
             value={data.selectedDocumentId || ""}
             onChange={(e) => handleDocumentSelect(e.target.value)}
-            className="w-full rounded-lg border border-blue-200 px-4 py-2.5 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 bg-white text-sm"
+            disabled={docsLoading}
+            className="w-full rounded-lg border border-blue-200 px-4 py-2.5 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 bg-white text-sm disabled:opacity-50"
           >
-            <option value="">-- Chọn tài liệu để tự động điền thông tin --</option>
-            {documents.map((doc) => (
+            <option value="">{docsLoading ? "-- Đang tải danh sách tài liệu... --" : "-- Chọn tài liệu để tự động điền thông tin --"}</option>
+            {realDocuments.map((doc) => (
               <option key={doc.id} value={doc.id}>
-                {doc.id} - {doc.name} ({doc.type}) - {doc.status}
+                {doc.doc_code} - {doc.title} ({doc.doc_type}) - {doc.status}
               </option>
             ))}
           </select>
@@ -502,12 +560,12 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              Đã chọn tài liệu: {selectedDoc.name}
+              Đã chọn tài liệu: {selectedDoc.title}
             </div>
             <div className="text-emerald-600 text-xs grid grid-cols-2 gap-1">
-              <span>Loại: {selectedDoc.type}</span>
-              <span>Phòng ban: {selectedDoc.department}</span>
-              <span>Tiêu chuẩn: {selectedDoc.standard}</span>
+              <span>Loại: {selectedDoc.doc_type}</span>
+              <span>Phòng ban: {selectedDoc.department || "—"}</span>
+              <span>Phiên bản: {selectedDoc.current_version}</span>
               <span>Trạng thái: {selectedDoc.status}</span>
             </div>
           </div>
@@ -560,20 +618,20 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
 
     const removeStep = (id: string) => updateData('steps', data.steps.filter(s => s.id !== id));
 
-    // Auto-fill 4 basic steps
     const autoFillFromDocument = () => {
-      const selectedDoc = documents.find(d => d.id === data.selectedDocumentId);
+      const selectedDoc = realDocuments.find(d => d.id === data.selectedDocumentId);
+      if (!selectedDoc?.ai_summary) {
+        alert("Tài liệu này không có tóm tắt AI để phân tích quy trình.");
+        return;
+      }
 
-      // 4 bước cơ bản cố định
-      const defaultSteps = [
-        { name: "Thanh trùng", type: "PROCESSING", isCcp: true },
-        { name: "Chế biến", type: "PROCESSING", isCcp: true },
-        { name: "Đóng gói", type: "PACKAGING", isCcp: false },
-        { name: "Lưu kho", type: "STORAGE", isCcp: false }
-      ];
+      const parsedSteps = parseDocumentSteps(selectedDoc.ai_summary);
+      if (parsedSteps.length === 0) {
+        alert("Không tìm thấy các bước quy trình trong tài liệu.");
+        return;
+      }
 
-      // Create 4 fixed steps
-      const newSteps = defaultSteps.map((step, index) => ({
+      const newSteps = parsedSteps.map((step, index) => ({
         id: Date.now().toString() + index,
         name: step.name,
         type: step.type,
@@ -582,35 +640,32 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
 
       updateData('steps', newSteps);
 
-      // Create CCPs for Thanh trùng and Chế biến với tiền tố từ tên kế hoạch
+      // Create CCPs for steps marked as isCcp
       const planPrefix = data.planInfo.name ? data.planInfo.name.split(' ').map(w => w[0]).join('').toUpperCase() : "HACCP";
+      const newCcps: any[] = [];
       
-      const newCcps = [
-        {
-          id: Date.now().toString() + '_ccp1',
-          stepId: newSteps[0].id,
-          hazardId: "",
-          ccpCode: `${planPrefix}-CCP-1`,
-          name: "Kiểm soát nhiệt độ thanh trùng",
-          criticalLimit: "T >= 72°C tối thiểu 15 giây"
-        },
-        {
-          id: Date.now().toString() + '_ccp2',
-          stepId: newSteps[1].id,
-          hazardId: "",
-          ccpCode: `${planPrefix}-CCP-2`,
-          name: "Kiểm soát quá trình chế biến",
-          criticalLimit: "Nhiệt độ >= 85°C"
+      parsedSteps.forEach((step, index) => {
+        if (step.isCcp) {
+          newCcps.push({
+            id: Date.now().toString() + '_ccp' + index,
+            stepId: newSteps[index].id,
+            hazardId: "",
+            ccpCode: step.ccpCode || `${planPrefix}-CCP-${newCcps.length + 1}`,
+            name: step.ccpName || `Kiểm soát ${step.name}`,
+            criticalLimits: step.criticalLimits && step.criticalLimits.length > 0 ? step.criticalLimits : [""]
+          });
         }
-      ];
+      });
 
-      updateData('ccps', newCcps);
+      if (newCcps.length > 0) {
+        updateData('ccps', [...data.ccps, ...newCcps]);
+      }
 
-      const docName = selectedDoc ? ` từ tài liệu "${selectedDoc.name}"` : "";
-      alert(`Đã tạo 4 bước quy trình${docName}: Thanh trùng, Chế biến, Đóng gói, Lưu kho (và 2 CCP)`);
+      const docName = selectedDoc ? ` từ tài liệu "${selectedDoc.title}"` : "";
+      alert(`Đã tạo ${newSteps.length} bước quy trình${docName} (và ${newCcps.length} CCP)`);
     };
 
-    const selectedDoc = documents.find(d => d.id === data.selectedDocumentId);
+    const selectedDoc = realDocuments.find(d => d.id === data.selectedDocumentId);
 
     return (
       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
@@ -622,7 +677,7 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
               <span className="text-sm text-blue-800">
-                Đang dùng tài liệu: <strong>{selectedDoc.name}</strong>
+                Đang dùng tài liệu: <strong>{selectedDoc.title}</strong>
               </span>
             </div>
             <button
@@ -687,7 +742,7 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
     if (data.steps.length === 0) return <div className="text-center p-8 text-slate-500 text-sm">Vui lòng quay lại Bước 2 và thêm ít nhất 1 quy trình.</div>;
 
     const addHazard = (stepId: string) => {
-      const newHazard = { id: Date.now().toString(), stepId, type: "BIOLOGICAL" as const, name: "", likelihood: 3, severity: 3, isSignificant: false };
+      const newHazard = { id: Date.now().toString(), stepId, type: "BIOLOGICAL" as const, name: "", likelihood: 3, severity: 3, isSignificant: false, criticalLimits: [""] };
       updateData('hazards', [...data.hazards, newHazard]);
     };
 
@@ -708,15 +763,15 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
 
     // Auto-fill hazards from document
     const autoFillHazardsFromDocument = () => {
-      const selectedDoc = documents.find(d => d.id === data.selectedDocumentId);
-      if (!selectedDoc?.content) {
-        alert("Vui lòng chọn tài liệu có nội dung ở bước Thông tin Kế hoạch");
+      const selectedDoc = realDocuments.find(d => d.id === data.selectedDocumentId);
+      if (!selectedDoc?.ai_summary) {
+        alert("Tài liệu này không có tóm tắt AI để phân tích mối nguy.");
         return;
       }
 
       // First parse steps to understand context
-      const parsedSteps = parseDocumentSteps(selectedDoc.content);
-      const parsedHazards = parseDocumentHazards(selectedDoc.content, parsedSteps);
+      const parsedSteps = parseDocumentSteps(selectedDoc.ai_summary);
+      const parsedHazards = parseDocumentHazards(selectedDoc.ai_summary, parsedSteps);
 
       if (parsedHazards.length === 0) {
         alert("Không tìm thấy mối nguy trong tài liệu");
@@ -724,7 +779,7 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
       }
 
       // Create hazards from parsed data
-      const newHazards: any[] = [];
+      const newHazards: { id: string; stepId: string; type: "BIOLOGICAL" | "CHEMICAL" | "PHYSICAL"; name: string; likelihood: number; severity: number; isSignificant: boolean; criticalLimits: string[] }[] = [];
       parsedHazards.forEach((hazard, index) => {
         // Find matching step
         const matchingStep = data.steps.find(s =>
@@ -741,18 +796,19 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
             name: hazard.name,
             likelihood: hazard.likelihood,
             severity: hazard.severity,
-            isSignificant: risk >= 12
+            isSignificant: risk >= 12,
+            criticalLimits: [""]
           });
         }
       });
 
       if (newHazards.length > 0) {
         updateData('hazards', [...data.hazards, ...newHazards]);
-        alert(`Đã thêm ${newHazards.length} mối nguy từ tài liệu "${selectedDoc.name}"`);
+        alert(`Đã thêm ${newHazards.length} mối nguy từ tài liệu "${selectedDoc.title}"`);
       }
     };
 
-    const selectedDoc = documents.find(d => d.id === data.selectedDocumentId);
+    const selectedDoc = realDocuments.find(d => d.id === data.selectedDocumentId);
 
     return (
       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
@@ -764,7 +820,7 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
               <span className="text-sm text-amber-800">
-                Tài liệu: <strong>{selectedDoc.name}</strong> - Có thể trích xuất mối nguy
+                Tài liệu: <strong>{selectedDoc.title}</strong> - Có thể trích xuất mối nguy
               </span>
             </div>
             <button
@@ -832,9 +888,9 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
                           onChange={e => updateHazard(h.id, 'type', e.target.value)}
                           className="text-xs rounded border border-slate-300 px-2 py-1 outline-none focus:border-amber-500 bg-white"
                         >
-                          <option value="BIOLOGICAL">Sinh học</option>
-                          <option value="CHEMICAL">Hóa học</option>
-                          <option value="PHYSICAL">Vật lý</option>
+                          <option value="BIOLOGICAL">Sinh h\u1ecdc</option>
+                          <option value="CHEMICAL">H\u00f3a h\u1ecdc</option>
+                          <option value="PHYSICAL">V\u1eadt l\u00fd</option>
                         </select>
                       </td>
                       <td className="px-4 py-3">
@@ -843,11 +899,11 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
                             type="text"
                             value={h.name}
                             onChange={e => updateHazard(h.id, 'name', e.target.value)}
-                            placeholder="Mô tả mối nguy..."
+                            placeholder="M\u00f4 t\u1ea3 m\u1ed1i nguy..."
                             className="w-full text-xs rounded border border-slate-300 px-2 py-1 outline-none focus:border-amber-500"
                           />
                           <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded inline-block">
-                            📍 {step?.name || "Chưa gán bước"}
+                            \ud83d\udccd {step?.name || "Ch\u01b0a g\u00e1n b\u01b0\u1edbc"}
                           </span>
                         </div>
                       </td>
@@ -872,14 +928,14 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
                       <td className="px-4 py-3 text-center">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${isSignificant ? 'bg-red-500 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
                           {risk}
-                          {isSignificant && <span className="ml-1 text-[8px]">⚠</span>}
+                          {isSignificant && <span className="ml-1 text-[8px]">\u26a0</span>}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center">
                         <button
                           onClick={() => removeHazard(h.id)}
                           className="text-slate-400 hover:text-red-500 transition-colors"
-                          title="Xóa"
+                          title="X\u00f3a"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -888,6 +944,7 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
                       </td>
                     </tr>
                   );
+
                 })}
               </tbody>
             </table>
@@ -919,7 +976,9 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
 
     const addCcp = (stepId: string) => {
       const planPrefix = data.planInfo.name ? data.planInfo.name.split(' ').map(w => w[0]).join('').toUpperCase() : "HACCP";
-      const newCcp = { id: Date.now().toString(), stepId, hazardId: "", ccpCode: `${planPrefix}-CCP-`, name: "", criticalLimit: "" };
+      const stepHazards = data.hazards.filter(h => h.stepId === stepId);
+      const topHazard = stepHazards.sort((a, b) => (b.likelihood * b.severity) - (a.likelihood * a.severity))[0];
+      const newCcp = { id: Date.now().toString(), stepId, hazardId: topHazard?.id || "", ccpCode: `${planPrefix}-CCP-`, name: "", criticalLimits: [""] };
       updateData('ccps', [...data.ccps, newCcp]);
     };
 
@@ -947,36 +1006,93 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
               </div>
               <div className="p-4 bg-white space-y-4">
                 {stepCcps.length === 0 ? <p className="text-xs text-slate-400 italic">Không có CCP nào được yêu cầu ở bước này.</p> :
-                  stepCcps.map(ccp => (
-                    <div key={ccp.id} className={`p-3 border rounded-lg relative grid grid-cols-2 gap-4 ${hasSignificantRisk ? 'border-orange-100 bg-orange-50/30' : 'border-slate-200 bg-slate-50/30'}`}>
-                      <button onClick={() => removeCcp(ccp.id)} className="absolute top-2 right-2 text-slate-400 hover:text-red-500">✕</button>
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-500 uppercase">Mã CCP</label>
-                        <input 
-                          type="text" 
-                          value={ccp.ccpCode} 
-                          onChange={e => updateCcp(ccp.id, 'ccpCode', e.target.value)} 
-                          className={`w-full text-sm border p-1 rounded font-mono outline-none focus:border-orange-400 ${
-                            data.ccps.filter(c => c.ccpCode.trim() !== "" && c.ccpCode.trim().toUpperCase() === ccp.ccpCode.trim().toUpperCase()).length > 1
-                              ? 'border-red-500 text-red-600 bg-red-50'
-                              : 'text-orange-600 border-slate-300'
-                          }`} 
-                          placeholder="VD: CCP-1" 
-                        />
-                        {data.ccps.filter(c => c.ccpCode.trim() !== "" && c.ccpCode.trim().toUpperCase() === ccp.ccpCode.trim().toUpperCase()).length > 1 && (
-                          <p className="text-[9px] text-red-500 mt-0.5 font-bold">Mã đã tồn tại!</p>
-                        )}
+                  stepCcps.map(ccp => {
+                    const limits: string[] = ccp.criticalLimits?.length ? ccp.criticalLimits : [""];
+
+                    const updateCcpLimit = (li: number, val: string) => {
+                      const next = [...limits];
+                      next[li] = val;
+                      updateCcp(ccp.id, 'criticalLimits', next);
+                    };
+                    const addCcpLimit = () => updateCcp(ccp.id, 'criticalLimits', [...limits, ""]);
+                    const removeCcpLimit = (li: number) => {
+                      if (limits.length <= 1) return;
+                      updateCcp(ccp.id, 'criticalLimits', limits.filter((_, i) => i !== li));
+                    };
+
+                    return (
+                    <div key={ccp.id} className={`p-4 border rounded-lg relative space-y-3 ${hasSignificantRisk ? 'border-orange-200 bg-orange-50/30' : 'border-slate-200 bg-slate-50/30'}`}>
+                      <button onClick={() => removeCcp(ccp.id)} className="absolute top-2 right-2 text-slate-400 hover:text-red-500" title="Xóa CCP">✕</button>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 uppercase">Mã CCP</label>
+                          <input
+                            type="text"
+                            value={ccp.ccpCode}
+                            onChange={e => updateCcp(ccp.id, 'ccpCode', e.target.value)}
+                            className={`w-full text-sm border p-1.5 rounded font-mono outline-none focus:border-orange-400 ${
+                              data.ccps.filter(c => c.ccpCode.trim() !== "" && c.ccpCode.trim().toUpperCase() === ccp.ccpCode.trim().toUpperCase()).length > 1
+                                ? 'border-red-500 text-red-600 bg-red-50'
+                                : 'text-orange-600 border-slate-300'
+                            }`}
+                            placeholder="VD: CCP-1"
+                          />
+                          {data.ccps.filter(c => c.ccpCode.trim() !== "" && c.ccpCode.trim().toUpperCase() === ccp.ccpCode.trim().toUpperCase()).length > 1 && (
+                            <p className="text-[9px] text-red-500 mt-0.5 font-bold">Mã đã tồn tại!</p>
+                          )}
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 uppercase">Tên / Mục tiêu kiểm soát</label>
+                          <input type="text" value={ccp.name} onChange={e => updateCcp(ccp.id, 'name', e.target.value)} className="w-full text-sm border p-1.5 rounded outline-none focus:border-cyan-400" placeholder="VD: Kiểm soát Nhiệt độ" />
+                        </div>
                       </div>
+
+                      {/* Critical Limits - có thể thêm nhiều */}
                       <div>
-                        <label className="text-[10px] font-bold text-slate-500 uppercase">Tên / Mục tiêu kiểm soát</label>
-                        <input type="text" value={ccp.name} onChange={e => updateCcp(ccp.id, 'name', e.target.value)} className="w-full text-sm border p-1 rounded outline-none focus:border-cyan-400" placeholder="VD: Kiểm soát Nhiệt độ" />
-                      </div>
-                      <div className="col-span-2">
-                        <label className="text-[10px] font-bold text-orange-600 uppercase">Giới Hạn Tới Hạn (Critical Limit)</label>
-                        <input type="text" value={ccp.criticalLimit} onChange={e => updateCcp(ccp.id, 'criticalLimit', e.target.value)} className="w-full text-sm border p-2 rounded bg-white shadow-inner font-mono outline-none focus:border-orange-400" placeholder="VD: T >= 72°C tối thiểu 15 giây" />
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-[10px] font-bold text-orange-600 uppercase">
+                            Giới hạn tới hạn (Critical Limits)
+                          </label>
+                          <span className="text-[9px] text-slate-400">{limits.filter(l => l.trim()).length} giới hạn đã thiết lập</span>
+                        </div>
+                        <div className="space-y-1.5">
+                          {limits.map((lim, li) => (
+                            <div key={li} className="flex gap-2 items-center">
+                              <span className="text-[10px] font-bold text-orange-400 w-4 shrink-0">{li + 1}.</span>
+                              <input
+                                type="text"
+                                value={lim}
+                                onChange={e => updateCcpLimit(li, e.target.value)}
+                                placeholder={li === 0 ? "VD: Nhiệt độ ≥ 72°C" : "Thêm điều kiện khác... VD: Thời gian ≥ 15 giây"}
+                                className="flex-1 text-sm border border-orange-200 bg-white p-2 rounded font-mono outline-none focus:border-orange-400 shadow-inner"
+                              />
+                              {limits.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeCcpLimit(li)}
+                                  className="text-slate-300 hover:text-red-500 transition-colors shrink-0"
+                                  title="Xóa giới hạn này"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={addCcpLimit}
+                            className="mt-1 text-xs text-orange-600 hover:text-orange-800 border border-dashed border-orange-300 rounded px-3 py-1.5 w-full text-center transition-colors hover:bg-orange-50"
+                          >
+                            + Thêm giới hạn khác
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  ))
+                    );
+                  })
                 }
               </div>
             </div>
@@ -987,7 +1103,7 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
   };
 
   const renderStep5 = () => {
-    const selectedDoc = documents.find(d => d.id === data.selectedDocumentId);
+    const selectedDoc = realDocuments.find(d => d.id === data.selectedDocumentId);
 
     return (
       <div className="animate-in fade-in slide-in-from-bottom-2 text-center p-8 space-y-6">
@@ -1011,9 +1127,9 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
               Đã liên kết với Tài liệu
             </div>
             <div className="text-blue-600 text-xs space-y-1">
-              <p><span className="font-medium">Mã:</span> {selectedDoc.id}</p>
-              <p><span className="font-medium">Tên:</span> {selectedDoc.name}</p>
-              <p><span className="font-medium">Loại:</span> {selectedDoc.type}</p>
+              <p><span className="font-medium">Mã:</span> {selectedDoc.doc_code}</p>
+              <p><span className="font-medium">Tên:</span> {selectedDoc.title}</p>
+              <p><span className="font-medium">Loại:</span> {selectedDoc.doc_type}</p>
               <p><span className="font-medium">Phòng ban:</span> {selectedDoc.department}</p>
               <p><span className="font-medium">Trạng thái:</span> {selectedDoc.status}</p>
             </div>
@@ -1085,7 +1201,7 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
           {showDocumentViewer && data.selectedDocumentId && (
             <div className="w-1/2 bg-white border-l border-slate-200 flex flex-col animate-in slide-in-from-right duration-300">
               {(() => {
-                const selectedDoc = documents.find(d => d.id === data.selectedDocumentId);
+                const selectedDoc = realDocuments.find(d => d.id === data.selectedDocumentId);
                 if (!selectedDoc) return null;
                 return (
                   <>
@@ -1096,8 +1212,8 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                         <div>
-                          <h4 className="text-sm font-semibold text-blue-800">{selectedDoc.name}</h4>
-                          <p className="text-xs text-blue-600">{selectedDoc.id} • {selectedDoc.version}</p>
+                          <h4 className="text-sm font-semibold text-blue-800">{selectedDoc.title}</h4>
+                          <p className="text-xs text-blue-600">{selectedDoc.doc_code} • v{selectedDoc.current_version}</p>
                         </div>
                       </div>
                       <button
@@ -1109,25 +1225,77 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
                         </svg>
                       </button>
                     </div>
-                    {/* Content */}
                     <div className="flex-1 overflow-y-auto p-4">
-                      {selectedDoc.content ? (
-                        <pre className="text-sm text-slate-700 whitespace-pre-wrap font-mono leading-relaxed bg-slate-50 p-4 rounded-lg border border-slate-100">
-                          {selectedDoc.content}
-                        </pre>
+                      {selectedDoc.ai_summary ? (
+                        <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100 mb-4">
+                          <h5 className="text-xs font-bold text-blue-800 uppercase mb-2 flex items-center gap-2">
+                            <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+                            Tóm tắt AI (Dùng cho trích xuất dữ liệu)
+                          </h5>
+                          <div className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap italic">
+                            {selectedDoc.ai_summary}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {selectedDoc.attachment_url ? (
+                        isImageFileForPreview(selectedDoc.attachment_file_type, selectedDoc.attachment_url) ? (
+                          <div className="relative border border-slate-200 rounded-lg overflow-hidden bg-slate-100 flex flex-col h-[500px]">
+                            {/* Zoom controls */}
+                            <div className="absolute top-4 right-4 bg-white/90 backdrop-blur shadow-sm rounded-lg border border-slate-200 p-1 flex items-center gap-1 z-10">
+                              <button onClick={() => setImageZoom(z => Math.max(0.25, z - 0.25))} className="p-1.5 text-slate-600 hover:bg-slate-100 rounded" title="Thu nhỏ">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" /></svg>
+                              </button>
+                              <span className="text-xs font-medium w-12 text-center text-slate-600">{Math.round(imageZoom * 100)}%</span>
+                              <button onClick={() => setImageZoom(z => Math.min(5, z + 0.25))} className="p-1.5 text-slate-600 hover:bg-slate-100 rounded" title="Phóng to">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                              </button>
+                              <div className="w-px h-4 bg-slate-300 mx-1"></div>
+                              <button onClick={() => setImageZoom(1)} className="p-1.5 text-slate-600 hover:bg-slate-100 rounded text-xs font-medium" title="Khôi phục">
+                                Đặt lại
+                              </button>
+                            </div>
+                            
+                            {/* Image container */}
+                            <div 
+                              className={`flex-1 overflow-auto flex items-center justify-center p-4 ${isDraggingImage ? 'cursor-grabbing' : 'cursor-grab'}`}
+                              ref={imageContainerRef}
+                              onMouseDown={handleImageMouseDown}
+                              onMouseMove={handleImageMouseMove}
+                              onMouseUp={handleImageMouseUp}
+                              onMouseLeave={handleImageMouseUp}
+                            >
+                              <div style={{ transform: `scale(${imageZoom})`, transformOrigin: 'center center', transition: 'transform 0.15s ease-out' }}>
+                                <img 
+                                  src={resolvePublicFileUrl(selectedDoc.attachment_url)} 
+                                  alt={selectedDoc.title}
+                                  className="max-w-none shadow-sm rounded pointer-events-none select-none"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="h-[500px] border border-slate-200 rounded-lg overflow-hidden">
+                            <iframe 
+                              src={resolvePublicFileUrl(selectedDoc.attachment_url)} 
+                              className="w-full h-full border-0"
+                              title={selectedDoc.title}
+                            />
+                          </div>
+                        )
                       ) : (
-                        <div className="text-center py-8 text-slate-400">
+                        <div className="text-center py-12 text-slate-400 bg-slate-50 rounded-lg border border-dashed border-slate-200">
                           <svg className="w-12 h-12 mx-auto mb-3 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>
-                          <p className="text-sm">Tài liệu không có nội dung xem trước</p>
+                          <p className="text-sm">Tài liệu chưa có tệp đính kèm để xem trước</p>
                         </div>
                       )}
                     </div>
                     {/* Footer Info */}
                     <div className="bg-slate-50 border-t border-slate-200 p-3 text-xs text-slate-500">
                       <div className="flex justify-between">
-                        <span>Phòng ban: {selectedDoc.department}</span>
+                        <span>Phòng ban: {selectedDoc.department || "—"}</span>
                         <span>Trạng thái: {selectedDoc.status}</span>
                       </div>
                     </div>
