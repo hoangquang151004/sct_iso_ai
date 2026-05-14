@@ -96,3 +96,57 @@ class KpiSnapshotResponse(KpiSnapshotBase):
     computed_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ReportLocationResponse(BaseModel):
+    """Khu vực / địa điểm (dùng lọc báo cáo nội bộ)."""
+
+    id: UUID
+    org_id: UUID
+    name: str
+    is_active: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class InternalSignalItem(BaseModel):
+    level: str  # info | warning | danger
+    message: str
+
+
+class InternalAuditSummaryResponse(BaseModel):
+    """Tóm tắt & thông báo đánh giá nội bộ (PRP theo khu vực; chỉ số HACCP/CAPA cấp tổ chức)."""
+
+    location_id: UUID | None = None
+    location_name: str
+    period_days: int
+    prp_audit_count: int
+    prp_avg_compliance: float | None = None
+    prp_low_compliance_sessions: int = 0
+    open_nc_org_count: int = 0
+    haccp_deviation_org_count: int = 0
+    signals: list[InternalSignalItem] = Field(default_factory=list)
+
+
+class KpiDrilldownRow(BaseModel):
+    row_id: str
+    title: str
+    subtitle: str | None = None
+    metric_primary: str
+    metric_secondary: str | None = None
+    severity: str = "ok"
+
+
+class KpiDrilldownBlock(BaseModel):
+    dimension: str
+    rows: list[KpiDrilldownRow] = Field(default_factory=list)
+
+
+class KpiDrilldownResponse(BaseModel):
+    kpi_type: str
+    headline_label: str
+    headline_value: str
+    period_days: int
+    is_low_signal: bool
+    ai_insights: list[str] = Field(default_factory=list)
+    blocks: list[KpiDrilldownBlock] = Field(default_factory=list)
