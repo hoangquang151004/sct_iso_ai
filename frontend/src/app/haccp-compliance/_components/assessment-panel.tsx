@@ -937,6 +937,7 @@ function AssessmentDetailModal({
   onClose: () => void;
   onUpdated?: () => void;
 }) {
+  const isClosed = assessment.status === "CLOSED";
   const plan = plans.find((p) => p.id === assessment.haccp_plan_id);
   const passCount = assessment.items.filter((i) => i.result === "PASS").length;
   const failCount = assessment.items.filter((i) => i.result === "FAIL").length;
@@ -949,6 +950,11 @@ function AssessmentDetailModal({
   const [savingNote, setSavingNote] = useState(false);
 
   const handleSaveNote = async () => {
+    if (reviewStatus === "CLOSED" && assessment.status !== "CLOSED") {
+      const ok = confirm("Bạn có chắc chắn muốn đóng phiếu này không? Sau khi đóng sẽ không thể chỉnh sửa.");
+      if (!ok) return;
+    }
+
     setSavingNote(true);
     try {
       const payload: any = {
@@ -1088,10 +1094,13 @@ function AssessmentDetailModal({
 
           {/* Cập nhật đánh giá bổ sung nếu đã gửi hoặc đang review */}
           {assessment.status !== "DRAFT" && onUpdated && (
-            <div className="mt-6 border-t border-slate-200 pt-4 bg-slate-50/50 -mx-6 px-6 pb-6 rounded-b-lg">
+            <div className={`mt-6 border-t border-slate-200 pt-4 ${isClosed ? "bg-slate-100/50" : "bg-slate-50/50"} -mx-6 px-6 pb-6 rounded-b-lg`}>
               <h4 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
                 <span className="w-2 h-4 bg-cyan-600 rounded-full"></span>
                 Khu vực dành cho Người duyệt / Quản lý
+                {isClosed && (
+                  <span className="ml-auto text-[10px] text-slate-500 font-normal italic">Phiếu đã đóng - Chỉ xem</span>
+                )}
               </h4>
 
               <div className="grid grid-cols-2 gap-4 mb-4">
@@ -1100,7 +1109,8 @@ function AssessmentDetailModal({
                   <select
                     value={reviewStatus}
                     onChange={(e) => setReviewStatus(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm bg-white focus:ring-1 focus:ring-cyan-500"
+                    disabled={isClosed}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm bg-white focus:ring-1 focus:ring-cyan-500 disabled:bg-slate-100 disabled:text-slate-400"
                   >
                     <option value="SUBMITTED">Đã gửi (Chờ duyệt)</option>
                     <option value="REVIEWED">Đã xem xét</option>
@@ -1112,7 +1122,8 @@ function AssessmentDetailModal({
                   <select
                     value={reviewResult}
                     onChange={(e) => setReviewResult(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm bg-white focus:ring-1 focus:ring-cyan-500"
+                    disabled={isClosed}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm bg-white focus:ring-1 focus:ring-cyan-500 disabled:bg-slate-100 disabled:text-slate-400"
                   >
                     <option value="PASS">Đạt (PASS)</option>
                     <option value="FAIL">Không đạt (FAIL)</option>
@@ -1121,32 +1132,36 @@ function AssessmentDetailModal({
                 </div>
               </div>
 
-              <div className="mb-4">
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Thêm ghi chú đánh giá</label>
-                <textarea
-                  value={additionalNote}
-                  onChange={(e) => setAdditionalNote(e.target.value)}
-                  placeholder="Nhập nhận xét, hướng dẫn hoặc kết luận của người duyệt..."
-                  rows={3}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm mb-3 resize-none focus:ring-1 focus:ring-cyan-500 bg-white"
-                />
-              </div>
+              {!isClosed && (
+                <>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Thêm ghi chú đánh giá</label>
+                    <textarea
+                      value={additionalNote}
+                      onChange={(e) => setAdditionalNote(e.target.value)}
+                      placeholder="Nhập nhận xét, hướng dẫn hoặc kết luận của người duyệt..."
+                      rows={3}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm mb-3 resize-none focus:ring-1 focus:ring-cyan-500 bg-white"
+                    />
+                  </div>
 
-              <div className="flex justify-end">
-                <button
-                  onClick={handleSaveNote}
-                  disabled={savingNote}
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-md text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 shadow-sm transition-all flex items-center gap-2"
-                >
-                  {savingNote && (
-                    <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                  )}
-                  {savingNote ? "Đang lưu..." : "Lưu thay đổi & Cập nhật"}
-                </button>
-              </div>
+                  <div className="flex justify-end">
+                    <button
+                      onClick={handleSaveNote}
+                      disabled={savingNote}
+                      className="px-4 py-2 bg-emerald-600 text-white rounded-md text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 shadow-sm transition-all flex items-center gap-2"
+                    >
+                      {savingNote && (
+                        <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      )}
+                      {savingNote ? "Đang lưu..." : "Lưu thay đổi & Cập nhật"}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
