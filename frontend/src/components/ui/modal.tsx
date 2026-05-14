@@ -42,9 +42,8 @@ export default function Modal({
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-center justify-center transition-opacity duration-200 ${
-        isOpen ? "opacity-100" : "opacity-0"
-      }`}
+      className={`fixed inset-0 z-50 flex items-center justify-center transition-opacity duration-200 ${isOpen ? "opacity-100" : "opacity-0"
+        }`}
     >
       {/* Overlay backdrop */}
       <div
@@ -54,9 +53,8 @@ export default function Modal({
 
       {/* Modal Dialog */}
       <div
-        className={`relative max-h-[90vh] w-[95%] overflow-hidden rounded-2xl bg-white shadow-2xl transition-all duration-200 ${maxWidthMap[maxWidth]} ${
-          isOpen ? "scale-100 translate-y-0" : "scale-95 translate-y-4"
-        } flex flex-col`}
+        className={`relative max-h-[90vh] w-[95%] overflow-hidden rounded-2xl bg-white shadow-2xl transition-all duration-200 ${maxWidthMap[maxWidth]} ${isOpen ? "scale-100 translate-y-0" : "scale-95 translate-y-4"
+          } flex flex-col`}
       >
         {/* Header */}
         <div className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-[#1e8b9b] px-6 py-4 text-white">

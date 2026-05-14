@@ -1,10 +1,11 @@
 """
 HACCP Module Service Layer — kết nối PostgreSQL thật qua SQLAlchemy.
 """
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from uuid import UUID, uuid4
 from typing import List, Optional
 
+from sqlalchemy import exists, or_
 from sqlalchemy.orm import Session
 
 from database.models import (
@@ -16,7 +17,11 @@ from database.models import (
     CCP as CCPModel,
     CCPMonitoringLog,
     HaccpVerification as HaccpVerificationModel,
+    HaccpAssessment as HaccpAssessmentModel,
+    HaccpAssessmentItem as HaccpAssessmentItemModel,
     User,
+    NonConformity,
+    CAPA,
 )
 from .schemas import (
     ProductCreate, ProductUpdate, ProductResponse,
@@ -27,6 +32,9 @@ from .schemas import (
     CCPCreate, CCPUpdate, CCPResponse,
     CCPMonitoringLogCreate, CCPMonitoringLogUpdate, CCPMonitoringLogResponse,
     HaccpVerificationCreate, HaccpVerificationUpdate, HaccpVerificationResponse,
+    HaccpAssessmentCreate, HaccpAssessmentUpdate, HaccpAssessmentResponse,
+    HaccpAssessmentItemCreate, HaccpAssessmentItemUpdate, HaccpAssessmentItemResponse,
+    HaccpAssessmentSubmitRequest,
 )
 
 
@@ -381,6 +389,21 @@ class CCPService:
 
     @staticmethod
     def create_ccp(db: Session, payload: CCPCreate) -> CCPResponse:
+        # Lấy thông tin kế hoạch để biết org_id
+        plan = db.query(HACCPPlan).filter(HACCPPlan.id == payload.haccp_plan_id).first()
+        if not plan:
+            raise ValueError("Kế hoạch không tồn tại.")
+
+        # Kiểm tra tính duy nhất của mã CCP trong TOÀN BỘ tổ chức
+        existing = db.query(CCPModel).join(HACCPPlan).filter(
+            HACCPPlan.org_id == plan.org_id,
+            CCPModel.ccp_code == payload.ccp_code
+        ).first()
+        
+        if existing:
+            existing_plan = db.query(HACCPPlan).filter(HACCPPlan.id == existing.haccp_plan_id).first()
+            raise ValueError(f"Mã CCP '{payload.ccp_code}' đã tồn tại trong kế hoạch '{existing_plan.name}'.")
+
         obj = CCPModel(
             id=uuid4(),
             haccp_plan_id=payload.haccp_plan_id,
@@ -414,6 +437,19 @@ class CCPService:
             return None
         try:
             update_data = payload.model_dump(exclude_unset=True)
+            
+            # Kiểm tra tính duy nhất nếu thay đổi ccp_code (toàn bộ tổ chức)
+            if "ccp_code" in update_data:
+                plan = db.query(HACCPPlan).filter(HACCPPlan.id == obj.haccp_plan_id).first()
+                existing = db.query(CCPModel).join(HACCPPlan).filter(
+                    HACCPPlan.org_id == plan.org_id,
+                    CCPModel.ccp_code == update_data["ccp_code"],
+                    CCPModel.id != ccp_id
+                ).first()
+                if existing:
+                    existing_plan = db.query(HACCPPlan).filter(HACCPPlan.id == existing.haccp_plan_id).first()
+                    raise ValueError(f"Mã CCP '{update_data['ccp_code']}' đã tồn tại trong kế hoạch '{existing_plan.name}'.")
+
             print(f"[CCP Update] ID={ccp_id}, Data={update_data}")
             for k, v in update_data.items():
                 setattr(obj, k, v)
@@ -423,6 +459,8 @@ class CCPService:
             print(f"[CCP Update] Success: {result}")
             return result
         except Exception as e:
+            if isinstance(e, ValueError):
+                raise
             import traceback
             print(f"[CCP Update] Error after commit: {e}")
             print(traceback.format_exc())
@@ -471,11 +509,16 @@ class CCPMonitoringLogService:
             deviation_note=payload.deviation_note,
             recorded_by=payload.recorded_by,
             iot_device_id=payload.iot_device_id,
-            # Deviation management fields
             deviation_severity=payload.deviation_severity,
-            deviation_status="NEW" if payload.is_within_limit == False else None,
+            deviation_status=None,
         )
         db.add(obj)
+        db.flush()
+
+        # Chỉ đánh dấu độ lệch mới. NC/CAPA chỉ được tạo khi người dùng bấm "Gửi CAPA".
+        if not payload.is_within_limit:
+            obj.deviation_status = "NEW"
+
         db.commit()
         db.refresh(obj)
         return CCPMonitoringLogResponse.model_validate(obj)
@@ -493,25 +536,121 @@ class CCPMonitoringLogService:
         updates = payload.model_dump(exclude_unset=True)
         if "verified_by" in updates and updates["verified_by"]:
             obj.verified_at = datetime.now(timezone.utc)
+        old_limit_status = obj.is_within_limit
         for k, v in updates.items():
             setattr(obj, k, v)
+            
+        db.flush()
+
+        # Khi chuyển từ đạt sang không đạt, chỉ đánh dấu độ lệch mới.
+        # NC/CAPA được tạo riêng khi người dùng bấm "Gửi CAPA".
+        if (
+            old_limit_status is True
+            and obj.is_within_limit is False
+            and "deviation_status" not in updates
+        ):
+            obj.deviation_status = "NEW"
+
         db.commit()
         db.refresh(obj)
         return CCPMonitoringLogResponse.model_validate(obj)
 
     @staticmethod
-    def list_ccp_deviations(
+    def list_all_logs(
         db: Session,
         org_id: UUID | None = None,
+        plan_id: UUID | None = None,
+        limit: int = 500,
+    ) -> List[CCPMonitoringLogResponse]:
+        """Lấy tất cả nhật ký giám sát CCP, lọc theo plan hoặc org nếu có."""
+        q = db.query(CCPMonitoringLog).join(CCPModel, CCPMonitoringLog.ccp_id == CCPModel.id)
+
+        if plan_id:
+            q = q.filter(CCPModel.haccp_plan_id == plan_id)
+        elif org_id:
+            q = q.join(HACCPPlan, CCPModel.haccp_plan_id == HACCPPlan.id)
+            q = q.filter(HACCPPlan.org_id == org_id)
+
+        rows = q.order_by(CCPMonitoringLog.recorded_at.desc()).limit(limit).all()
+        return [CCPMonitoringLogResponse.model_validate(r) for r in rows]
+
+    @staticmethod
+    def _filter_deviations_by_recorded_at(
+        q,
+        recorded_from: date | None,
+        recorded_to: date | None,
+    ):
+        if recorded_from is not None:
+            start = datetime.combine(recorded_from, time.min, tzinfo=timezone.utc)
+            q = q.filter(CCPMonitoringLog.recorded_at >= start)
+        if recorded_to is not None:
+            end_exclusive = datetime.combine(
+                recorded_to + timedelta(days=1), time.min, tzinfo=timezone.utc
+            )
+            q = q.filter(CCPMonitoringLog.recorded_at < end_exclusive)
+        return q
+
+    @staticmethod
+    def list_ccp_deviations(
+        db: Session,
+        org_id: UUID,
         status: str | None = None,
         severity: str | None = None,
+        plan_id: UUID | None = None,
+        ccp_id: UUID | None = None,
+        search: str | None = None,
+        has_capa_nc: bool | None = None,
+        recorded_from: date | None = None,
+        recorded_to: date | None = None,
         limit: int = 100,
     ) -> List[CCPMonitoringLogResponse]:
-        q = db.query(CCPMonitoringLog).filter(CCPMonitoringLog.is_within_limit == False)  # noqa: E712
+        CCPMonitoringLogService.sync_haccp_deviation_statuses_for_org(db, org_id)
+        q = (
+            db.query(CCPMonitoringLog)
+            .join(CCPModel, CCPMonitoringLog.ccp_id == CCPModel.id)
+            .join(HACCPPlan, CCPModel.haccp_plan_id == HACCPPlan.id)
+            .filter(
+                CCPMonitoringLog.is_within_limit == False,  # noqa: E712
+                HACCPPlan.org_id == org_id,
+            )
+        )
+        q = CCPMonitoringLogService._filter_deviations_by_recorded_at(
+            q, recorded_from, recorded_to
+        )
+        if plan_id:
+            q = q.filter(HACCPPlan.id == plan_id)
+        if ccp_id:
+            q = q.filter(CCPMonitoringLog.ccp_id == ccp_id)
         if status:
             q = q.filter(CCPMonitoringLog.deviation_status == status)
         if severity:
             q = q.filter(CCPMonitoringLog.deviation_severity == severity)
+        if search and search.strip():
+            term = f"%{search.strip()}%"
+            q = q.filter(
+                or_(
+                    CCPMonitoringLog.batch_number.ilike(term),
+                    CCPMonitoringLog.deviation_note.ilike(term),
+                    CCPModel.name.ilike(term),
+                    CCPModel.ccp_code.ilike(term),
+                )
+            )
+        if has_capa_nc is True:
+            q = q.filter(
+                exists().where(
+                    NonConformity.source_ref_id == CCPMonitoringLog.id,
+                    NonConformity.source == "HACCP",
+                    NonConformity.org_id == org_id,
+                )
+            )
+        elif has_capa_nc is False:
+            q = q.filter(
+                ~exists().where(
+                    NonConformity.source_ref_id == CCPMonitoringLog.id,
+                    NonConformity.source == "HACCP",
+                    NonConformity.org_id == org_id,
+                )
+            )
         rows = q.order_by(CCPMonitoringLog.recorded_at.desc()).limit(limit).all()
         return [CCPMonitoringLogResponse.model_validate(r) for r in rows]
 
@@ -519,10 +658,17 @@ class CCPMonitoringLogService:
     def handle_deviation(
         db: Session,
         log_id: UUID,
+        org_id: UUID,
         payload,
     ) -> CCPMonitoringLogResponse | None:
-        """Xử lý một độ lệch: cập nhật trạng thái, mức độ, hành động khắc phục"""
-        obj = db.query(CCPMonitoringLog).filter(CCPMonitoringLog.id == log_id).first()
+        """Xử lý một độ lệch: cập nhật trạng thái, mức độ, hành động khắc phục (trong phạm vi org)."""
+        obj = (
+            db.query(CCPMonitoringLog)
+            .join(CCPModel, CCPMonitoringLog.ccp_id == CCPModel.id)
+            .join(HACCPPlan, CCPModel.haccp_plan_id == HACCPPlan.id)
+            .filter(CCPMonitoringLog.id == log_id, HACCPPlan.org_id == org_id)
+            .first()
+        )
         if not obj:
             return None
 
@@ -540,34 +686,188 @@ class CCPMonitoringLogService:
         return CCPMonitoringLogResponse.model_validate(obj)
 
     @staticmethod
+    def sync_haccp_log_deviation_status_from_nc(db: Session, nc: NonConformity) -> bool:
+        """
+        Đồng bộ deviation_status trên CCPMonitoringLog theo NC + CAPA (nguồn HACCP).
+        Không commit — gọi trước commit của luồng nghiệp vụ.
+        Trả về True nếu trạng thái log có thay đổi.
+        """
+        if nc.source != "HACCP" or nc.source_ref_id is None:
+            return False
+        log = db.query(CCPMonitoringLog).filter(CCPMonitoringLog.id == nc.source_ref_id).first()
+        if not log or log.is_within_limit is not False:
+            return False
+        old_status = log.deviation_status
+        capa = (
+            db.query(CAPA)
+            .filter(CAPA.nc_id == nc.id)
+            .order_by(CAPA.created_at.desc())
+            .first()
+        )
+        if capa:
+            cs = capa.status
+            capa_status = cs.value if hasattr(cs, "value") else str(cs)
+            if capa_status == "OPEN":
+                log.deviation_status = "CAPA_OPEN"
+            elif capa_status in ("IN_PROGRESS", "VERIFYING"):
+                log.deviation_status = "CAPA_IN_PROGRESS"
+            elif capa_status == "CLOSED":
+                log.deviation_status = "CAPA_CLOSED"
+            elif capa_status == "REJECTED":
+                log.deviation_status = "CAPA_REJECTED"
+            else:
+                log.deviation_status = "CAPA_OPEN"
+        else:
+            if nc.status == "WAITING":
+                log.deviation_status = "PENDING_CAPA"
+            elif nc.status == "OPEN":
+                log.deviation_status = "PENDING_CAPA"
+            elif nc.status == "CLOSED":
+                log.deviation_status = "CAPA_CLOSED"
+            elif nc.status == "REJECTED":
+                log.deviation_status = "CAPA_REJECTED"
+            else:
+                log.deviation_status = "PENDING_CAPA"
+        return log.deviation_status != old_status
+
+    @staticmethod
+    def sync_haccp_deviation_statuses_for_org(db: Session, org_id: UUID) -> None:
+        """Sửa các trạng thái dẫn xuất HACCP bị cũ trước khi trả danh sách/thống kê."""
+        ncs = (
+            db.query(NonConformity)
+            .filter(NonConformity.org_id == org_id, NonConformity.source == "HACCP")
+            .all()
+        )
+        changed = False
+        for nc in ncs:
+            changed = CCPMonitoringLogService.sync_haccp_log_deviation_status_from_nc(db, nc) or changed
+        if changed:
+            db.commit()
+
+    @staticmethod
+    def ensure_nc_for_deviation_capa(
+        db: Session,
+        log_id: UUID,
+        org_id: UUID,
+    ) -> tuple[NonConformity, bool] | None:
+        """
+        Đảm bảo có bản ghi NC (WAITING) cho nhật ký độ lệch CCP để module CAPA xử lý.
+        Trả về (nc, created) hoặc None nếu không tìm thấy log trong phạm vi org.
+        Raises ValueError('not_deviation') nếu log không phải độ lệch.
+        """
+        obj = (
+            db.query(CCPMonitoringLog)
+            .join(CCPModel, CCPMonitoringLog.ccp_id == CCPModel.id)
+            .join(HACCPPlan, CCPModel.haccp_plan_id == HACCPPlan.id)
+            .filter(CCPMonitoringLog.id == log_id, HACCPPlan.org_id == org_id)
+            .first()
+        )
+        if not obj:
+            return None
+        if obj.is_within_limit is not False:
+            raise ValueError("not_deviation")
+
+        existing = (
+            db.query(NonConformity)
+            .filter(
+                NonConformity.source_ref_id == log_id,
+                NonConformity.source == "HACCP",
+                NonConformity.org_id == org_id,
+            )
+            .first()
+        )
+        if existing:
+            CCPMonitoringLogService.sync_haccp_log_deviation_status_from_nc(db, existing)
+            db.commit()
+            db.refresh(obj)
+            return (existing, False)
+
+        unit = obj.unit or ""
+        measured = obj.measured_value
+        title = f"Độ lệch CCP: {measured} {unit}".strip()
+        if len(title) > 500:
+            title = title[:497] + "..."
+
+        nc = NonConformity(
+            id=uuid4(),
+            org_id=org_id,
+            source="HACCP",
+            source_ref_id=log_id,
+            title=title,
+            description=obj.deviation_note,
+            severity=obj.deviation_severity or "HIGH",
+            status="WAITING",
+            detected_by=obj.recorded_by,
+        )
+        db.add(nc)
+        db.flush()
+        CCPMonitoringLogService.sync_haccp_log_deviation_status_from_nc(db, nc)
+        db.commit()
+        db.refresh(nc)
+        db.refresh(obj)
+        return (nc, True)
+
+    @staticmethod
     def get_deviation_stats(
         db: Session,
-        org_id: UUID | None = None,
+        org_id: UUID,
+        recorded_from: date | None = None,
+        recorded_to: date | None = None,
     ) -> dict:
-        """Thống kê độ lệch theo trạng thái và mức độ"""
+        """Thống kê độ lệch theo trạng thái và mức độ trong một tổ chức (có thể lọc theo ngày ghi nhận)."""
         from sqlalchemy import func
 
-        # Stats by status
-        status_counts = db.query(
-            CCPMonitoringLog.deviation_status,
-            func.count(CCPMonitoringLog.id).label('count')
-        ).filter(
-            CCPMonitoringLog.is_within_limit == False  # noqa: E712
-        ).group_by(CCPMonitoringLog.deviation_status).all()
+        CCPMonitoringLogService.sync_haccp_deviation_statuses_for_org(db, org_id)
 
-        # Stats by severity
-        severity_counts = db.query(
-            CCPMonitoringLog.deviation_severity,
-            func.count(CCPMonitoringLog.id).label('count')
-        ).filter(
-            CCPMonitoringLog.is_within_limit == False  # noqa: E712
-        ).group_by(CCPMonitoringLog.deviation_severity).all()
+        def _deviation_base():
+            q = (
+                db.query(CCPMonitoringLog)
+                .join(CCPModel, CCPMonitoringLog.ccp_id == CCPModel.id)
+                .join(HACCPPlan, CCPModel.haccp_plan_id == HACCPPlan.id)
+                .filter(
+                    CCPMonitoringLog.is_within_limit == False,  # noqa: E712
+                    HACCPPlan.org_id == org_id,
+                )
+            )
+            return CCPMonitoringLogService._filter_deviations_by_recorded_at(
+                q, recorded_from, recorded_to
+            )
 
+        status_counts = (
+            _deviation_base()
+            .with_entities(
+                CCPMonitoringLog.deviation_status,
+                func.count(CCPMonitoringLog.id).label("count"),
+            )
+            .group_by(CCPMonitoringLog.deviation_status)
+            .all()
+        )
+
+        severity_counts = (
+            _deviation_base()
+            .with_entities(
+                CCPMonitoringLog.deviation_severity,
+                func.count(CCPMonitoringLog.id).label("count"),
+            )
+            .group_by(CCPMonitoringLog.deviation_severity)
+            .all()
+        )
+
+        _pending_statuses = frozenset(
+            {
+                "NEW",
+                "PENDING_CAPA",
+                "CAPA_OPEN",
+                "CAPA_IN_PROGRESS",
+                "INVESTIGATING",
+                "CORRECTIVE_ACTION",
+            }
+        )
         return {
             "by_status": {s: c for s, c in status_counts if s},
             "by_severity": {s: c for s, c in severity_counts if s},
             "total": sum(c for _, c in status_counts),
-            "pending": sum(c for s, c in status_counts if s in ["NEW", "INVESTIGATING", "CORRECTIVE_ACTION"])
+            "pending": sum(c for s, c in status_counts if s in _pending_statuses),
         }
 
 
@@ -619,3 +919,146 @@ class HaccpVerificationService:
         db.commit()
         db.refresh(obj)
         return HaccpVerificationResponse.model_validate(obj)
+
+
+# =============================================================================
+# HACCP ASSESSMENT SERVICE (Phiếu đánh giá HACCP)
+# =============================================================================
+class HaccpAssessmentService:
+    @staticmethod
+    def list_assessments(
+        db: Session,
+        org_id: UUID | None = None,
+        haccp_plan_id: UUID | None = None,
+        status: str | None = None,
+    ) -> List[HaccpAssessmentResponse]:
+        q = db.query(HaccpAssessmentModel)
+        if org_id:
+            q = q.filter(HaccpAssessmentModel.org_id == org_id)
+        if haccp_plan_id:
+            q = q.filter(HaccpAssessmentModel.haccp_plan_id == haccp_plan_id)
+        if status:
+            q = q.filter(HaccpAssessmentModel.status == status)
+        q = q.order_by(HaccpAssessmentModel.created_at.desc())
+        rows = q.all()
+        return [HaccpAssessmentResponse.model_validate(r) for r in rows]
+
+    @staticmethod
+    def get_assessment(db: Session, assessment_id: UUID) -> HaccpAssessmentResponse | None:
+        obj = db.query(HaccpAssessmentModel).filter(HaccpAssessmentModel.id == assessment_id).first()
+        if not obj:
+            return None
+        return HaccpAssessmentResponse.model_validate(obj)
+
+    @staticmethod
+    def create_assessment(db: Session, payload: HaccpAssessmentCreate) -> HaccpAssessmentResponse:
+        obj = HaccpAssessmentModel(
+            id=uuid4(),
+            org_id=payload.org_id,
+            haccp_plan_id=payload.haccp_plan_id,
+            title=payload.title,
+            assessment_date=payload.assessment_date,
+            status="DRAFT",
+            overall_result=payload.overall_result,
+            overall_note=payload.overall_note,
+            submitted_by=payload.submitted_by,
+        )
+        db.add(obj)
+        db.flush()
+
+        if payload.items:
+            for item in payload.items:
+                db.add(HaccpAssessmentItemModel(
+                    id=uuid4(),
+                    assessment_id=obj.id,
+                    item_type=item.item_type,
+                    ref_id=item.ref_id,
+                    question=item.question,
+                    expected_value=item.expected_value,
+                    actual_value=item.actual_value,
+                    result=item.result,
+                    note=item.note,
+                    evidence_url=item.evidence_url,
+                    order_index=item.order_index,
+                ))
+
+        db.commit()
+        db.refresh(obj)
+        return HaccpAssessmentResponse.model_validate(obj)
+
+    @staticmethod
+    def update_assessment(db: Session, assessment_id: UUID, payload: HaccpAssessmentUpdate) -> HaccpAssessmentResponse | None:
+        obj = db.query(HaccpAssessmentModel).filter(HaccpAssessmentModel.id == assessment_id).first()
+        if not obj:
+            return None
+        for k, v in payload.model_dump(exclude_unset=True).items():
+            setattr(obj, k, v)
+        db.commit()
+        db.refresh(obj)
+        return HaccpAssessmentResponse.model_validate(obj)
+
+    @staticmethod
+    def submit_assessment(db: Session, assessment_id: UUID, payload: HaccpAssessmentSubmitRequest, submitted_by: UUID) -> HaccpAssessmentResponse | None:
+        obj = db.query(HaccpAssessmentModel).filter(HaccpAssessmentModel.id == assessment_id).first()
+        if not obj:
+            return None
+        obj.status = "SUBMITTED"
+        obj.overall_result = payload.overall_result
+        obj.overall_note = payload.overall_note
+        obj.submitted_by = submitted_by
+
+        # --- AI Generation Mock ---
+        # Analyze items to generate an evaluation and development direction
+        items = obj.items
+        pass_count = sum(1 for item in items if item.result == "PASS")
+        fail_count = sum(1 for item in items if item.result == "FAIL")
+        total = len(items)
+
+        eval_lines = []
+        eval_lines.append(f"**Kết quả phân tích tự động:** Đạt {pass_count}/{total} tiêu chí.")
+        
+        if fail_count > 0:
+            eval_lines.append(f"⚠️ Phát hiện {fail_count} tiêu chí không đạt.")
+            failed_items = [item.question for item in items if item.result == "FAIL"]
+            for fi in failed_items[:3]:
+                eval_lines.append(f"- {fi}")
+            if len(failed_items) > 3:
+                eval_lines.append(f"- ... và {len(failed_items) - 3} tiêu chí khác.")
+            
+            eval_lines.append("\n**Hướng phát triển (Đề xuất của AI):**")
+            eval_lines.append("1. Tiến hành rà soát nguyên nhân gốc rễ cho các tiêu chí không đạt.")
+            eval_lines.append("2. Lên kế hoạch khắc phục (CAPA) và phân công người chịu trách nhiệm.")
+            eval_lines.append("3. Tăng cường đào tạo nhân viên tại các công đoạn có tỷ lệ sai sót cao.")
+        else:
+            eval_lines.append("✅ Tất cả các tiêu chí đều đạt. Hệ thống HACCP đang vận hành tốt.")
+            eval_lines.append("\n**Hướng phát triển (Đề xuất của AI):**")
+            eval_lines.append("1. Duy trì hệ thống giám sát hiện tại.")
+            eval_lines.append("2. Cân nhắc số hóa toàn bộ quá trình ghi chép để giảm thiểu sai sót thủ công.")
+            eval_lines.append("3. Rà soát định kỳ hồ sơ để tối ưu hóa tần suất giám sát CCP.")
+        
+        obj.ai_evaluation = "\n".join(eval_lines)
+        # --------------------------
+
+        db.commit()
+        db.refresh(obj)
+        return HaccpAssessmentResponse.model_validate(obj)
+
+    @staticmethod
+    def update_assessment_item(db: Session, item_id: UUID, payload: HaccpAssessmentItemUpdate) -> HaccpAssessmentItemResponse | None:
+        obj = db.query(HaccpAssessmentItemModel).filter(HaccpAssessmentItemModel.id == item_id).first()
+        if not obj:
+            return None
+        for k, v in payload.model_dump(exclude_unset=True).items():
+            setattr(obj, k, v)
+        db.commit()
+        db.refresh(obj)
+        return HaccpAssessmentItemResponse.model_validate(obj)
+
+    @staticmethod
+    def delete_assessment(db: Session, assessment_id: UUID) -> bool:
+        obj = db.query(HaccpAssessmentModel).filter(HaccpAssessmentModel.id == assessment_id).first()
+        if not obj:
+            return False
+        db.delete(obj)
+        db.commit()
+        return True

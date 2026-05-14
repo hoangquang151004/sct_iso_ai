@@ -240,7 +240,10 @@ class CCPMonitoringLogBase(BaseModel):
     iot_device_id: str | None = Field(None, max_length=100)
     # Deviation management fields
     deviation_severity: str | None = Field(None, pattern="^(LOW|MEDIUM|HIGH|CRITICAL)$")
-    deviation_status: str | None = Field(None, pattern="^(NEW|INVESTIGATING|CORRECTIVE_ACTION|RESOLVED|CLOSED)$")
+    deviation_status: str | None = Field(
+        None,
+        pattern="^(NEW|PENDING_CAPA|CAPA_OPEN|CAPA_IN_PROGRESS|CAPA_CLOSED|CAPA_REJECTED|INVESTIGATING|CORRECTIVE_ACTION|RESOLVED|CLOSED)$",
+    )
     corrective_action: str | None = None
     root_cause: str | None = None
     resolution_note: str | None = None
@@ -261,7 +264,10 @@ class CCPMonitoringLogUpdate(BaseModel):
     verified_by: UUID | None = None
     # Deviation management update fields
     deviation_severity: str | None = Field(None, pattern="^(LOW|MEDIUM|HIGH|CRITICAL)$")
-    deviation_status: str | None = Field(None, pattern="^(NEW|INVESTIGATING|CORRECTIVE_ACTION|RESOLVED|CLOSED)$")
+    deviation_status: str | None = Field(
+        None,
+        pattern="^(NEW|PENDING_CAPA|CAPA_OPEN|CAPA_IN_PROGRESS|CAPA_CLOSED|CAPA_REJECTED|INVESTIGATING|CORRECTIVE_ACTION|RESOLVED|CLOSED)$",
+    )
     corrective_action: str | None = None
     root_cause: str | None = None
     resolution_note: str | None = None
@@ -288,12 +294,24 @@ class CCPMonitoringLogResponse(CCPMonitoringLogBase):
 # Schema đặc biệt cho việc xử lý độ lệch
 class DeviationHandleRequest(BaseModel):
     """Request schema để xử lý một độ lệch"""
-    deviation_status: str = Field(..., pattern="^(NEW|INVESTIGATING|CORRECTIVE_ACTION|RESOLVED|CLOSED)$")
+    deviation_status: str = Field(
+        ...,
+        pattern="^(NEW|PENDING_CAPA|CAPA_OPEN|CAPA_IN_PROGRESS|CAPA_CLOSED|CAPA_REJECTED|INVESTIGATING|CORRECTIVE_ACTION|RESOLVED|CLOSED)$",
+    )
     deviation_severity: str | None = Field(None, pattern="^(LOW|MEDIUM|HIGH|CRITICAL)$")
     corrective_action: str | None = None
     root_cause: str | None = None
     resolution_note: str | None = None
     handled_by: UUID | None = None
+
+
+class DeviationCapaNcResponse(BaseModel):
+    """Kết quả gửi độ lệch CCP sang hàng đợi NC/CAPA."""
+
+    nc_id: UUID
+    created: bool = Field(..., description="True nếu vừa tạo NC mới; False nếu NC đã tồn tại")
+    title: str
+    status: str
 
 
 # =============================================================================
@@ -330,5 +348,82 @@ class HaccpVerificationResponse(HaccpVerificationBase):
     conducted_by: UUID
     approved_by: UUID | None = None
     conducted_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# =============================================================================
+# HACCP ASSESSMENT SCHEMAS (Phiếu đánh giá HACCP)
+# =============================================================================
+class HaccpAssessmentItemBase(BaseModel):
+    item_type: str = Field(..., pattern="^(PROCESS_STEP|CCP|GENERAL)$")
+    ref_id: UUID | None = None
+    question: str
+    expected_value: str | None = None
+    actual_value: str | None = None
+    result: str | None = Field(None, pattern="^(PASS|FAIL|NA|)$")
+    note: str | None = None
+    evidence_url: str | None = None
+    order_index: int = 0
+
+
+class HaccpAssessmentItemCreate(HaccpAssessmentItemBase):
+    pass
+
+
+class HaccpAssessmentItemUpdate(BaseModel):
+    actual_value: str | None = None
+    result: str | None = Field(None, pattern="^(PASS|FAIL|NA|)$")
+    note: str | None = None
+    evidence_url: str | None = None
+
+
+class HaccpAssessmentItemResponse(HaccpAssessmentItemBase):
+    id: UUID
+    assessment_id: UUID
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class HaccpAssessmentBase(BaseModel):
+    title: str = Field(..., max_length=255)
+    assessment_date: date | None = None
+    overall_result: str | None = Field(None, pattern="^(PASS|FAIL|NEEDS_IMPROVEMENT|)$")
+    overall_note: str | None = None
+    ai_evaluation: str | None = None
+
+
+class HaccpAssessmentCreate(HaccpAssessmentBase):
+    haccp_plan_id: UUID
+    items: list[HaccpAssessmentItemCreate] | None = None
+    org_id: UUID | None = None
+    submitted_by: UUID | None = None
+
+
+class HaccpAssessmentUpdate(BaseModel):
+    title: str | None = Field(None, max_length=255)
+    assessment_date: date | None = None
+    overall_result: str | None = Field(None, pattern="^(PASS|FAIL|NEEDS_IMPROVEMENT|)$")
+    overall_note: str | None = None
+    status: str | None = Field(None, pattern="^(DRAFT|SUBMITTED|REVIEWED|CLOSED)$")
+    reviewed_by: UUID | None = None
+
+
+class HaccpAssessmentSubmitRequest(BaseModel):
+    overall_result: str = Field(..., pattern="^(PASS|FAIL|NEEDS_IMPROVEMENT)$")
+    overall_note: str | None = None
+
+
+class HaccpAssessmentResponse(HaccpAssessmentBase):
+    id: UUID
+    org_id: UUID
+    haccp_plan_id: UUID
+    status: str
+    submitted_by: UUID | None = None
+    reviewed_by: UUID | None = None
+    created_at: datetime
+    updated_at: datetime
+    items: list[HaccpAssessmentItemResponse] = []
 
     model_config = ConfigDict(from_attributes=True)

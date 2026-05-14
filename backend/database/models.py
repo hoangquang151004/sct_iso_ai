@@ -295,6 +295,10 @@ class HazardAnalysis(Base):
 
 class CCP(Base):
     __tablename__ = "ccps"
+    # __table_args__ = (
+    #     UniqueConstraint("haccp_plan_id", "ccp_code", name="uq_haccp_plan_ccp_code"),
+    #     {"schema": "sct_iso"}
+    # )
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     haccp_plan_id: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.haccp_plans.id", ondelete="CASCADE"))
@@ -332,7 +336,9 @@ class CCPMonitoringLog(Base):
 
     # Deviation management fields
     deviation_severity: Mapped[Optional[str]] = mapped_column(String(20))  # LOW, MEDIUM, HIGH, CRITICAL
-    deviation_status: Mapped[Optional[str]] = mapped_column(String(30))  # NEW, INVESTIGATING, CORRECTIVE_ACTION, RESOLVED, CLOSED
+    deviation_status: Mapped[Optional[str]] = mapped_column(
+        String(30)
+    )  # NEW, PENDING_CAPA, CAPA_OPEN, CAPA_IN_PROGRESS, CAPA_CLOSED, CAPA_REJECTED, INVESTIGATING, CORRECTIVE_ACTION, RESOLVED, CLOSED
     corrective_action: Mapped[Optional[str]] = mapped_column(Text)
     root_cause: Mapped[Optional[str]] = mapped_column(Text)
     handled_by: Mapped[Optional[UUID]] = mapped_column(ForeignKey("sct_iso.users.id"))
@@ -621,3 +627,46 @@ class KPISnapshot(Base):
     alert_open_count: Mapped[Optional[int]] = mapped_column(Integer)
 
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# =============================================================================
+# HACCP ASSESSMENT (Phiếu đánh giá HACCP)
+# =============================================================================
+
+class HaccpAssessment(Base):
+    __tablename__ = "haccp_assessments"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    org_id: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.organizations.id", ondelete="CASCADE"))
+    haccp_plan_id: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.haccp_plans.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="DRAFT")  # DRAFT, SUBMITTED, REVIEWED, CLOSED
+    assessment_date: Mapped[Optional[date]] = mapped_column(Date)
+    overall_result: Mapped[Optional[str]] = mapped_column(String(50))  # PASS, FAIL, NEEDS_IMPROVEMENT
+    overall_note: Mapped[Optional[str]] = mapped_column(Text)
+    ai_evaluation: Mapped[Optional[str]] = mapped_column(Text)
+    submitted_by: Mapped[Optional[UUID]] = mapped_column(ForeignKey("sct_iso.users.id"))
+    reviewed_by: Mapped[Optional[UUID]] = mapped_column(ForeignKey("sct_iso.users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    items: Mapped[List["HaccpAssessmentItem"]] = relationship(back_populates="assessment", cascade="all, delete-orphan")
+
+
+class HaccpAssessmentItem(Base):
+    __tablename__ = "haccp_assessment_items"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    assessment_id: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.haccp_assessments.id", ondelete="CASCADE"))
+    item_type: Mapped[str] = mapped_column(String(50), nullable=False)  # PROCESS_STEP, CCP, GENERAL
+    ref_id: Mapped[Optional[UUID]] = mapped_column(PG_UUID(as_uuid=True))
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    expected_value: Mapped[Optional[str]] = mapped_column(Text)
+    actual_value: Mapped[Optional[str]] = mapped_column(Text)
+    result: Mapped[Optional[str]] = mapped_column(String(50))  # PASS, FAIL, NA
+    note: Mapped[Optional[str]] = mapped_column(Text)
+    evidence_url: Mapped[Optional[str]] = mapped_column(Text)
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    assessment: Mapped["HaccpAssessment"] = relationship(back_populates="items")

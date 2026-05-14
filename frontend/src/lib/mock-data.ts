@@ -999,6 +999,7 @@ export const haccpSidebarButtons = [
   { id: "monitoring", label: "Kế hoạch giám sát", active: false },
   { id: "monitoring-logs", label: "Nhật ký Giám sát", active: false },
   { id: "deviations", label: "Độ lệch CCP", active: false },
+  { id: "assessments", label: "Đánh giá HACCP", active: false },
 ];
 
 // ============================================================================

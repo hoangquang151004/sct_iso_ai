@@ -1,6 +1,7 @@
+from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from database.deps import get_db
@@ -15,7 +16,11 @@ from .schemas import (
     CCPCreate, CCPUpdate, CCPResponse,
     CCPMonitoringLogCreate, CCPMonitoringLogUpdate, CCPMonitoringLogResponse,
     DeviationHandleRequest,
+    DeviationCapaNcResponse,
     HaccpVerificationCreate, HaccpVerificationUpdate, HaccpVerificationResponse,
+    HaccpAssessmentCreate, HaccpAssessmentUpdate, HaccpAssessmentResponse,
+    HaccpAssessmentItemUpdate, HaccpAssessmentItemResponse,
+    HaccpAssessmentSubmitRequest,
 )
 from .service import (
     ProductService,
@@ -25,6 +30,7 @@ from .service import (
     CCPService,
     CCPMonitoringLogService,
     HaccpVerificationService,
+    HaccpAssessmentService,
 )
 
 haccp_router = APIRouter(prefix="/haccp", tags=["HACCP"])
@@ -413,7 +419,10 @@ def create_ccp(
     db: Session = Depends(get_db),
     principal: AuthPrincipal = Depends(get_current_principal),
 ):
-    return CCPService.create_ccp(db, payload)
+    try:
+        return CCPService.create_ccp(db, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @haccp_router.get(
@@ -436,10 +445,13 @@ def get_ccp(ccp_id: UUID, db: Session = Depends(get_db)):
     description="Cập nhật thông tin CCP như giới hạn tới hạn hoặc quy trình giám sát",
 )
 def update_ccp(ccp_id: UUID, payload: CCPUpdate, db: Session = Depends(get_db)):
-    result = CCPService.update_ccp(db, ccp_id, payload)
-    if not result:
-        raise HTTPException(status_code=404, detail="CCP not found")
-    return result
+    try:
+        result = CCPService.update_ccp(db, ccp_id, payload)
+        if not result:
+            raise HTTPException(status_code=404, detail="CCP not found")
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @haccp_router.delete(
@@ -494,6 +506,21 @@ def create_ccp_log(
 
 
 @haccp_router.get(
+    "/logs",
+    response_model=list[CCPMonitoringLogResponse],
+    summary="Danh sách nhật ký giám sát tổng hợp",
+    description="Lấy toàn bộ nhật ký giám sát CCP, lọc tùy chọn theo kế hoạch hoặc tổ chức",
+)
+def list_all_logs(
+    org_id: UUID | None = None,
+    plan_id: UUID | None = None,
+    limit: int = Query(500, ge=1, le=1000),
+    db: Session = Depends(get_db),
+):
+    return CCPMonitoringLogService.list_all_logs(db, org_id, plan_id, limit)
+
+
+@haccp_router.get(
     "/logs/{log_id}",
     response_model=CCPMonitoringLogResponse,
     summary="Chi tiết nhật ký giám sát",
@@ -529,13 +556,42 @@ def update_ccp_log(log_id: UUID, payload: CCPMonitoringLogUpdate, db: Session = 
     description="Lấy danh sách các độ lệch CCP (deviations) cần xử lý trong tổ chức",
 )
 def list_ccp_deviations(
-    org_id: UUID | None = None,
-    status: str | None = Query(None, pattern="^(NEW|INVESTIGATING|CORRECTIVE_ACTION|RESOLVED|CLOSED)$"),
+    status: str | None = Query(
+        None,
+        pattern="^(NEW|PENDING_CAPA|CAPA_OPEN|CAPA_IN_PROGRESS|CAPA_CLOSED|CAPA_REJECTED|INVESTIGATING|CORRECTIVE_ACTION|RESOLVED|CLOSED)$",
+    ),
     severity: str | None = Query(None, pattern="^(LOW|MEDIUM|HIGH|CRITICAL)$"),
+    plan_id: UUID | None = Query(None, description="Lọc theo kế hoạch HACCP"),
+    ccp_id: UUID | None = Query(None, description="Lọc theo CCP"),
+    search: str | None = Query(None, max_length=200, description="Tìm theo lô, ghi chú lệch, tên/mã CCP"),
+    has_capa_nc: bool | None = Query(
+        None,
+        description="True: đã có NC gửi CAPA; False: chưa có NC; bỏ qua: tất cả",
+    ),
+    recorded_from: date | None = Query(None, description="Từ ngày ghi nhận (recorded_at), bao gồm"),
+    recorded_to: date | None = Query(None, description="Đến ngày ghi nhận (recorded_at), bao gồm"),
     limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
+    principal: AuthPrincipal = Depends(get_current_principal),
 ):
-    return CCPMonitoringLogService.list_ccp_deviations(db, org_id, status, severity, limit)
+    if recorded_from is not None and recorded_to is not None and recorded_from > recorded_to:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="recorded_from không được sau recorded_to.",
+        )
+    return CCPMonitoringLogService.list_ccp_deviations(
+        db,
+        principal.org_id,
+        status,
+        severity,
+        plan_id,
+        ccp_id,
+        search,
+        has_capa_nc,
+        recorded_from,
+        recorded_to,
+        limit,
+    )
 
 
 @haccp_router.get(
@@ -544,11 +600,20 @@ def list_ccp_deviations(
     description="Thống kê độ lệch CCP theo trạng thái và mức độ nghiêm trọng",
 )
 def get_deviation_stats(
-    org_id: UUID | None = None,
+    recorded_from: date | None = Query(None, description="Từ ngày ghi nhận (recorded_at), bao gồm"),
+    recorded_to: date | None = Query(None, description="Đến ngày ghi nhận (recorded_at), bao gồm"),
     db: Session = Depends(get_db),
+    principal: AuthPrincipal = Depends(get_current_principal),
 ):
-    """Lấy thống kê độ lệch: số lượng theo trạng thái và mức độ nghiêm trọng"""
-    return CCPMonitoringLogService.get_deviation_stats(db, org_id)
+    """Lấy thống kê độ lệch: số lượng theo trạng thái và mức độ nghiêm trọng (theo tổ chức đăng nhập)."""
+    if recorded_from is not None and recorded_to is not None and recorded_from > recorded_to:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="recorded_from không được sau recorded_to.",
+        )
+    return CCPMonitoringLogService.get_deviation_stats(
+        db, principal.org_id, recorded_from, recorded_to
+    )
 
 
 @haccp_router.patch(
@@ -561,12 +626,51 @@ def handle_ccp_deviation(
     log_id: UUID,
     payload: DeviationHandleRequest,
     db: Session = Depends(get_db),
+    principal: AuthPrincipal = Depends(get_current_principal),
 ):
     """Endpoint để xử lý độ lệch CCP: cập nhật trạng thái, phân loại mức độ, ghi nhận hành động khắc phục"""
-    result = CCPMonitoringLogService.handle_deviation(db, log_id, payload)
+    result = CCPMonitoringLogService.handle_deviation(db, log_id, principal.org_id, payload)
     if not result:
         raise HTTPException(status_code=404, detail="Deviation not found")
     return result
+
+
+@haccp_router.post(
+    "/deviations/{log_id}/capa-nc",
+    response_model=DeviationCapaNcResponse,
+    summary="Gửi độ lệch CCP sang CAPA (NC)",
+    description=(
+        "Tạo bản ghi không phù hợp (NC) nguồn HACCP trỏ tới nhật ký độ lệch nếu chưa có, "
+        "để bộ phận CAPA tiếp nhận xử lý."
+    ),
+)
+def request_capa_nc_for_deviation(
+    log_id: UUID,
+    response: Response,
+    db: Session = Depends(get_db),
+    principal: AuthPrincipal = Depends(get_current_principal),
+):
+    try:
+        out = CCPMonitoringLogService.ensure_nc_for_deviation_capa(
+            db, log_id, principal.org_id
+        )
+    except ValueError as exc:
+        if str(exc) == "not_deviation":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Nhật ký không phải độ lệch (is_within_limit phải là false).",
+            ) from exc
+        raise
+    if not out:
+        raise HTTPException(status_code=404, detail="Deviation not found")
+    nc, created = out
+    response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+    return DeviationCapaNcResponse(
+        nc_id=nc.id,
+        created=created,
+        title=nc.title,
+        status=nc.status,
+    )
 
 
 # =============================================================================
@@ -627,3 +731,114 @@ def update_verification(verification_id: UUID, payload: HaccpVerificationUpdate,
     if not result:
         raise HTTPException(status_code=404, detail="Verification not found")
     return result
+
+
+# =============================================================================
+# HACCP ASSESSMENT ENDPOINTS (Phiếu đánh giá HACCP)
+# =============================================================================
+@haccp_router.get(
+    "/assessments",
+    response_model=list[HaccpAssessmentResponse],
+    summary="Danh sách phiếu đánh giá HACCP",
+    description="Lấy danh sách phiếu đánh giá với bộ lọc theo tổ chức, kế hoạch và trạng thái",
+)
+def list_assessments(
+    org_id: UUID | None = None,
+    haccp_plan_id: UUID | None = None,
+    status: str | None = Query(None, pattern="^(DRAFT|SUBMITTED|REVIEWED|CLOSED)$"),
+    db: Session = Depends(get_db),
+):
+    return HaccpAssessmentService.list_assessments(db, org_id, haccp_plan_id, status)
+
+
+@haccp_router.post(
+    "/assessments",
+    response_model=HaccpAssessmentResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Tạo phiếu đánh giá HACCP",
+    description="Tạo phiếu đánh giá HACCP mới với các hạng mục đánh giá",
+)
+def create_assessment(
+    payload: HaccpAssessmentCreate,
+    db: Session = Depends(get_db),
+    principal: AuthPrincipal = Depends(get_current_principal),
+):
+    data = payload.model_dump()
+    data["org_id"] = principal.org_id
+    data["submitted_by"] = principal.user_id
+    from .schemas import HaccpAssessmentCreate as HAC
+    fixed_payload = HAC(**data)
+    return HaccpAssessmentService.create_assessment(db, fixed_payload)
+
+
+@haccp_router.get(
+    "/assessments/{assessment_id}",
+    response_model=HaccpAssessmentResponse,
+    summary="Chi tiết phiếu đánh giá",
+    description="Lấy chi tiết phiếu đánh giá HACCP kèm các hạng mục",
+)
+def get_assessment(assessment_id: UUID, db: Session = Depends(get_db)):
+    result = HaccpAssessmentService.get_assessment(db, assessment_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Phiếu đánh giá không tồn tại")
+    return result
+
+
+@haccp_router.patch(
+    "/assessments/{assessment_id}",
+    response_model=HaccpAssessmentResponse,
+    summary="Cập nhật phiếu đánh giá",
+    description="Cập nhật thông tin phiếu đánh giá HACCP",
+)
+def update_assessment(assessment_id: UUID, payload: HaccpAssessmentUpdate, db: Session = Depends(get_db)):
+    result = HaccpAssessmentService.update_assessment(db, assessment_id, payload)
+    if not result:
+        raise HTTPException(status_code=404, detail="Phiếu đánh giá không tồn tại")
+    return result
+
+
+@haccp_router.post(
+    "/assessments/{assessment_id}/submit",
+    response_model=HaccpAssessmentResponse,
+    summary="Gửi phiếu đánh giá",
+    description="Gửi phiếu đánh giá HACCP sau khi hoàn thành khảo sát",
+)
+def submit_assessment(
+    assessment_id: UUID,
+    payload: HaccpAssessmentSubmitRequest,
+    db: Session = Depends(get_db),
+    principal: AuthPrincipal = Depends(get_current_principal),
+):
+    result = HaccpAssessmentService.submit_assessment(db, assessment_id, payload, principal.user_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Phiếu đánh giá không tồn tại")
+    return result
+
+
+@haccp_router.patch(
+    "/assessment-items/{item_id}",
+    response_model=HaccpAssessmentItemResponse,
+    summary="Cập nhật hạng mục đánh giá",
+    description="Cập nhật kết quả đánh giá cho một hạng mục cụ thể",
+)
+def update_assessment_item(item_id: UUID, payload: HaccpAssessmentItemUpdate, db: Session = Depends(get_db)):
+    result = HaccpAssessmentService.update_assessment_item(db, item_id, payload)
+    if not result:
+        raise HTTPException(status_code=404, detail="Hạng mục không tồn tại")
+    return result
+
+
+@haccp_router.delete(
+    "/assessments/{assessment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Xóa phiếu đánh giá",
+    description="Xóa phiếu đánh giá HACCP (chỉ khi trạng thái DRAFT)",
+)
+def delete_assessment(assessment_id: UUID, db: Session = Depends(get_db)):
+    obj = HaccpAssessmentService.get_assessment(db, assessment_id)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Phiếu đánh giá không tồn tại")
+    if obj.status != "DRAFT":
+        raise HTTPException(status_code=400, detail="Chỉ có thể xóa phiếu ở trạng thái DRAFT")
+    HaccpAssessmentService.delete_assessment(db, assessment_id)
+    return None

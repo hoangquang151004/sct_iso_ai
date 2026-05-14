@@ -78,7 +78,17 @@ export type CCPMonitoringLog = {
   verified_at?: string;
   // Deviation management fields
   deviation_severity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-  deviation_status?: 'NEW' | 'INVESTIGATING' | 'CORRECTIVE_ACTION' | 'RESOLVED' | 'CLOSED';
+  deviation_status?:
+    | "NEW"
+    | "PENDING_CAPA"
+    | "CAPA_OPEN"
+    | "CAPA_IN_PROGRESS"
+    | "CAPA_CLOSED"
+    | "CAPA_REJECTED"
+    | "INVESTIGATING"
+    | "CORRECTIVE_ACTION"
+    | "RESOLVED"
+    | "CLOSED";
   corrective_action?: string;
   root_cause?: string;
   handled_by?: string;
@@ -98,6 +108,38 @@ export type HaccpVerification = {
   conducted_by: string;
   approved_by?: string;
   conducted_at: string;
+};
+
+export type HaccpAssessmentItem = {
+  id: string;
+  assessment_id: string;
+  item_type: "PROCESS_STEP" | "CCP" | "GENERAL";
+  ref_id?: string;
+  question: string;
+  expected_value?: string;
+  actual_value?: string;
+  result?: "PASS" | "FAIL" | "NA" | "";
+  note?: string;
+  evidence_url?: string;
+  order_index: number;
+  created_at: string;
+};
+
+export type HaccpAssessment = {
+  id: string;
+  org_id: string;
+  haccp_plan_id: string;
+  title: string;
+  status: "DRAFT" | "SUBMITTED" | "REVIEWED" | "CLOSED";
+  assessment_date?: string;
+  overall_result?: "PASS" | "FAIL" | "NEEDS_IMPROVEMENT" | "";
+  overall_note?: string;
+  ai_evaluation?: string;
+  submitted_by?: string;
+  reviewed_by?: string;
+  created_at: string;
+  updated_at: string;
+  items: HaccpAssessmentItem[];
 };
 
 // Types for generic results

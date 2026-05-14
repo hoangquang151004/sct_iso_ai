@@ -1,19 +1,24 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import AppShell from "@/components/layout/app-shell";
 import { haccpSidebarButtons, currentUser, getUserDisplayName } from "@/lib/mock-data";
 import { useUsers, User } from "@/api/hooks/use-users";
-import { 
-  useHaccpPlans, 
-  useProcessSteps, 
-  useCCPs, 
+import { useAuth, useToast } from "@/hooks";
+import { capaService } from "@/services/capa-service";
+import {
+  useHaccpPlans,
+  useProcessSteps,
+  useCCPs,
   useAllCCPLogs,
   useDeviations,
   useDeviationStats,
   handleDeviation,
+  requestDeviationCapaNc,
   useAllProcessStepsWithHazards,
   useAllCCPs,
+  useHazards,
   useHaccpPlanVersions,
   createNewVersion,
   ProcessStepWithPlan,
@@ -21,27 +26,47 @@ import {
   HandleDeviationPayload,
   HaccpPlanVersion
 } from "@/api/hooks/use-haccp";
-import { CCPMonitoringLog, HazardAnalysis, CCP } from "@/lib/types";
+import { CCPMonitoringLog, HazardAnalysis, CCP, ProcessStep, HaccpPlan } from "@/lib/types";
 import { apiFetch } from "@/api/api-client";
 import HaccpWizard from "@/components/haccp-wizard";
 import Modal from "@/components/ui/modal";
+import AssessmentPanel from "./_components/assessment-panel";
+
+function getDateOnly(value?: string | null) {
+  return value ? value.slice(0, 10) : "";
+}
+
+function isDateInRange(value: string | undefined, from: string, to: string) {
+  if (!from && !to) return true;
+  const date = getDateOnly(value);
+  if (!date) return false;
+  if (from && date < from) return false;
+  if (to && date > to) return false;
+  return true;
+}
+
+function isMonitoringPlanComplete(ccp: CCP) {
+  return Boolean(
+    ccp.critical_limit?.trim() &&
+      ccp.monitoring_method?.trim() &&
+      ccp.monitoring_frequency?.trim() &&
+      ccp.responsible_user?.trim(),
+  );
+}
 
 export default function HaccpCompliancePage() {
+  const { principal } = useAuth();
   const [activeTab, setActiveTab] = useState(haccpSidebarButtons[0]?.id ?? "process-flow");
-  /** Chỉ tải dữ liệu nặng khi tab cần — tránh bão request mỗi lần mở trang. */
-  const loadAllCcpsData =
-    activeTab === "ccps" || activeTab === "monitoring-logs" || activeTab === "monitoring";
-  const loadFullHazardAnalysis = activeTab === "hazards";
-  const loadDeviationsData = activeTab === "deviations";
-  const loadMonitoringLogsData = activeTab === "monitoring-logs";
-  const loadUsersForForms =
-    activeTab === "monitoring" ||
-    activeTab === "monitoring-logs" ||
-    activeTab === "deviations";
+  const loadMonitoringLogsData = true;
+  const loadMonitoringData = true;
+  const loadDeviationsData = true;
+  const loadAllCcpsData = true;
+  const loadFullHazardAnalysis = true;
+  const loadUsersForForms = true;
 
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [wizardPlanId, setWizardPlanId] = useState<string | null>(null);
-  
+
   // States for Flow Modal
   const [isFlowModalOpen, setIsFlowModalOpen] = useState(false);
   const [flowModalPlanId, setFlowModalPlanId] = useState<string | null>(null);
@@ -49,7 +74,7 @@ export default function HaccpCompliancePage() {
   // States for Hazard Detail Modal
   const [isHazardModalOpen, setIsHazardModalOpen] = useState(false);
   const [selectedHazard, setSelectedHazard] = useState<HazardAnalysis | null>(null);
-  const [selectedStepInfo, setSelectedStepInfo] = useState<{stepName: string; planName: string} | null>(null);
+  const [selectedStepInfo, setSelectedStepInfo] = useState<{ stepName: string; planName: string } | null>(null);
 
   // States for CCP Detail Modal
   const [isCCPModalOpen, setIsCCPModalOpen] = useState(false);
@@ -63,9 +88,17 @@ export default function HaccpCompliancePage() {
 
   // States for Version Management
   const [isVersionModalOpen, setIsVersionModalOpen] = useState(false);
-  const [selectedPlanForVersion, setSelectedPlanForVersion] = useState<{id: string; version: string; name: string; scope?: string; product_id?: string} | null>(null);
+  const [selectedPlanForVersion, setSelectedPlanForVersion] = useState<{ id: string; version: string; name: string; scope?: string; product_id?: string } | null>(null);
   const [isVersionsViewModalOpen, setIsVersionsViewModalOpen] = useState(false);
   const [viewVersionsPlanId, setViewVersionsPlanId] = useState<string | null>(null);
+
+  // States for Step Detail Modal
+  const [isStepDetailOpen, setIsStepDetailOpen] = useState(false);
+  const [selectedStepDetail, setSelectedStepDetail] = useState<ProcessStep | null>(null);
+  const handleStepClick = (step: ProcessStep) => {
+    setSelectedStepDetail(step);
+    setIsStepDetailOpen(true);
+  };
 
   const { plans, loading: plansLoading, refetch: refetchPlans } = useHaccpPlans();
 
@@ -73,18 +106,97 @@ export default function HaccpCompliancePage() {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [planCreatedFrom, setPlanCreatedFrom] = useState("");
+  const [planCreatedTo, setPlanCreatedTo] = useState("");
+  const [planDateFilterMode, setPlanDateFilterMode] = useState<"day" | "month" | "year">("day");
+  const [selectedPlanDate, setSelectedPlanDate] = useState("");
+  const [selectedPlanMonth, setSelectedPlanMonth] = useState("");
+  const [selectedPlanMonthYear, setSelectedPlanMonthYear] = useState(String(new Date().getFullYear()));
+  const [selectedPlanYear, setSelectedPlanYear] = useState("");
   const [flowSearchTerm, setFlowSearchTerm] = useState("");
+  const [flowStatusFilter, setFlowStatusFilter] = useState("ALL");
+  const [hazardPlanFilter, setHazardPlanFilter] = useState("ALL");
+  const [hazardTypeFilter, setHazardTypeFilter] = useState("ALL");
+  const [hazardRiskFilter, setHazardRiskFilter] = useState("ALL");
+  const [ccpPlanFilter, setCcpPlanFilter] = useState("ALL");
+  const [ccpSetupFilter, setCcpSetupFilter] = useState("ALL");
+  const [logSearchTerm, setLogSearchTerm] = useState("");
+  const [logResultFilter, setLogResultFilter] = useState("ALL");
+  const [logCcpFilter, setLogCcpFilter] = useState("ALL");
+  const [logDateFrom, setLogDateFrom] = useState("");
+  const [logDateTo, setLogDateTo] = useState("");
 
-  const filteredPlans = plans.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === "ALL" || p.status === statusFilter;
-    return matchesSearch && matchesStatus;
+  const currentYear = new Date().getFullYear();
+  const planYearOptions = Array.from({ length: 8 }, (_, index) => String(currentYear - index));
+  const planMonthOptions = Array.from({ length: 12 }, (_, index) => {
+    const month = String(index + 1).padStart(2, "0");
+    return { value: month, label: `Tháng ${index + 1}` };
   });
 
-  const filteredPlansForFlow = plans.filter(p => 
-    p.name.toLowerCase().includes(flowSearchTerm.toLowerCase()) ||
-    (p.scope && p.scope.toLowerCase().includes(flowSearchTerm.toLowerCase()))
-  );
+  const clearPlanCreatedDateFilter = () => {
+    setSelectedPlanDate("");
+    setSelectedPlanMonth("");
+    setSelectedPlanMonthYear(String(new Date().getFullYear()));
+    setSelectedPlanYear("");
+    setPlanCreatedFrom("");
+    setPlanCreatedTo("");
+  };
+
+  const setPlanCreatedDayFilter = (value: string) => {
+    setSelectedPlanDate(value);
+    setSelectedPlanMonth("");
+    setSelectedPlanMonthYear(String(new Date().getFullYear()));
+    setSelectedPlanYear("");
+    setPlanCreatedFrom(value);
+    setPlanCreatedTo(value);
+  };
+
+  const setPlanCreatedMonthFilter = (monthValue: string, yearValue = selectedPlanMonthYear) => {
+    setSelectedPlanDate("");
+    setSelectedPlanMonth(monthValue);
+    setSelectedPlanMonthYear(yearValue);
+    setSelectedPlanYear("");
+    if (!monthValue || !yearValue) {
+      setPlanCreatedFrom("");
+      setPlanCreatedTo("");
+      return;
+    }
+    const lastDay = new Date(Number(yearValue), Number(monthValue), 0).getDate();
+    setPlanCreatedFrom(`${yearValue}-${monthValue}-01`);
+    setPlanCreatedTo(`${yearValue}-${monthValue}-${String(lastDay).padStart(2, "0")}`);
+  };
+
+  const setPlanCreatedYearFilter = (value: string) => {
+    setSelectedPlanDate("");
+    setSelectedPlanMonth("");
+    setSelectedPlanMonthYear(String(new Date().getFullYear()));
+    setSelectedPlanYear(value);
+    setPlanCreatedFrom(value ? `${value}-01-01` : "");
+    setPlanCreatedTo(value ? `${value}-12-31` : "");
+  };
+
+  const filteredPlans = plans.filter(p => {
+    const query = searchTerm.trim().toLowerCase();
+    const matchesSearch =
+      !query ||
+      p.name.toLowerCase().includes(query) ||
+      (p.scope || "").toLowerCase().includes(query) ||
+      p.version.toLowerCase().includes(query);
+    const matchesStatus = statusFilter === "ALL" || p.status === statusFilter;
+    const matchesCreatedDate = isDateInRange(p.created_at, planCreatedFrom, planCreatedTo);
+    return matchesSearch && matchesStatus && matchesCreatedDate;
+  });
+
+  const filteredPlansForFlow = plans.filter(p => {
+    const query = flowSearchTerm.trim().toLowerCase();
+    const matchesSearch =
+      !query ||
+      p.name.toLowerCase().includes(query) ||
+      (p.scope || "").toLowerCase().includes(query) ||
+      p.version.toLowerCase().includes(query);
+    const matchesStatus = flowStatusFilter === "ALL" || p.status === flowStatusFilter;
+    return matchesSearch && matchesStatus;
+  });
 
   useEffect(() => {
     if (!selectedPlanId && plans && plans.length > 0) {
@@ -94,7 +206,7 @@ export default function HaccpCompliancePage() {
 
   const { steps, loading: stepsLoading } = useProcessSteps(selectedPlanId);
   const { ccps, loading: ccpsLoading } = useCCPs(selectedPlanId);
-  
+
   // Hook for all CCPs (for the CCPs tab showing all plans)
   const { allCcps, loading: allCcpsLoading, refetch: refetchAllCcps } = useAllCCPs(loadAllCcpsData);
 
@@ -103,25 +215,88 @@ export default function HaccpCompliancePage() {
 
   // New hooks for all features
   const { logs: allLogs, loading: logsLoading, refetch: refetchLogs } = useAllCCPLogs(
-    selectedPlanId,
+    null, // Hiển thị tất cả nhật ký của tổ chức, không lọc theo kế hoạch riêng lẻ
     loadMonitoringLogsData,
   );
 
-  // Deviation management state
+  const allCcpMap = useMemo(() => new Map(allCcps.map((ccp) => [ccp.id, ccp])), [allCcps]);
+
+  const filteredAllCcps = useMemo(() => {
+    const query = ccpSearchTerm.trim().toLowerCase();
+    return allCcps.filter((ccp) => {
+      const matchesSearch =
+        !query ||
+        ccp.name.toLowerCase().includes(query) ||
+        ccp.ccp_code.toLowerCase().includes(query) ||
+        (ccp.critical_limit || "").toLowerCase().includes(query) ||
+        (ccp.monitoring_method || "").toLowerCase().includes(query) ||
+        (ccp.monitoring_frequency || "").toLowerCase().includes(query);
+      const matchesPlan = ccpPlanFilter === "ALL" || ccp.haccp_plan_id === ccpPlanFilter;
+      const setupComplete = isMonitoringPlanComplete(ccp);
+      const matchesSetup =
+        ccpSetupFilter === "ALL" ||
+        (ccpSetupFilter === "complete" && setupComplete) ||
+        (ccpSetupFilter === "incomplete" && !setupComplete);
+      return matchesSearch && matchesPlan && matchesSetup;
+    });
+  }, [allCcps, ccpPlanFilter, ccpSearchTerm, ccpSetupFilter]);
+
+  const filteredMonitoringLogs = useMemo(() => {
+    const query = logSearchTerm.trim().toLowerCase();
+    return allLogs.filter((log) => {
+      const ccp = allCcpMap.get(log.ccp_id);
+      const matchesSearch =
+        !query ||
+        (log.batch_number || "").toLowerCase().includes(query) ||
+        (log.deviation_note || "").toLowerCase().includes(query) ||
+        (log.measured_value !== undefined && String(log.measured_value).toLowerCase().includes(query)) ||
+        (ccp?.ccp_code || "").toLowerCase().includes(query) ||
+        (ccp?.name || "").toLowerCase().includes(query);
+      const matchesResult =
+        logResultFilter === "ALL" ||
+        (logResultFilter === "pass" && log.is_within_limit) ||
+        (logResultFilter === "fail" && log.is_within_limit === false);
+      const matchesCcp = logCcpFilter === "ALL" || log.ccp_id === logCcpFilter;
+      const matchesDate = isDateInRange(log.recorded_at, logDateFrom, logDateTo);
+      return matchesSearch && matchesResult && matchesCcp && matchesDate;
+    });
+  }, [allCcpMap, allLogs, logCcpFilter, logDateFrom, logDateTo, logResultFilter, logSearchTerm]);
+
+  // Deviation management state (API lấy org từ JWT — chỉ gọi khi đã có principal)
   const [deviationFilters, setDeviationFilters] = useState<DeviationFilters>({});
+  const deviationsEnabled = loadDeviationsData && !!principal?.org_id;
   const { deviations, loading: deviationsLoading, refetch: refetchDeviations } = useDeviations(
-    null,
     deviationFilters,
-    loadDeviationsData,
+    deviationsEnabled,
   );
   const { stats: deviationStats, loading: deviationStatsLoading, refetch: refetchDeviationStats } =
-    useDeviationStats(null, loadDeviationsData);
+    useDeviationStats(deviationFilters, deviationsEnabled);
   const [selectedDeviation, setSelectedDeviation] = useState<CCPMonitoringLog | null>(null);
   const [isHandleDeviationModalOpen, setIsHandleDeviationModalOpen] = useState(false);
 
   // Hook lấy tất cả công đoạn và mối nguy từ tất cả kế hoạch cho phân tích đầy đủ
   const { allStepsWithHazards, loading: allHazardsFullLoading } =
     useAllProcessStepsWithHazards(loadFullHazardAnalysis);
+
+  // Build maps for AssessmentPanel
+  const stepsByPlan = useMemo(() => {
+    const map: Record<string, ProcessStep[]> = {};
+    for (const step of allStepsWithHazards) {
+      if (!map[step.plan_id]) map[step.plan_id] = [];
+      const { plan_id, plan_name, hazards, ...rest } = step as any;
+      map[step.plan_id].push(rest);
+    }
+    return map;
+  }, [allStepsWithHazards]);
+
+  const ccpsByPlan = useMemo(() => {
+    const map: Record<string, CCP[]> = {};
+    for (const ccp of allCcps) {
+      if (!map[ccp.haccp_plan_id]) map[ccp.haccp_plan_id] = [];
+      map[ccp.haccp_plan_id].push(ccp);
+    }
+    return map;
+  }, [allCcps]);
 
   const hazardColor = (hazardType: string) => {
     if (hazardType === "BIOLOGICAL") return "bg-orange-500";
@@ -147,7 +322,7 @@ export default function HaccpCompliancePage() {
   // Handle plan approval - Không cần phân quyền, ai cũng có thể duyệt
   const handleApprovePlan = async (planId: string) => {
     if (!confirm("Phê duyệt kế hoạch này?\n\nSau khi phê duyệt, kế hoạch sẽ chuyển sang trạng thái ACTIVE.")) return;
-    
+
     try {
       await apiFetch(`/haccp/plans/${planId}/approve`, {
         method: 'POST',
@@ -163,19 +338,19 @@ export default function HaccpCompliancePage() {
   // Handle plan deletion with warning for ACTIVE plans
   const handleDeletePlan = async (plan: any) => {
     const isActive = plan.status === 'ACTIVE';
-    const warningMessage = isActive 
+    const warningMessage = isActive
       ? `⚠️ CẢNH BÁO: Bạn đang xóa kế hoạch đang ACTIVE!\n\n` +
-        `Kế hoạch: "${plan.name}" (v${plan.version})\n\n` +
-        `Hậu quả:\n` +
-        `- Mọi dữ liệu (quy trình, CCP, mối nguy) sẽ bị xóa vĩnh viễn\n` +
-        `- Lịch sử giám sát CCP sẽ bị mất\n` +
-        `- Các lô sản phẩm liên quan sẽ không có liên kết HACCP\n\n` +
-        `Bạn có chắc chắn muốn xóa?`
+      `Kế hoạch: "${plan.name}" (v${plan.version})\n\n` +
+      `Hậu quả:\n` +
+      `- Mọi dữ liệu (quy trình, CCP, mối nguy) sẽ bị xóa vĩnh viễn\n` +
+      `- Lịch sử giám sát CCP sẽ bị mất\n` +
+      `- Các lô sản phẩm liên quan sẽ không có liên kết HACCP\n\n` +
+      `Bạn có chắc chắn muốn xóa?`
       : `Bạn có chắc chắn muốn xóa kế hoạch "${plan.name}"?\n\nMọi dữ liệu (quy trình, CCP) sẽ bị xóa vĩnh viễn.`;
-    
+
     if (!confirm(warningMessage)) return;
     if (isActive && !confirm(`XÁC NHẬN LẦN 2: Kế hoạch ACTIVE sẽ bị xóa hoàn toàn.\nTiếp tục?`)) return;
-    
+
     try {
       await apiFetch(`/haccp/plans/${plan.id}`, { method: 'DELETE' });
       alert(`Đã xóa kế hoạch "${plan.name}" thành công!`);
@@ -187,7 +362,7 @@ export default function HaccpCompliancePage() {
 
   // Helper to get CCP info by ID
   const getCCPInfo = (ccpId: string): CCP | undefined => {
-    return ccps.find(c => c.id === ccpId);
+    return allCcpMap.get(ccpId) || ccps.find(c => c.id === ccpId);
   };
 
   // ============================================================================
@@ -221,7 +396,7 @@ export default function HaccpCompliancePage() {
       // Remove empty/undefined fields
       if (!payload.measured_value && payload.measured_value !== 0) delete payload.measured_value;
       if (!payload.deviation_severity) delete payload.deviation_severity;
-      
+
       await apiFetch(`/haccp/ccps/${logFormData.ccp_id}/logs`, {
         method: 'POST',
         body: JSON.stringify(payload)
@@ -240,6 +415,8 @@ export default function HaccpCompliancePage() {
         deviation_severity: undefined
       });
       refetchLogs();
+      if (refetchDeviations) refetchDeviations();
+      if (refetchDeviationStats) refetchDeviationStats();
     } catch (err: any) {
       alert("Lỗi khi tạo nhật ký: " + err.message);
     }
@@ -282,7 +459,7 @@ export default function HaccpCompliancePage() {
         </div>
 
         <div className="flex h-[calc(100vh-180px)]">
-          <aside 
+          <aside
             className="w-48 border-r border-slate-200 bg-white pt-4 shadow-sm overflow-y-auto"
             style={{ scrollbarWidth: 'thin', scrollbarColor: '#06b6d4 #f1f5f9' }}
           >
@@ -333,6 +510,102 @@ export default function HaccpCompliancePage() {
                       <option value="ACTIVE">Hoạt động (ACTIVE)</option>
                       <option value="ARCHIVED">Lưu kho (ARCHIVED)</option>
                     </select>
+                    <div className="grid h-[58px] w-[620px] max-w-full shrink-0 grid-cols-[64px_184px_320px] items-center gap-2 overflow-hidden rounded-xl border border-cyan-100 bg-cyan-50/70 px-3 py-2">
+                      <span className="whitespace-nowrap text-[10px] font-bold uppercase tracking-wide text-cyan-800">
+                        Ngày tạo
+                      </span>
+                      <div className="grid w-[184px] grid-cols-3 rounded-lg border border-cyan-100 bg-white p-1">
+                        {[
+                          { value: "day", label: "Ngày" },
+                          { value: "month", label: "Tháng" },
+                          { value: "year", label: "Năm" },
+                        ].map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => {
+                              setPlanDateFilterMode(opt.value as "day" | "month" | "year");
+                              clearPlanCreatedDateFilter();
+                            }}
+                            className={`min-w-0 whitespace-nowrap px-2 py-1.5 text-center text-xs font-semibold rounded-md transition ${
+                              planDateFilterMode === opt.value
+                                ? "bg-cyan-600 text-white shadow-sm"
+                                : "text-slate-500 hover:bg-cyan-50"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="w-[300px]">
+                        {planDateFilterMode === "day" && (
+                          <input
+                            type="date"
+                            value={selectedPlanDate}
+                            onChange={(e) => setPlanCreatedDayFilter(e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-cyan-100 rounded-lg outline-none bg-white focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500"
+                            title="Chọn ngày tạo"
+                          />
+                        )}
+
+                        {planDateFilterMode === "month" && (
+                          <div className="grid grid-cols-[1fr_96px] gap-2">
+                          <select
+                            value={selectedPlanMonth}
+                            onChange={(e) => setPlanCreatedMonthFilter(e.target.value, selectedPlanMonthYear)}
+                            className="min-w-0 px-3 py-2 text-sm border border-cyan-100 rounded-lg outline-none bg-white focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500"
+                          >
+                            <option value="">Chọn tháng</option>
+                            {planMonthOptions.map((month) => (
+                              <option key={month.value} value={month.value}>
+                                {month.label}
+                              </option>
+                            ))}
+                          </select>
+                          <select
+                            value={selectedPlanMonthYear}
+                            onChange={(e) => setPlanCreatedMonthFilter(selectedPlanMonth, e.target.value)}
+                            className="min-w-0 px-3 py-2 text-sm border border-cyan-100 rounded-lg outline-none bg-white focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500"
+                          >
+                            {planYearOptions.map((year) => (
+                              <option key={year} value={year}>
+                                {year}
+                              </option>
+                            ))}
+                          </select>
+                          </div>
+                        )}
+
+                        {planDateFilterMode === "year" && (
+                          <select
+                            value={selectedPlanYear}
+                            onChange={(e) => setPlanCreatedYearFilter(e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-cyan-100 rounded-lg outline-none bg-white focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500"
+                          >
+                            <option value="">Chọn năm</option>
+                            {planYearOptions.map((year) => (
+                              <option key={year} value={year}>
+                                {year}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    </div>
+                    {(searchTerm || statusFilter !== "ALL" || planCreatedFrom || planCreatedTo) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchTerm("");
+                          setStatusFilter("ALL");
+                          clearPlanCreatedDateFilter();
+                        }}
+                        className="px-3 py-2 text-sm text-slate-500 hover:text-slate-800"
+                      >
+                        Xóa lọc
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div className="overflow-x-auto">
@@ -352,7 +625,7 @@ export default function HaccpCompliancePage() {
                         <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">Đang tải...</td></tr>
                       ) : filteredPlans.length === 0 ? (
                         <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">
-                          {searchTerm || statusFilter !== 'ALL' ? "Không tìm thấy kết quả phù hợp." : "Chưa có kế hoạch nào. Hãy bấm '+ Tạo Quy Trình HACCP' ở trên."}
+                          {searchTerm || statusFilter !== 'ALL' || planCreatedFrom || planCreatedTo ? "Không tìm thấy kết quả phù hợp." : "Chưa có kế hoạch nào. Hãy bấm '+ Tạo Quy Trình HACCP' ở trên."}
                         </td></tr>
                       ) : (
                         filteredPlans.map(p => (
@@ -394,9 +667,9 @@ export default function HaccpCompliancePage() {
                                   </button>
                                 )}
                                 <button
-                                  onClick={() => { 
-                                    setFlowModalPlanId(p.id); 
-                                    setIsFlowModalOpen(true); 
+                                  onClick={() => {
+                                    setFlowModalPlanId(p.id);
+                                    setIsFlowModalOpen(true);
                                   }}
                                   className="text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded transition-colors font-medium border border-blue-100"
                                 >
@@ -404,18 +677,18 @@ export default function HaccpCompliancePage() {
                                 </button>
                                 {p.status === 'ACTIVE' ? (
                                   <button
-                                    onClick={() => { 
+                                    onClick={() => {
                                       try {
                                         console.log('[BUTTON] Opening version modal for plan:', p);
                                         const planData = {
-                                          id: p.id, 
-                                          version: p.version, 
+                                          id: p.id,
+                                          version: p.version,
                                           name: p.name,
                                           scope: p.scope,
                                           product_id: p.product_id
                                         };
                                         console.log('[BUTTON] Setting selectedPlanForVersion:', planData);
-                                        setSelectedPlanForVersion(planData); 
+                                        setSelectedPlanForVersion(planData);
                                         setIsVersionModalOpen(true);
                                         console.log('[BUTTON] Modal should be open now');
                                       } catch (err) {
@@ -426,7 +699,7 @@ export default function HaccpCompliancePage() {
                                     className="text-xs text-purple-600 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded transition-colors font-medium border border-purple-100"
                                     title="Tạo version mới để chỉnh sửa"
                                   >
-                                    📝 Cập nhật 
+                                    📝 Cập nhật
                                   </button>
                                 ) : (
                                   <button
@@ -473,6 +746,28 @@ export default function HaccpCompliancePage() {
                             onChange={e => setFlowSearchTerm(e.target.value)}
                           />
                         </div>
+                        <select
+                          value={flowStatusFilter}
+                          onChange={(e) => setFlowStatusFilter(e.target.value)}
+                          className="px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none bg-white focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500"
+                        >
+                          <option value="ALL">Tất cả trạng thái</option>
+                          <option value="DRAFT">Nháp</option>
+                          <option value="ACTIVE">Hoạt động</option>
+                          <option value="ARCHIVED">Lưu kho</option>
+                        </select>
+                        {(flowSearchTerm || flowStatusFilter !== "ALL") && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFlowSearchTerm("");
+                              setFlowStatusFilter("ALL");
+                            }}
+                            className="text-xs text-slate-500 hover:text-slate-800"
+                          >
+                            Xóa lọc
+                          </button>
+                        )}
                         <span className="text-xs text-slate-500">{filteredPlansForFlow.length} kế hoạch</span>
                       </div>
                     </div>
@@ -488,8 +783,8 @@ export default function HaccpCompliancePage() {
                       <div className="flex-1 overflow-y-auto pr-2 -mr-2">
                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 pb-4">
                           {filteredPlansForFlow.map((plan) => (
-                            <div 
-                              key={plan.id} 
+                            <div
+                              key={plan.id}
                               className="bg-white p-4 rounded-lg shadow-sm border border-slate-100 hover:shadow-md transition-shadow"
                             >
                               <div className="flex justify-between items-start mb-2">
@@ -502,9 +797,9 @@ export default function HaccpCompliancePage() {
                                 </span>
                               </div>
                               <div className="bg-slate-50 rounded-lg p-2 mb-2 h-24 overflow-hidden">
-                                <ProcessFlowDisplay planId={plan.id} compact />
+                                <ProcessFlowDisplay planId={plan.id} compact onStepClick={handleStepClick} />
                               </div>
-                              <button 
+                              <button
                                 onClick={() => { setFlowModalPlanId(plan.id); setIsFlowModalOpen(true); }}
                                 className="w-full text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded transition-colors font-medium border border-blue-100"
                               >
@@ -555,6 +850,55 @@ export default function HaccpCompliancePage() {
                         </button>
                       )}
                     </div>
+                    <div className="mb-4 flex flex-wrap gap-2 items-center">
+                      <select
+                        value={hazardPlanFilter}
+                        onChange={(e) => setHazardPlanFilter(e.target.value)}
+                        className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
+                      >
+                        <option value="ALL">Tất cả kế hoạch</option>
+                        {plans.map((plan) => (
+                          <option key={plan.id} value={plan.id}>
+                            {plan.name}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={hazardTypeFilter}
+                        onChange={(e) => setHazardTypeFilter(e.target.value)}
+                        className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
+                      >
+                        <option value="ALL">Tất cả loại mối nguy</option>
+                        <option value="BIOLOGICAL">Sinh học</option>
+                        <option value="CHEMICAL">Hóa học</option>
+                        <option value="PHYSICAL">Vật lý</option>
+                      </select>
+                      <select
+                        value={hazardRiskFilter}
+                        onChange={(e) => setHazardRiskFilter(e.target.value)}
+                        className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
+                      >
+                        <option value="ALL">Tất cả mức rủi ro</option>
+                        <option value="significant">Mối nguy đáng kể</option>
+                        <option value="high">Rủi ro cao (&gt;= 12)</option>
+                        <option value="medium">Rủi ro trung bình (8-11)</option>
+                        <option value="low">Rủi ro thấp (&lt; 8)</option>
+                      </select>
+                      {(hazardSearchTerm || hazardPlanFilter !== "ALL" || hazardTypeFilter !== "ALL" || hazardRiskFilter !== "ALL") && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHazardSearchTerm("");
+                            setHazardPlanFilter("ALL");
+                            setHazardTypeFilter("ALL");
+                            setHazardRiskFilter("ALL");
+                          }}
+                          className="text-sm text-slate-500 hover:text-slate-800 px-2 py-2"
+                        >
+                          Xóa lọc
+                        </button>
+                      )}
+                    </div>
 
                     {allHazardsFullLoading ? (
                       <div className="text-center py-12 text-slate-400 flex-1">
@@ -570,18 +914,30 @@ export default function HaccpCompliancePage() {
                     ) : (
                       <div className="space-y-4 overflow-y-auto flex-1 pr-2 custom-scrollbar">
                         {(() => {
-                          // Lọc steps và hazards theo từ khóa
-                          const filteredSteps = hazardSearchTerm
-                            ? allStepsWithHazards.filter(step =>
-                                step.hazards?.some(h =>
-                                  h.hazard_name.toLowerCase().includes(hazardSearchTerm.toLowerCase()) ||
-                                  h.hazard_type.toLowerCase().includes(hazardSearchTerm.toLowerCase()) ||
-                                  (h.description && h.description.toLowerCase().includes(hazardSearchTerm.toLowerCase())) ||
-                                  step.plan_name.toLowerCase().includes(hazardSearchTerm.toLowerCase()) ||
-                                  step.name.toLowerCase().includes(hazardSearchTerm.toLowerCase())
-                                )
-                              )
-                            : allStepsWithHazards;
+                          const query = hazardSearchTerm.trim().toLowerCase();
+                          const filteredSteps = allStepsWithHazards
+                            .filter((step) => hazardPlanFilter === "ALL" || step.plan_id === hazardPlanFilter)
+                            .map((step) => ({
+                              ...step,
+                              hazards: (step.hazards || []).filter((h) => {
+                                const matchesSearch =
+                                  !query ||
+                                  h.hazard_name.toLowerCase().includes(query) ||
+                                  h.hazard_type.toLowerCase().includes(query) ||
+                                  (h.description || "").toLowerCase().includes(query) ||
+                                  step.plan_name.toLowerCase().includes(query) ||
+                                  step.name.toLowerCase().includes(query);
+                                const matchesType = hazardTypeFilter === "ALL" || h.hazard_type === hazardTypeFilter;
+                                const matchesRisk =
+                                  hazardRiskFilter === "ALL" ||
+                                  (hazardRiskFilter === "significant" && h.is_significant) ||
+                                  (hazardRiskFilter === "high" && h.risk_score >= 12) ||
+                                  (hazardRiskFilter === "medium" && h.risk_score >= 8 && h.risk_score < 12) ||
+                                  (hazardRiskFilter === "low" && h.risk_score < 8);
+                                return matchesSearch && matchesType && matchesRisk;
+                              }),
+                            }))
+                            .filter((step) => (step.hazards || []).length > 0);
 
                           const groupedByPlan = filteredSteps.reduce((acc, step) => {
                             const planId = step.plan_id;
@@ -591,6 +947,14 @@ export default function HaccpCompliancePage() {
                             acc[planId].steps.push(step);
                             return acc;
                           }, {} as Record<string, { planName: string; steps: ProcessStepWithPlan[] }>);
+
+                          if (Object.keys(groupedByPlan).length === 0) {
+                            return (
+                              <div className="text-center py-12 text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                Không tìm thấy mối nguy phù hợp với bộ lọc.
+                              </div>
+                            );
+                          }
 
                           return Object.entries(groupedByPlan).map(([planId, planData]) => {
                             const totalHazards = planData.steps.reduce((sum, s) => sum + (s.hazards?.length || 0), 0);
@@ -680,22 +1044,20 @@ export default function HaccpCompliancePage() {
 
                                             {/* Loại mối nguy với badge đẹp */}
                                             <div className="col-span-2 flex justify-center">
-                                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-medium border ${
-                                                h.hazard_type === 'BIOLOGICAL' ? 'bg-orange-50 border-orange-200 text-orange-700' :
+                                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-medium border ${h.hazard_type === 'BIOLOGICAL' ? 'bg-orange-50 border-orange-200 text-orange-700' :
                                                 h.hazard_type === 'CHEMICAL' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
-                                                'bg-blue-50 border-blue-200 text-blue-700'
-                                              }`}>
+                                                  'bg-blue-50 border-blue-200 text-blue-700'
+                                                }`}>
                                                 {hazardNameVN(h.hazard_type)}
                                               </span>
                                             </div>
 
                                             {/* Risk Score - Badge to và đẹp */}
                                             <div className="col-span-2 flex flex-col items-center justify-center">
-                                              <span className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shadow-sm ${
-                                                h.risk_score >= 12 ? 'bg-gradient-to-br from-red-500 to-red-600 text-white' :
+                                              <span className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shadow-sm ${h.risk_score >= 12 ? 'bg-gradient-to-br from-red-500 to-red-600 text-white' :
                                                 h.risk_score >= 8 ? 'bg-gradient-to-br from-amber-400 to-amber-500 text-white' :
-                                                'bg-gradient-to-br from-emerald-400 to-emerald-500 text-white'
-                                              }`}>
+                                                  'bg-gradient-to-br from-emerald-400 to-emerald-500 text-white'
+                                                }`}>
                                                 {h.risk_score}
                                               </span>
                                               <span className="text-[9px] text-slate-400 mt-1">L{h.likelihood} × S{h.severity}</span>
@@ -756,26 +1118,24 @@ export default function HaccpCompliancePage() {
 
                       {/* Hazard Header with Icon */}
                       <div className="flex items-start gap-4">
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${
-                          selectedHazard.hazard_type === 'BIOLOGICAL' ? 'bg-gradient-to-br from-orange-100 to-orange-200 text-orange-600' :
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${selectedHazard.hazard_type === 'BIOLOGICAL' ? 'bg-gradient-to-br from-orange-100 to-orange-200 text-orange-600' :
                           selectedHazard.hazard_type === 'CHEMICAL' ? 'bg-gradient-to-br from-emerald-100 to-emerald-200 text-emerald-600' :
-                          'bg-gradient-to-br from-blue-100 to-blue-200 text-blue-600'
-                        }`}>
+                            'bg-gradient-to-br from-blue-100 to-blue-200 text-blue-600'
+                          }`}>
                           <span className="text-2xl">
                             {selectedHazard.hazard_type === 'BIOLOGICAL' ? '🦠' :
-                             selectedHazard.hazard_type === 'CHEMICAL' ? '⚗️' : '⚙️'}
+                              selectedHazard.hazard_type === 'CHEMICAL' ? '⚗️' : '⚙️'}
                           </span>
                         </div>
                         <div className="flex-1 min-w-0">
                           <h4 className="text-xl font-bold text-slate-800 leading-tight">{selectedHazard.hazard_name}</h4>
                           <div className="flex items-center gap-2 mt-2">
-                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border ${
-                              selectedHazard.hazard_type === 'BIOLOGICAL' ? 'bg-orange-50 border-orange-200 text-orange-700' :
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border ${selectedHazard.hazard_type === 'BIOLOGICAL' ? 'bg-orange-50 border-orange-200 text-orange-700' :
                               selectedHazard.hazard_type === 'CHEMICAL' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
-                              'bg-blue-50 border-blue-200 text-blue-700'
-                            }`}>
+                                'bg-blue-50 border-blue-200 text-blue-700'
+                              }`}>
                               {selectedHazard.hazard_type === 'BIOLOGICAL' ? 'Mối nguy Sinh học' :
-                               selectedHazard.hazard_type === 'CHEMICAL' ? 'Mối nguy Hóa học' : 'Mối nguy Vật lý'}
+                                selectedHazard.hazard_type === 'CHEMICAL' ? 'Mối nguy Hóa học' : 'Mối nguy Vật lý'}
                             </span>
                             {selectedHazard.is_significant && (
                               <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-red-100 border border-red-200 text-red-700 flex items-center gap-1">
@@ -788,28 +1148,25 @@ export default function HaccpCompliancePage() {
                       </div>
 
                       {/* Risk Score Section - Big & Visual */}
-                      <div className={`p-4 rounded-xl border ${
-                        selectedHazard.risk_score >= 12 ? 'bg-gradient-to-r from-red-50 to-red-100 border-red-200' :
+                      <div className={`p-4 rounded-xl border ${selectedHazard.risk_score >= 12 ? 'bg-gradient-to-r from-red-50 to-red-100 border-red-200' :
                         selectedHazard.risk_score >= 8 ? 'bg-gradient-to-r from-amber-50 to-amber-100 border-amber-200' :
-                        'bg-gradient-to-r from-emerald-50 to-emerald-100 border-emerald-200'
-                      }`}>
+                          'bg-gradient-to-r from-emerald-50 to-emerald-100 border-emerald-200'
+                        }`}>
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg ${
-                              selectedHazard.risk_score >= 12 ? 'bg-gradient-to-br from-red-500 to-red-600 text-white' :
+                            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg ${selectedHazard.risk_score >= 12 ? 'bg-gradient-to-br from-red-500 to-red-600 text-white' :
                               selectedHazard.risk_score >= 8 ? 'bg-gradient-to-br from-amber-400 to-amber-500 text-white' :
-                              'bg-gradient-to-br from-emerald-400 to-emerald-500 text-white'
-                            }`}>
+                                'bg-gradient-to-br from-emerald-400 to-emerald-500 text-white'
+                              }`}>
                               <span className="text-2xl font-bold">{selectedHazard.risk_score}</span>
                             </div>
                             <div>
                               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Điểm rủi ro</p>
-                              <p className={`text-sm font-semibold mt-0.5 ${
-                                selectedHazard.risk_score >= 12 ? 'text-red-700' :
+                              <p className={`text-sm font-semibold mt-0.5 ${selectedHazard.risk_score >= 12 ? 'text-red-700' :
                                 selectedHazard.risk_score >= 8 ? 'text-amber-700' : 'text-emerald-700'
-                              }`}>
+                                }`}>
                                 {selectedHazard.risk_score >= 12 ? 'Nguy hiểm cao' :
-                                 selectedHazard.risk_score >= 8 ? 'Nguy hiểm trung bình' : 'Nguy hiểm thấp'}
+                                  selectedHazard.risk_score >= 8 ? 'Nguy hiểm trung bình' : 'Nguy hiểm thấp'}
                               </p>
                             </div>
                           </div>
@@ -893,7 +1250,9 @@ export default function HaccpCompliancePage() {
                   <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-100 flex flex-col h-[calc(100vh-200px)]">
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="text-lg font-bold text-slate-800">Danh sách Điểm Kiểm soát Tới hạn (CCP)</h3>
-                      <span className="text-xs text-slate-500">{allCcps.length} CCP từ tất cả quy trình</span>
+                      <span className="text-xs text-slate-500">
+                        {filteredAllCcps.length}/{allCcps.length} CCP từ tất cả quy trình
+                      </span>
                     </div>
 
                     {/* Search Bar */}
@@ -920,6 +1279,43 @@ export default function HaccpCompliancePage() {
                       )}
                     </div>
 
+                    <div className="mb-4 flex flex-wrap gap-2 items-center">
+                      <select
+                        value={ccpPlanFilter}
+                        onChange={(e) => setCcpPlanFilter(e.target.value)}
+                        className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
+                      >
+                        <option value="ALL">Tất cả kế hoạch</option>
+                        {plans.map((plan) => (
+                          <option key={plan.id} value={plan.id}>
+                            {plan.name}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={ccpSetupFilter}
+                        onChange={(e) => setCcpSetupFilter(e.target.value)}
+                        className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
+                      >
+                        <option value="ALL">Tất cả kế hoạch giám sát</option>
+                        <option value="complete">Đã đủ thông tin</option>
+                        <option value="incomplete">Chưa đủ thông tin</option>
+                      </select>
+                      {(ccpSearchTerm || ccpPlanFilter !== "ALL" || ccpSetupFilter !== "ALL") && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCcpSearchTerm("");
+                            setCcpPlanFilter("ALL");
+                            setCcpSetupFilter("ALL");
+                          }}
+                          className="text-sm text-slate-500 hover:text-slate-800 px-2 py-2"
+                        >
+                          Xóa lọc
+                        </button>
+                      )}
+                    </div>
+
                     {allCcpsLoading ? (
                       <div className="text-center py-12 text-slate-400 flex-1">
                         <div className="w-10 h-10 border-2 border-orange-200 border-t-orange-500 rounded-full animate-spin mx-auto mb-3"></div>
@@ -934,15 +1330,15 @@ export default function HaccpCompliancePage() {
                     ) : (
                       <div className="space-y-4 overflow-y-auto flex-1 pr-2 custom-scrollbar">
                         {(() => {
-                          // Lọc CCP theo từ khóa tìm kiếm
-                          const filteredCcps = ccpSearchTerm
-                            ? allCcps.filter(ccp =>
-                                ccp.name.toLowerCase().includes(ccpSearchTerm.toLowerCase()) ||
-                                ccp.ccp_code.toLowerCase().includes(ccpSearchTerm.toLowerCase()) ||
-                                ccp.critical_limit.toLowerCase().includes(ccpSearchTerm.toLowerCase()) ||
-                                (ccp.monitoring_method && ccp.monitoring_method.toLowerCase().includes(ccpSearchTerm.toLowerCase()))
-                              )
-                            : allCcps;
+                          const filteredCcps = filteredAllCcps;
+
+                          if (filteredCcps.length === 0) {
+                            return (
+                              <div className="text-center py-12 text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                Không tìm thấy CCP phù hợp với bộ lọc.
+                              </div>
+                            );
+                          }
 
                           // Tạo map plan_id -> plan_name
                           const planMap = new Map(plans.map(p => [p.id, p.name]));
@@ -987,9 +1383,14 @@ export default function HaccpCompliancePage() {
                                     {/* CCP Header */}
                                     <div className="flex items-start justify-between mb-3">
                                       <div className="flex items-center gap-3">
-                                        <span className="px-2.5 py-1 bg-orange-500 text-white text-xs font-bold rounded-md">
-                                          {ccp.ccp_code}
-                                        </span>
+                                        <div className="flex flex-col items-center">
+                                          <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[8px] font-bold rounded-t-md border-x border-t border-slate-200 w-full text-center">
+                                            {planData.planName.split(' ').map(w => w[0]).join('').toUpperCase()}
+                                          </span>
+                                          <span className="px-2.5 py-1 bg-orange-500 text-white text-xs font-bold rounded-b-md shadow-sm min-w-[60px] text-center">
+                                            {ccp.ccp_code}
+                                          </span>
+                                        </div>
                                         <div>
                                           <span className="font-semibold text-slate-800 group-hover:text-orange-700 transition-colors block">
                                             {ccp.name}
@@ -1181,7 +1582,9 @@ export default function HaccpCompliancePage() {
                     <div className="flex justify-between items-center mb-6">
                       <h3 className="text-lg font-bold text-slate-800">Nhật ký Giám sát CCP</h3>
                       <div className="flex items-center gap-4">
-                        <span className="text-xs text-slate-500">{allLogs.length} bản ghi</span>
+                        <span className="text-xs text-slate-500">
+                          {filteredMonitoringLogs.length}/{allLogs.length} bản ghi
+                        </span>
                         <button
                           onClick={() => setShowLogForm(!showLogForm)}
                           className="bg-cyan-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-cyan-700 transition-colors"
@@ -1195,7 +1598,7 @@ export default function HaccpCompliancePage() {
                     {showLogForm && (
                       <div className="mb-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
                         <h4 className="text-sm font-bold text-slate-700 mb-4">Tạo nhật ký giám sát mới</h4>
-                        
+
                         {/* Hiển thị thông tin kế hoạch giám sát khi chọn CCP */}
                         {logFormData.ccp_id && (() => {
                           const selectedCcp = allCcps.find(c => c.id === logFormData.ccp_id);
@@ -1224,13 +1627,13 @@ export default function HaccpCompliancePage() {
                             </div>
                           );
                         })()}
-                        
+
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           <div>
                             <label className="block text-xs font-medium text-slate-600 mb-1">CCP *</label>
                             <select
                               value={logFormData.ccp_id}
-                              onChange={(e) => setLogFormData({...logFormData, ccp_id: e.target.value})}
+                              onChange={(e) => setLogFormData({ ...logFormData, ccp_id: e.target.value })}
                               className="w-full text-sm p-2 rounded border border-slate-300"
                             >
                               <option value="">-- Chọn CCP --</option>
@@ -1248,7 +1651,7 @@ export default function HaccpCompliancePage() {
                             <input
                               type="text"
                               value={logFormData.batch_number}
-                              onChange={(e) => setLogFormData({...logFormData, batch_number: e.target.value})}
+                              onChange={(e) => setLogFormData({ ...logFormData, batch_number: e.target.value })}
                               placeholder="VD: LOT-2024-001"
                               className="w-full text-sm p-2 rounded border border-slate-300"
                             />
@@ -1257,7 +1660,7 @@ export default function HaccpCompliancePage() {
                             <label className="block text-xs font-medium text-slate-600 mb-1">Ca làm việc</label>
                             <select
                               value={logFormData.shift}
-                              onChange={(e) => setLogFormData({...logFormData, shift: e.target.value})}
+                              onChange={(e) => setLogFormData({ ...logFormData, shift: e.target.value })}
                               className="w-full text-sm p-2 rounded border border-slate-300"
                             >
                               <option value="Ca 1">Ca 1 (6h-14h)</option>
@@ -1270,7 +1673,7 @@ export default function HaccpCompliancePage() {
                             <input
                               type="text"
                               value={logFormData.measured_value}
-                              onChange={(e) => setLogFormData({...logFormData, measured_value: e.target.value})}
+                              onChange={(e) => setLogFormData({ ...logFormData, measured_value: e.target.value })}
                               placeholder="VD: 72.5"
                               className="w-full text-sm p-2 rounded border border-slate-300"
                             />
@@ -1279,10 +1682,11 @@ export default function HaccpCompliancePage() {
                             <label className="block text-xs font-medium text-slate-600 mb-1">Đơn vị</label>
                             <select
                               value={logFormData.unit}
-                              onChange={(e) => setLogFormData({...logFormData, unit: e.target.value})}
+                              onChange={(e) => setLogFormData({ ...logFormData, unit: e.target.value })}
                               className="w-full text-sm p-2 rounded border border-slate-300"
                             >
                               <option value="°C">°C (Nhiệt độ)</option>
+                              <option value="Kg">Kg (Khối lượng)</option>
                               <option value="%">% (Độ ẩm/pH)</option>
                               <option value="ppm">ppm (Hóa chất)</option>
                               <option value="ph">pH</option>
@@ -1294,11 +1698,11 @@ export default function HaccpCompliancePage() {
                             <label className="block text-xs font-medium text-slate-600 mb-1">Kết quả</label>
                             <select
                               value={logFormData.is_within_limit.toString()}
-                              onChange={(e) => setLogFormData({...logFormData, is_within_limit: e.target.value === 'true'})}
+                              onChange={(e) => setLogFormData({ ...logFormData, is_within_limit: e.target.value === 'true' })}
                               className="w-full text-sm p-2 rounded border border-slate-300"
                             >
                               <option value="true">✅ Đạt (Trong giới hạn)</option>
-                              <option value="false">❌ Không đạt (Vượt giới hạn)</option>
+                              <option value="false">❌ Không đạt </option>
                             </select>
                           </div>
                           {!logFormData.is_within_limit && (
@@ -1306,7 +1710,7 @@ export default function HaccpCompliancePage() {
                               <label className="block text-xs font-medium text-slate-600 mb-1">Ghi chú độ lệch *</label>
                               <textarea
                                 value={logFormData.deviation_note}
-                                onChange={(e) => setLogFormData({...logFormData, deviation_note: e.target.value})}
+                                onChange={(e) => setLogFormData({ ...logFormData, deviation_note: e.target.value })}
                                 placeholder="Mô tả chi tiết độ lệch và hành động khắc phục..."
                                 className="w-full text-sm p-2 rounded border border-slate-300 h-20"
                               />
@@ -1316,7 +1720,7 @@ export default function HaccpCompliancePage() {
                             <label className="block text-xs font-medium text-slate-600 mb-1">Người ghi nhận *</label>
                             <select
                               value={logFormData.recorded_by}
-                              onChange={(e) => setLogFormData({...logFormData, recorded_by: e.target.value})}
+                              onChange={(e) => setLogFormData({ ...logFormData, recorded_by: e.target.value })}
                               className="w-full text-sm p-2 rounded border border-slate-300"
                             >
                               <option value="">-- Chọn người ghi nhận --</option>
@@ -1347,10 +1751,89 @@ export default function HaccpCompliancePage() {
                       </div>
                     )}
 
+                    <div className="mb-4 p-3 bg-slate-50 rounded-lg border border-slate-100 space-y-3">
+                      <div className="flex flex-wrap gap-3 items-end">
+                        <div className="flex-1 min-w-[220px]">
+                          <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Tìm nhật ký</label>
+                          <input
+                            type="text"
+                            value={logSearchTerm}
+                            onChange={(e) => setLogSearchTerm(e.target.value)}
+                            placeholder="Tìm theo CCP, lô, giá trị đo, ghi chú..."
+                            className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg bg-white"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[10px] font-semibold text-slate-500 uppercase">Kết quả</label>
+                          <select
+                            value={logResultFilter}
+                            onChange={(e) => setLogResultFilter(e.target.value)}
+                            className="text-sm px-3 py-2 border border-slate-200 rounded-lg bg-white min-w-[150px]"
+                          >
+                            <option value="ALL">Tất cả kết quả</option>
+                            <option value="pass">Đạt</option>
+                            <option value="fail">Vượt CL</option>
+                          </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[10px] font-semibold text-slate-500 uppercase">CCP</label>
+                          <select
+                            value={logCcpFilter}
+                            onChange={(e) => setLogCcpFilter(e.target.value)}
+                            className="text-sm px-3 py-2 border border-slate-200 rounded-lg bg-white min-w-[200px]"
+                          >
+                            <option value="ALL">Tất cả CCP</option>
+                            {allCcps.map((ccp) => (
+                              <option key={ccp.id} value={ccp.id}>
+                                {ccp.ccp_code} - {ccp.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-3 items-end">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[10px] font-semibold text-slate-500 uppercase">Từ ngày ghi nhận</label>
+                          <input
+                            type="date"
+                            value={logDateFrom}
+                            onChange={(e) => setLogDateFrom(e.target.value)}
+                            className="text-sm px-3 py-2 border border-slate-200 rounded-lg bg-white"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[10px] font-semibold text-slate-500 uppercase">Đến ngày ghi nhận</label>
+                          <input
+                            type="date"
+                            value={logDateTo}
+                            onChange={(e) => setLogDateTo(e.target.value)}
+                            className="text-sm px-3 py-2 border border-slate-200 rounded-lg bg-white"
+                          />
+                        </div>
+                        {(logSearchTerm || logResultFilter !== "ALL" || logCcpFilter !== "ALL" || logDateFrom || logDateTo) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLogSearchTerm("");
+                              setLogResultFilter("ALL");
+                              setLogCcpFilter("ALL");
+                              setLogDateFrom("");
+                              setLogDateTo("");
+                            }}
+                            className="text-sm text-slate-500 hover:text-slate-800 px-2 py-2"
+                          >
+                            Xóa lọc
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
                     {logsLoading ? (
                       <div className="text-center py-8 text-slate-400">Đang tải nhật ký...</div>
                     ) : allLogs.length === 0 ? (
                       <div className="text-center py-8 text-slate-400">Chưa có nhật ký giám sát nào</div>
+                    ) : filteredMonitoringLogs.length === 0 ? (
+                      <div className="text-center py-8 text-slate-400">Không tìm thấy nhật ký phù hợp với bộ lọc</div>
                     ) : (
                       <div className="overflow-x-auto">
                         <table className="w-full text-left text-sm text-slate-600">
@@ -1365,7 +1848,7 @@ export default function HaccpCompliancePage() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
-                            {allLogs.map((log) => {
+                            {filteredMonitoringLogs.map((log) => {
                               const ccp = getCCPInfo(log.ccp_id);
                               return (
                                 <tr key={log.id} className={`hover:bg-slate-50 transition-colors ${!log.is_within_limit ? 'bg-red-50' : ''}`}>
@@ -1392,6 +1875,8 @@ export default function HaccpCompliancePage() {
                 {/* DEVIATIONS TAB - Organization wide */}
                 {activeTab === "deviations" && (
                   <DeviationManagementPanel
+                    plans={plans}
+                    allCcps={allCcps}
                     deviations={deviations}
                     deviationsLoading={deviationsLoading}
                     deviationStats={deviationStats}
@@ -1402,6 +1887,15 @@ export default function HaccpCompliancePage() {
                     onHandleDeviation={(dev) => { setSelectedDeviation(dev); setIsHandleDeviationModalOpen(true); }}
                     getCCPInfo={getCCPInfo}
                     getUserDisplayName={getUserDisplayName}
+                  />
+                )}
+
+                {/* ASSESSMENTS TAB - Phiếu đánh giá HACCP */}
+                {activeTab === "assessments" && (
+                  <AssessmentPanel
+                    plans={plans}
+                    stepsMap={stepsByPlan}
+                    ccpsMap={ccpsByPlan}
                   />
                 )}
 
@@ -1418,14 +1912,14 @@ export default function HaccpCompliancePage() {
       />
 
       {/* Flow Modal */}
-      <Modal 
-        isOpen={isFlowModalOpen} 
+      <Modal
+        isOpen={isFlowModalOpen}
         onClose={() => { setIsFlowModalOpen(false); setFlowModalPlanId(null); }}
         title="Sơ đồ quy trình sản xuất"
         maxWidth="4xl"
       >
         <div className="p-6 bg-slate-50 min-h-[400px]">
-          <ProcessFlowDisplay planId={flowModalPlanId} />
+          <ProcessFlowDisplay planId={flowModalPlanId} onStepClick={handleStepClick} />
         </div>
       </Modal>
 
@@ -1435,6 +1929,7 @@ export default function HaccpCompliancePage() {
         onClose={() => { setIsHandleDeviationModalOpen(false); setSelectedDeviation(null); }}
         deviation={selectedDeviation}
         users={users}
+        onRefresh={() => { refetchDeviations(); refetchDeviationStats(); }}
         onSuccess={() => { refetchDeviations(); refetchDeviationStats(); setIsHandleDeviationModalOpen(false); setSelectedDeviation(null); }}
       />
 
@@ -1452,6 +1947,14 @@ export default function HaccpCompliancePage() {
         onClose={() => { setIsVersionsViewModalOpen(false); setViewVersionsPlanId(null); }}
         planId={viewVersionsPlanId}
       />
+
+      {/* Step Detail Modal */}
+      <StepDetailModal
+        isOpen={isStepDetailOpen}
+        onClose={() => setIsStepDetailOpen(false)}
+        step={selectedStepDetail}
+        allCcps={allCcps}
+      />
     </AppShell>
   );
 }
@@ -1460,7 +1963,7 @@ export default function HaccpCompliancePage() {
 // SUB-COMPONENTS
 // ============================================================================
 
-function ProcessFlowDisplay({ planId, compact = false }: { planId: string | null, compact?: boolean }) {
+function ProcessFlowDisplay({ planId, compact = false, onStepClick }: { planId: string | null, compact?: boolean, onStepClick?: (step: ProcessStep) => void }) {
   const { steps, loading } = useProcessSteps(planId);
 
   if (loading) return <div className="p-4 text-center text-slate-500 text-xs">Đang tải...</div>;
@@ -1470,7 +1973,7 @@ function ProcessFlowDisplay({ planId, compact = false }: { planId: string | null
     return (
       <div className="space-y-2">
         {steps.slice(0, 3).map((step, index) => (
-          <div key={step.id} className="flex items-center gap-2 text-xs">
+          <div key={step.id} className={`flex items-center gap-2 text-xs ${onStepClick ? 'cursor-pointer hover:bg-white/60 px-1 rounded transition-colors' : ''}`} onClick={() => onStepClick?.(step)}>
             <span className="w-5 h-5 rounded-full bg-cyan-100 text-cyan-700 flex items-center justify-center text-[10px] font-bold">
               {index + 1}
             </span>
@@ -1488,42 +1991,52 @@ function ProcessFlowDisplay({ planId, compact = false }: { planId: string | null
   }
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
-      {["RECEIVING", "PROCESSING", "PACKAGING", "STORAGE"].map(typeKey => {
-        const typeSteps = steps.filter(s => s.step_type === typeKey);
-        if (typeSteps.length === 0) return null;
-        const tName = ({ "RECEIVING": "Tiếp nhận", "PROCESSING": "Chế biến", "PACKAGING": "Đóng gói", "STORAGE": "Lưu kho" } as any)[typeKey];
-        return (
-          <div key={typeKey} className="border border-slate-200/60 rounded-xl p-5 bg-white shadow-sm ring-1 ring-slate-200/50">
-            <h4 className="text-[10px] font-bold text-slate-400 uppercase mb-5 tracking-widest border-b border-slate-100 pb-2">{tName}</h4>
-            <div className="flex flex-wrap items-center gap-y-8 text-sm">
-              {typeSteps.map((stage, index) => (
-                <div key={stage.id} className="flex items-center">
-                  <div className="relative group">
-                    <div className={`rounded-2xl border px-6 py-3.5 shadow-md font-bold transition-all ${
-                      stage.is_ccp 
-                        ? 'border-orange-300 bg-orange-50 text-orange-900 ring-4 ring-orange-100/50 scale-105' 
-                        : 'border-blue-100 bg-white text-slate-700 hover:border-blue-300'
-                    }`}>
-                      {stage.name}
-                    </div>
-                    {stage.is_ccp && (
-                      <span className="absolute -top-3 -right-3 rounded-full bg-orange-600 px-2.5 py-1 text-[9px] font-black text-white shadow-lg border-2 border-white uppercase tracking-tighter">
-                        CCP
-                      </span>
-                    )}
+    <div className="bg-slate-50/30 p-8 rounded-3xl border border-slate-200/60 shadow-inner">
+      <div className="flex flex-wrap items-center gap-x-0 gap-y-10">
+        {steps.sort((a, b) => (a.step_order || 0) - (b.step_order || 0)).map((stage, index) => {
+          const typeName = ({ "RECEIVING": "Tiếp nhận", "PROCESSING": "Chế biến", "PACKAGING": "Đóng gói", "STORAGE": "Lưu kho" } as any)[stage.step_type || "PROCESSING"];
+
+          return (
+            <div key={stage.id} className="flex items-center">
+              {/* Step Node */}
+              <div
+                className={`relative flex flex-col items-center group ${onStepClick ? 'cursor-pointer' : ''}`}
+                onClick={() => onStepClick?.(stage)}
+              >
+                <span className="absolute -top-6 text-[9px] font-bold text-slate-400 uppercase tracking-tighter opacity-0 group-hover:opacity-100 transition-opacity">
+                  {typeName}
+                </span>
+                <div className={`relative rounded-2xl px-6 py-4 shadow-sm font-bold transition-all border-2 ${stage.is_ccp
+                  ? 'border-orange-400 bg-white text-orange-900 ring-4 ring-orange-100/50 scale-105 z-10'
+                  : 'border-white bg-white text-slate-700 hover:border-cyan-200 hover:shadow-md'
+                  }`}>
+                  <div className="flex items-center gap-3">
+                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${stage.is_ccp ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      {index + 1}
+                    </span>
+                    <span className="whitespace-nowrap">{stage.name}</span>
                   </div>
-                  {index < typeSteps.length - 1 && (
-                    <div className="mx-6 flex items-center">
-                      <span className="text-slate-300 text-lg font-light">──▶</span>
-                    </div>
+
+                  {stage.is_ccp && (
+                    <span className="absolute -top-3 -right-2 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 px-2 py-0.5 text-[8px] font-black text-white shadow-md border border-white uppercase">
+                      CCP
+                    </span>
                   )}
                 </div>
-              ))}
+              </div>
+
+              {/* Connector Arrow */}
+              {index < steps.length - 1 && (
+                <div className="w-12 flex items-center justify-center -mx-1">
+                  <div className="h-[2px] flex-1 bg-gradient-to-r from-slate-200 to-slate-300 relative">
+                    <div className="absolute right-[-2px] top-1/2 -translate-y-1/2 w-2 h-2 border-t-2 border-r-2 border-slate-300 rotate-45" />
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1550,6 +2063,8 @@ function MonitoringPlanEditor({
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [planFilter, setPlanFilter] = useState("ALL");
+  const [setupFilter, setSetupFilter] = useState("ALL");
 
   // Load editable CCP when selected
   useEffect(() => {
@@ -1580,16 +2095,16 @@ function MonitoringPlanEditor({
 
   const handleSave = async () => {
     if (!editableCcp) return;
-    
+
     const errors = validateForm();
     if (errors.length > 0) {
       setSaveError(`Thiếu thông tin bắt buộc: ${errors.join(", ")}`);
       return;
     }
-    
+
     setIsSaving(true);
     setSaveError(null);
-    
+
     try {
       const payload = {
         critical_limit: editableCcp.critical_limit?.trim(),
@@ -1607,7 +2122,7 @@ function MonitoringPlanEditor({
       });
 
       await refetch();
-      
+
       // Show success and return to list
       alert("✅ Đã lưu kế hoạch giám sát thành công!");
       setSelectedCcpId(null);
@@ -1629,7 +2144,7 @@ function MonitoringPlanEditor({
       </div>
     );
   }
-  
+
   if (!ccps || ccps.length === 0) {
     return (
       <div className="bg-slate-50 rounded-xl border border-dashed border-slate-300 p-12 text-center">
@@ -1644,13 +2159,23 @@ function MonitoringPlanEditor({
 
   // LIST VIEW
   if (!selectedCcpId) {
-    const filteredCcps = searchTerm
-      ? ccps.filter(ccp =>
-          ccp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          ccp.ccp_code.toLowerCase().includes(searchTerm.toLowerCase())
-        )
-      : ccps;
-    
+    const query = searchTerm.trim().toLowerCase();
+    const filteredCcps = ccps.filter((ccp) => {
+      const matchesSearch =
+        !query ||
+        ccp.name.toLowerCase().includes(query) ||
+        ccp.ccp_code.toLowerCase().includes(query) ||
+        (ccp.critical_limit || "").toLowerCase().includes(query) ||
+        (ccp.monitoring_method || "").toLowerCase().includes(query);
+      const matchesPlan = planFilter === "ALL" || ccp.haccp_plan_id === planFilter;
+      const complete = isMonitoringPlanComplete(ccp);
+      const matchesSetup =
+        setupFilter === "ALL" ||
+        (setupFilter === "complete" && complete) ||
+        (setupFilter === "incomplete" && !complete);
+      return matchesSearch && matchesPlan && matchesSetup;
+    });
+
     const planMap = new Map(plans.map(p => [p.id, p.name]));
     const groupedByPlan = filteredCcps.reduce((acc, ccp) => {
       const planId = ccp.haccp_plan_id || 'unknown';
@@ -1669,27 +2194,74 @@ function MonitoringPlanEditor({
             <p className="text-xs text-slate-500">Chọn CCP để thiết lập hoặc chỉnh sửa kế hoạch giám sát</p>
           </div>
           <span className="bg-cyan-100 text-cyan-700 px-3 py-1 rounded-full text-xs font-medium">
-            {ccps.length} CCP
+            {filteredCcps.length}/{ccps.length} CCP
           </span>
         </div>
 
-        {/* Search */}
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Tìm CCP theo tên hoặc mã..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full px-4 py-2 pl-10 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
-          />
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
+        {/* Filters */}
+        <div className="bg-white p-3 rounded-lg border border-slate-200 flex flex-wrap gap-3 items-end">
+          <div className="relative flex-1 min-w-[220px]">
+            <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Tìm CCP</label>
+            <input
+              type="text"
+              placeholder="Tìm theo tên, mã, giới hạn, phương pháp..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full px-4 py-2 pl-10 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
+            />
+            <svg className="absolute left-3 bottom-2.5 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-semibold text-slate-500 uppercase">Kế hoạch</label>
+            <select
+              value={planFilter}
+              onChange={(e) => setPlanFilter(e.target.value)}
+              className="text-sm px-3 py-2 border border-slate-200 rounded-lg bg-white min-w-[200px]"
+            >
+              <option value="ALL">Tất cả kế hoạch</option>
+              {plans.map((plan) => (
+                <option key={plan.id} value={plan.id}>
+                  {plan.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-semibold text-slate-500 uppercase">Tình trạng</label>
+            <select
+              value={setupFilter}
+              onChange={(e) => setSetupFilter(e.target.value)}
+              className="text-sm px-3 py-2 border border-slate-200 rounded-lg bg-white min-w-[170px]"
+            >
+              <option value="ALL">Tất cả</option>
+              <option value="complete">Hoàn thiện</option>
+              <option value="incomplete">Chưa đầy đủ</option>
+            </select>
+          </div>
+          {(searchTerm || planFilter !== "ALL" || setupFilter !== "ALL") && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchTerm("");
+                setPlanFilter("ALL");
+                setSetupFilter("ALL");
+              }}
+              className="text-sm text-slate-500 hover:text-slate-800 px-2 py-2"
+            >
+              Xóa lọc
+            </button>
+          )}
         </div>
 
         {/* CCP List by Plan */}
         <div className="space-y-4 max-h-[calc(100vh-280px)] overflow-y-auto">
-          {Object.entries(groupedByPlan).map(([planId, planData]) => (
+          {filteredCcps.length === 0 ? (
+            <div className="bg-white rounded-lg border border-dashed border-slate-200 p-8 text-center text-slate-400">
+              Không tìm thấy CCP phù hợp với bộ lọc.
+            </div>
+          ) : Object.entries(groupedByPlan).map(([planId, planData]) => (
             <div key={planId} className="bg-white rounded-lg border border-slate-200 overflow-hidden">
               <div className="px-4 py-2 bg-slate-50 border-b border-slate-200">
                 <span className="font-medium text-sm text-slate-700">{planData.planName}</span>
@@ -1697,11 +2269,11 @@ function MonitoringPlanEditor({
               </div>
               <div className="divide-y divide-slate-100">
                 {planData.ccps.map((ccp) => {
-                  const isComplete = ccp.critical_limit && ccp.monitoring_method && 
-                                     ccp.monitoring_frequency && ccp.responsible_user;
-                  
+                  const isComplete = ccp.critical_limit && ccp.monitoring_method &&
+                    ccp.monitoring_frequency && ccp.responsible_user;
+
                   return (
-                    <div 
+                    <div
                       key={ccp.id}
                       onClick={() => setSelectedCcpId(ccp.id)}
                       className="p-4 hover:bg-slate-50 cursor-pointer transition-colors flex items-center justify-between"
@@ -1763,7 +2335,7 @@ function MonitoringPlanEditor({
       {/* Header */}
       <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
         <div className="flex items-center gap-3">
-          <button 
+          <button
             onClick={() => setSelectedCcpId(null)}
             className="text-slate-500 hover:text-slate-700 text-sm"
           >
@@ -1779,7 +2351,7 @@ function MonitoringPlanEditor({
             <span className="text-xs text-slate-500">📋 {planName}</span>
           </div>
         </div>
-        
+
         <div className="flex gap-2">
           <button
             onClick={() => setSelectedCcpId(null)}
@@ -1917,6 +2489,8 @@ function MonitoringPlanEditor({
 // DEVIATION MANAGEMENT COMPONENTS
 // ============================================================================
 interface DeviationManagementPanelProps {
+  plans: HaccpPlan[];
+  allCcps: CCP[];
   deviations: CCPMonitoringLog[];
   deviationsLoading: boolean;
   deviationStats: { by_status: Record<string, number>; by_severity: Record<string, number>; total: number; pending: number } | null;
@@ -1930,6 +2504,8 @@ interface DeviationManagementPanelProps {
 }
 
 function DeviationManagementPanel({
+  plans,
+  allCcps,
   deviations,
   deviationsLoading,
   deviationStats,
@@ -1941,6 +2517,154 @@ function DeviationManagementPanel({
   getCCPInfo,
   getUserDisplayName
 }: DeviationManagementPanelProps) {
+  const { principal } = useAuth();
+  const toast = useToast();
+  const [logIdsWithCapaNc, setLogIdsWithCapaNc] = useState<string[]>([]);
+  const [requestingCapaFor, setRequestingCapaFor] = useState<string | null>(null);
+  const [searchDraft, setSearchDraft] = useState(filters.search || "");
+  const [dateFilterMode, setDateFilterMode] = useState<"day" | "month" | "year">("day");
+  const [selectedDate, setSelectedDate] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState("");
+  const [selectedMonthYear, setSelectedMonthYear] = useState(String(new Date().getFullYear()));
+  const [selectedYear, setSelectedYear] = useState("");
+
+  useEffect(() => {
+    setSearchDraft(filters.search || "");
+  }, [filters.search]);
+
+  const clearDateFilter = () => {
+    setSelectedDate("");
+    setSelectedMonth("");
+    setSelectedMonthYear(String(new Date().getFullYear()));
+    setSelectedYear("");
+    onFiltersChange({
+      ...filters,
+      recorded_from: undefined,
+      recorded_to: undefined,
+    });
+  };
+
+  const setDayFilter = (value: string) => {
+    setSelectedDate(value);
+    setSelectedMonth("");
+    setSelectedMonthYear(String(new Date().getFullYear()));
+    setSelectedYear("");
+    onFiltersChange({
+      ...filters,
+      recorded_from: value || undefined,
+      recorded_to: value || undefined,
+    });
+  };
+
+  const setMonthFilter = (monthValue: string, yearValue = selectedMonthYear) => {
+    setSelectedDate("");
+    setSelectedMonth(monthValue);
+    setSelectedMonthYear(yearValue);
+    setSelectedYear("");
+    if (!monthValue || !yearValue) {
+      onFiltersChange({ ...filters, recorded_from: undefined, recorded_to: undefined });
+      return;
+    }
+    const monthDate = `${yearValue}-${monthValue}`;
+    const year = Number(yearValue);
+    const month = Number(monthValue);
+    const lastDay = new Date(year, month, 0).getDate();
+    onFiltersChange({
+      ...filters,
+      recorded_from: `${monthDate}-01`,
+      recorded_to: `${monthDate}-${String(lastDay).padStart(2, "0")}`,
+    });
+  };
+
+  const setYearFilter = (value: string) => {
+    setSelectedDate("");
+    setSelectedMonth("");
+    setSelectedMonthYear(String(new Date().getFullYear()));
+    setSelectedYear(value);
+    onFiltersChange({
+      ...filters,
+      recorded_from: value ? `${value}-01-01` : undefined,
+      recorded_to: value ? `${value}-12-31` : undefined,
+    });
+  };
+
+  const thisYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 8 }, (_, index) => String(thisYear - index));
+  const monthOptions = Array.from({ length: 12 }, (_, index) => {
+    const month = String(index + 1).padStart(2, "0");
+    return { value: month, label: `Tháng ${index + 1}` };
+  });
+
+  const ccpOptions = useMemo(() => {
+    if (!filters.plan_id) return allCcps;
+    return allCcps.filter((c) => c.haccp_plan_id === filters.plan_id);
+  }, [allCcps, filters.plan_id]);
+
+  const hasPanelFilters = !!(
+    filters.status ||
+    filters.severity ||
+    filters.plan_id ||
+    filters.ccp_id ||
+    filters.search ||
+    filters.has_capa_nc ||
+    filters.recorded_from ||
+    filters.recorded_to
+  );
+
+  useEffect(() => {
+    if (deviations.length === 0) {
+      setLogIdsWithCapaNc([]);
+      return;
+    }
+    if (filters.has_capa_nc === "yes") {
+      setLogIdsWithCapaNc(deviations.map((d) => d.id));
+      return;
+    }
+    if (filters.has_capa_nc === "no") {
+      setLogIdsWithCapaNc([]);
+      return;
+    }
+    if (!principal?.org_id) {
+      setLogIdsWithCapaNc([]);
+      return;
+    }
+    const ids = deviations.map((d) => d.id);
+    let cancelled = false;
+    capaService
+      .checkExistingNCs(principal.org_id, ids)
+      .then((existing) => {
+        if (!cancelled) setLogIdsWithCapaNc(existing);
+      })
+      .catch(() => {
+        if (!cancelled) setLogIdsWithCapaNc([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [deviations, filters.has_capa_nc, principal?.org_id]);
+
+  const sendCapaRequest = async (logId: string) => {
+    if (!principal?.org_id) {
+      toast.error("Chưa xác định tổ chức. Vui lòng đăng nhập lại.");
+      return;
+    }
+    setRequestingCapaFor(logId);
+    try {
+      const res = await requestDeviationCapaNc(logId);
+      setLogIdsWithCapaNc((prev) => (prev.includes(logId) ? prev : [...prev, logId]));
+      toast.success(
+        res.created
+          ? "Đã gửi yêu cầu sang CAPA. Trạng thái hiện tại: đang đợi duyệt."
+          : "Đã có yêu cầu CAPA (NC). Trạng thái đã đồng bộ.",
+      );
+      onRefresh();
+    } catch (e) {
+      toast.error((e as Error).message || "Lỗi khi gửi yêu cầu CAPA.");
+    } finally {
+      setRequestingCapaFor(null);
+    }
+  };
+
   const severityConfig = {
     CRITICAL: { label: 'Nghiêm trọng', color: 'bg-red-600 text-white' },
     HIGH: { label: 'Cao', color: 'bg-orange-500 text-white' },
@@ -1948,12 +2672,20 @@ function DeviationManagementPanel({
     LOW: { label: 'Thấp', color: 'bg-blue-400 text-white' }
   };
 
-  const statusConfig = {
-    NEW: { label: 'Mới', color: 'bg-red-100 text-red-700 border-red-200' },
-    INVESTIGATING: { label: 'Đang điều tra', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
-    CORRECTIVE_ACTION: { label: 'Hành động khắc phục', color: 'bg-blue-100 text-blue-700 border-blue-200' },
-    RESOLVED: { label: 'Đã giải quyết', color: 'bg-green-100 text-green-700 border-green-200' },
-    CLOSED: { label: 'Đã đóng', color: 'bg-slate-100 text-slate-600 border-slate-200' }
+  const statusConfig: Record<
+    string,
+    { label: string; color: string }
+  > = {
+    NEW: { label: "Mới", color: "bg-slate-100 text-slate-700 border-slate-200" },
+    PENDING_CAPA: { label: "Đang đợi duyệt", color: "bg-amber-100 text-amber-900 border-amber-300" },
+    CAPA_OPEN: { label: "Đã duyệt", color: "bg-rose-100 text-rose-800 border-rose-200" },
+    CAPA_IN_PROGRESS: { label: "CAPA đang xử lý", color: "bg-sky-100 text-sky-900 border-sky-200" },
+    CAPA_CLOSED: { label: "CAPA đóng", color: "bg-emerald-100 text-emerald-800 border-emerald-200" },
+    CAPA_REJECTED: { label: "Từ chối", color: "bg-red-100 text-red-800 border-red-200" },
+    INVESTIGATING: { label: "Đang điều tra", color: "bg-yellow-100 text-yellow-700 border-yellow-200" },
+    CORRECTIVE_ACTION: { label: "Khắc phục", color: "bg-blue-100 text-blue-700 border-blue-200" },
+    RESOLVED: { label: "Đã giải quyết", color: "bg-green-100 text-green-700 border-green-200" },
+    CLOSED: { label: "Đã đóng", color: "bg-slate-100 text-slate-600 border-slate-200" },
   };
 
   return (
@@ -1963,6 +2695,13 @@ function DeviationManagementPanel({
         <div>
           <h3 className="text-lg font-bold text-slate-800">Quản lý Độ lệch CCP</h3>
           <p className="text-sm text-slate-500">Theo dõi và xử lý các độ lệch trong quá trình giám sát</p>
+          <p className="text-xs text-slate-400 mt-1">
+            Gửi yêu cầu sang{" "}
+            <Link href="/capa-management" className="text-cyan-600 hover:underline font-medium">
+              Quản lý CAPA
+            </Link>{" "}
+            để bộ phận khởi tạo hành động khắc phục (NC → CAPA).
+          </p>
         </div>
         <button
           onClick={onRefresh}
@@ -1974,63 +2713,273 @@ function DeviationManagementPanel({
 
       {/* Stats Cards */}
       {deviationStats && !deviationStatsLoading && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-          <div className="bg-slate-50 p-3 rounded-lg text-center">
-            <p className="text-2xl font-bold text-slate-700">{deviationStats.total}</p>
-            <p className="text-xs text-slate-500">Tổng độ lệch</p>
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
+            <div className="bg-slate-50 p-3 rounded-lg text-center">
+              <p className="text-2xl font-bold text-slate-700">{deviationStats.total}</p>
+              <p className="text-xs text-slate-500">Tổng độ lệch</p>
+            </div>
+            <div className="bg-slate-50 p-3 rounded-lg text-center">
+              <p className="text-2xl font-bold text-slate-600">{deviationStats.pending}</p>
+              <p className="text-xs text-slate-500">Đang cần xử lý</p>
+            </div>
+            <div className="bg-amber-50 p-3 rounded-lg text-center">
+              <p className="text-2xl font-bold text-amber-800">{deviationStats.by_status.PENDING_CAPA || 0}</p>
+              <p className="text-xs text-amber-800/80">Đang đợi duyệt</p>
+            </div>
+            <div className="bg-sky-50 p-3 rounded-lg text-center">
+              <p className="text-2xl font-bold text-sky-800">
+                {(deviationStats.by_status.CAPA_OPEN || 0) +
+                  (deviationStats.by_status.CAPA_IN_PROGRESS || 0)}
+              </p>
+              <p className="text-xs text-sky-700">Đã duyệt / đang xử lý</p>
+            </div>
+            <div className="bg-emerald-50 p-3 rounded-lg text-center">
+              <p className="text-2xl font-bold text-emerald-700">{deviationStats.by_status.CAPA_CLOSED || 0}</p>
+              <p className="text-xs text-emerald-700/90">CAPA đã đóng</p>
+            </div>
           </div>
-          <div className="bg-red-50 p-3 rounded-lg text-center">
-            <p className="text-2xl font-bold text-red-600">{deviationStats.by_status.NEW || 0}</p>
-            <p className="text-xs text-slate-500">Mới</p>
-          </div>
-          <div className="bg-yellow-50 p-3 rounded-lg text-center">
-            <p className="text-2xl font-bold text-yellow-600">{deviationStats.by_status.INVESTIGATING || 0}</p>
-            <p className="text-xs text-slate-500">Đang điều tra</p>
-          </div>
-          <div className="bg-blue-50 p-3 rounded-lg text-center">
-            <p className="text-2xl font-bold text-blue-600">{deviationStats.by_status.CORRECTIVE_ACTION || 0}</p>
-            <p className="text-xs text-slate-500">Khắc phục</p>
-          </div>
-          <div className="bg-green-50 p-3 rounded-lg text-center">
-            <p className="text-2xl font-bold text-green-600">{deviationStats.by_status.RESOLVED || 0}</p>
-            <p className="text-xs text-slate-500">Đã giải quyết</p>
-          </div>
-        </div>
+          <p className="text-[11px] text-slate-500 mb-6 leading-relaxed">
+            Trạng thái độ lệch đồng bộ với CAPA: <strong>PENDING_CAPA</strong> = đã gửi yêu cầu, đang đợi duyệt;
+            <strong> CAPA_OPEN</strong> = đã duyệt / đã khởi tạo CAPA; <strong>CAPA_IN_PROGRESS</strong> = đang xử lý trên bảng CAPA;
+            <strong> CAPA_CLOSED</strong> = CAPA hoàn tất. Có thể chỉnh thêm trạng thái nội bộ (điều tra, khắc phục) trong
+            &quot;Xử lý&quot;.
+          </p>
+        </>
       )}
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-4 p-3 bg-slate-50 rounded-lg">
-        <select
-          value={filters.status || ''}
-          onChange={(e) => onFiltersChange({ ...filters, status: e.target.value as any || undefined })}
-          className="text-sm px-3 py-2 border border-slate-200 rounded-lg bg-white"
-        >
-          <option value="">-- Tất cả trạng thái --</option>
-          <option value="NEW">Mới</option>
-          <option value="INVESTIGATING">Đang điều tra</option>
-          <option value="CORRECTIVE_ACTION">Hành động khắc phục</option>
-          <option value="RESOLVED">Đã giải quyết</option>
-          <option value="CLOSED">Đã đóng</option>
-        </select>
-        <select
-          value={filters.severity || ''}
-          onChange={(e) => onFiltersChange({ ...filters, severity: e.target.value as any || undefined })}
-          className="text-sm px-3 py-2 border border-slate-200 rounded-lg bg-white"
-        >
-          <option value="">-- Tất cả mức độ --</option>
-          <option value="CRITICAL">Nghiêm trọng</option>
-          <option value="HIGH">Cao</option>
-          <option value="MEDIUM">Trung bình</option>
-          <option value="LOW">Thấp</option>
-        </select>
-        {(filters.status || filters.severity) && (
-          <button
-            onClick={() => onFiltersChange({})}
-            className="text-sm text-slate-500 hover:text-slate-700 px-2"
+      <div className="space-y-3 mb-4 p-3 bg-slate-50 rounded-lg">
+        {/* <div className="flex flex-wrap gap-3 items-end">
+          <select
+            value={filters.status || ""}
+            onChange={(e) =>
+              onFiltersChange({ ...filters, status: (e.target.value as DeviationFilters["status"]) || undefined })
+            }
+            className="text-sm px-3 py-2 border border-slate-200 rounded-lg bg-white min-w-[160px]"
           >
-            Xóa bộ lọc ✕
-          </button>
-        )}
+            <option value="">-- Trạng thái xử lý --</option>
+            <option value="NEW">Mới</option>
+            <option value="PENDING_CAPA">Đang đợi duyệt</option>
+            <option value="CAPA_OPEN">Đã duyệt</option>
+            <option value="CAPA_IN_PROGRESS">CAPA đang thực hiện</option>
+            <option value="CAPA_CLOSED">CAPA đã đóng</option>
+            <option value="CAPA_REJECTED">Từ chối</option>
+            <option value="INVESTIGATING">Đang điều tra (nội bộ)</option>
+            <option value="CORRECTIVE_ACTION">Khắc phục (nội bộ)</option>
+            <option value="RESOLVED">Đã giải quyết</option>
+            <option value="CLOSED">Đã đóng</option>
+          </select>
+          {/* <select
+            value={filters.severity || ""}
+            onChange={(e) =>
+              onFiltersChange({ ...filters, severity: (e.target.value as DeviationFilters["severity"]) || undefined })
+            }
+            className="text-sm px-3 py-2 border border-slate-200 rounded-lg bg-white min-w-[150px]"
+          >
+            <option value="">-- Mức độ --</option>
+            <option value="CRITICAL">Nghiêm trọng</option>
+            <option value="HIGH">Cao</option>
+            <option value="MEDIUM">Trung bình</option>
+            <option value="LOW">Thấp</option>
+          </select> */}
+          {/* <select
+            value={filters.has_capa_nc || ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              onFiltersChange({
+                ...filters,
+                has_capa_nc: v === "yes" ? "yes" : v === "no" ? "no" : undefined,
+              });
+            }}
+            className="text-sm px-3 py-2 border border-slate-200 rounded-lg bg-white min-w-[180px]"
+          >
+            <option value="">-- NC / CAPA --</option>
+            <option value="no">Chưa gửi CAPA (NC)</option>
+            <option value="yes">Đã gửi CAPA (có NC)</option>
+          </select>
+        </div> */ }
+        <div className="flex flex-wrap gap-3 items-end">
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-semibold text-slate-500 uppercase">Lọc theo thời gian</label>
+            <div className="flex rounded-lg border border-slate-200 bg-white p-1">
+              {[
+                { value: "day", label: "Ngày" },
+                { value: "month", label: "Tháng" },
+                { value: "year", label: "Năm" },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => {
+                    setDateFilterMode(opt.value as "day" | "month" | "year");
+                    clearDateFilter();
+                  }}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                    dateFilterMode === opt.value
+                      ? "bg-cyan-600 text-white"
+                      : "text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {dateFilterMode === "day" && (
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-semibold text-slate-500 uppercase">Chọn ngày</label>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setDayFilter(e.target.value)}
+                className="text-sm px-3 py-2 border border-slate-200 rounded-lg bg-white"
+              />
+            </div>
+          )}
+
+          {dateFilterMode === "month" && (
+            <div className="flex flex-wrap gap-2 items-end">
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-semibold text-slate-500 uppercase">Chọn tháng</label>
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setMonthFilter(e.target.value, selectedMonthYear)}
+                  className="text-sm px-3 py-2 border border-slate-200 rounded-lg bg-white min-w-[130px]"
+                >
+                  <option value="">Chọn tháng</option>
+                  {monthOptions.map((month) => (
+                    <option key={month.value} value={month.value}>
+                      {month.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-semibold text-slate-500 uppercase">Năm</label>
+                <select
+                  value={selectedMonthYear}
+                  onChange={(e) => setMonthFilter(selectedMonth, e.target.value)}
+                  className="text-sm px-3 py-2 border border-slate-200 rounded-lg bg-white min-w-[110px]"
+                >
+                  {yearOptions.map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
+          {dateFilterMode === "year" && (
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-semibold text-slate-500 uppercase">Chọn năm</label>
+              <select
+                value={selectedYear}
+                onChange={(e) => setYearFilter(e.target.value)}
+                className="text-sm px-3 py-2 border border-slate-200 rounded-lg bg-white min-w-[120px]"
+              >
+                <option value="">Tất cả năm</option>
+                {yearOptions.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {(filters.recorded_from || filters.recorded_to) && (
+            <button
+              type="button"
+              onClick={clearDateFilter}
+              className="text-xs font-semibold text-slate-500 hover:text-slate-800 px-2 py-2"
+            >
+              Xóa thời gian
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-3 items-end">
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-semibold text-slate-500 uppercase">Kế hoạch HACCP</label>
+            <select
+              value={filters.plan_id || ""}
+              onChange={(e) => {
+                const v = e.target.value || undefined;
+                onFiltersChange({
+                  ...filters,
+                  plan_id: v,
+                  ccp_id: undefined,
+                });
+              }}
+              className="text-sm px-3 py-2 border border-slate-200 rounded-lg bg-white min-w-[200px]"
+            >
+              <option value="">Tất cả kế hoạch</option>
+              {plans.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} (v{p.version})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-semibold text-slate-500 uppercase">CCP</label>
+            <select
+              value={filters.ccp_id || ""}
+              onChange={(e) => onFiltersChange({ ...filters, ccp_id: e.target.value || undefined })}
+              className="text-sm px-3 py-2 border border-slate-200 rounded-lg bg-white min-w-[200px]"
+            >
+              <option value="">Tất cả CCP</option>
+              {ccpOptions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.ccp_code} — {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
+            <label className="text-[10px] font-semibold text-slate-500 uppercase">Tìm (lô, ghi chú, CCP)</label>
+            <div className="flex gap-2">
+              <input
+                type="search"
+                value={searchDraft}
+                onChange={(e) => setSearchDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    onFiltersChange({ ...filters, search: searchDraft.trim() || undefined });
+                  }
+                }}
+                placeholder="Nhập và bấm Tìm hoặc Enter..."
+                className="flex-1 text-sm px-3 py-2 border border-slate-200 rounded-lg bg-white"
+              />
+              <button
+                type="button"
+                onClick={() => onFiltersChange({ ...filters, search: searchDraft.trim() || undefined })}
+                className="text-sm px-3 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 shrink-0"
+              >
+                Tìm
+              </button>
+            </div>
+          </div>
+          {hasPanelFilters && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchDraft("");
+                setSelectedDate("");
+                setSelectedMonth("");
+                setSelectedMonthYear(String(new Date().getFullYear()));
+                setSelectedYear("");
+                onFiltersChange({});
+              }}
+              className="text-sm text-slate-500 hover:text-slate-800 px-2 py-2 shrink-0"
+            >
+              Xóa bộ lọc
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Deviations List */}
@@ -2051,19 +3000,25 @@ function DeviationManagementPanel({
               </span>
             )}
           </div>
-          <div 
+          <div
             className="space-y-3 max-h-[500px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-cyan-500 scrollbar-track-slate-100 hover:scrollbar-thumb-cyan-600 border border-slate-100 rounded-lg p-2"
             style={{
               scrollbarWidth: 'thin',
               scrollbarColor: '#06b6d4 #f1f5f9'
             }}
           >
-              {deviations.map((dev) => {
+            {deviations.map((dev) => {
               const ccp = getCCPInfo(dev.ccp_id);
               const severity = dev.deviation_severity as keyof typeof severityConfig || 'MEDIUM';
               const status = (dev.deviation_status as keyof typeof statusConfig) || 'NEW';
               const severityStyle = severityConfig[severity] || severityConfig.MEDIUM;
               const statusStyle = statusConfig[status] || statusConfig.NEW;
+              const hasCapaRequest = logIdsWithCapaNc.includes(dev.id);
+              const isWaitingApproval = status === "PENDING_CAPA" || (hasCapaRequest && status === "NEW");
+              const isApproved = status === "CAPA_OPEN";
+              const isCapaInProgress = status === "CAPA_IN_PROGRESS";
+              const isCapaClosed = status === "CAPA_CLOSED";
+              const isCapaRejected = status === "CAPA_REJECTED";
 
               return (
                 <div key={dev.id} className="border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow bg-white">
@@ -2080,11 +3035,11 @@ function DeviationManagementPanel({
                           {new Date(dev.recorded_at).toLocaleString("vi-VN")}
                         </span>
                       </div>
-                      
+
                       <h4 className="font-bold text-slate-800">
                         Độ lệch tại CCP: {ccp?.ccp_code || "N/A"} - {ccp?.name || "Không xác định"}
                       </h4>
-                      
+
                       <div className="flex flex-wrap gap-3 mt-2 text-sm text-slate-600">
                         <span>📦 Lô: {dev.batch_number || "N/A"}</span>
                         <span>🕐 Ca: {dev.shift || "N/A"}</span>
@@ -2113,13 +3068,50 @@ function DeviationManagementPanel({
                       )}
                     </div>
 
-                    <div className="flex md:flex-col gap-2">
-                      <button
+                    <div className="flex md:flex-col gap-2 shrink-0">
+                      {isWaitingApproval ? (
+                        <span className="text-center text-[10px] font-bold text-amber-800 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
+                          ⏳ Đang đợi duyệt
+                        </span>
+                      ) : isApproved ? (
+                        <span className="text-center text-[10px] font-bold text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-100">
+                          ✓ Đã duyệt
+                        </span>
+                      ) : isCapaInProgress ? (
+                        <span className="text-center text-[10px] font-bold text-sky-800 bg-sky-50 px-3 py-2 rounded-lg border border-sky-100">
+                          ⚙️ Đang xử lý CAPA
+                        </span>
+                      ) : isCapaClosed ? (
+                        <span className="text-center text-[10px] font-bold text-emerald-800 bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-100">
+                          ✓ CAPA đã đóng
+                        </span>
+                      ) : isCapaRejected ? (
+                        <span className="text-center text-[10px] font-bold text-red-800 bg-red-50 px-3 py-2 rounded-lg border border-red-100">
+                          ✕ Từ chối
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void sendCapaRequest(dev.id)}
+                          disabled={requestingCapaFor === dev.id}
+                          className="text-sm bg-rose-600 text-white px-4 py-2 rounded-lg hover:bg-rose-700 transition-colors disabled:opacity-50"
+                        >
+                          {requestingCapaFor === dev.id ? "Đang gửi..." : "⚠️ Gửi CAPA"}
+                        </button>
+                      )}
+                      <Link
+                        href="/capa-management"
+                        className="text-center text-xs text-cyan-700 bg-cyan-50 px-3 py-2 rounded-lg border border-cyan-100 hover:bg-cyan-100"
+                      >
+                        Mở CAPA
+                      </Link>
+                      {/* <button
+                        type="button"
                         onClick={() => onHandleDeviation(dev)}
                         className="text-sm bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700 transition-colors"
                       >
                         ⚙️ Xử lý
-                      </button>
+                      </button> */}
                     </div>
                   </div>
                 </div>
@@ -2161,12 +3153,29 @@ interface HandleDeviationModalProps {
   onClose: () => void;
   deviation: CCPMonitoringLog | null;
   users: User[];
+  /** Làm mới danh sách/thống kê không đóng modal (sau gửi CAPA). */
+  onRefresh?: () => void;
   onSuccess: () => void;
 }
 
-function HandleDeviationModal({ isOpen, onClose, deviation, users, onSuccess }: HandleDeviationModalProps) {
+function HandleDeviationModal({ isOpen, onClose, deviation, users, onRefresh, onSuccess }: HandleDeviationModalProps) {
+  const toast = useToast();
+  const { principal } = useAuth();
+  const [hasCapaNc, setHasCapaNc] = useState(false);
+  const [capaNcBusy, setCapaNcBusy] = useState(false);
+
   const [formData, setFormData] = useState<{
-    deviation_status: 'NEW' | 'INVESTIGATING' | 'CORRECTIVE_ACTION' | 'RESOLVED' | 'CLOSED';
+    deviation_status:
+      | "NEW"
+      | "PENDING_CAPA"
+      | "CAPA_OPEN"
+      | "CAPA_IN_PROGRESS"
+      | "CAPA_CLOSED"
+      | "CAPA_REJECTED"
+      | "INVESTIGATING"
+      | "CORRECTIVE_ACTION"
+      | "RESOLVED"
+      | "CLOSED";
     deviation_severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
     corrective_action: string;
     root_cause: string;
@@ -2196,6 +3205,44 @@ function HandleDeviationModal({ isOpen, onClose, deviation, users, onSuccess }: 
     }
   }, [deviation]);
 
+  useEffect(() => {
+    if (!deviation?.id || !principal?.org_id) {
+      setHasCapaNc(false);
+      return;
+    }
+    let cancelled = false;
+    capaService
+      .checkExistingNCs(principal.org_id, [deviation.id])
+      .then((ids) => {
+        if (!cancelled) setHasCapaNc(ids.includes(deviation.id));
+      })
+      .catch(() => {
+        if (!cancelled) setHasCapaNc(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [deviation?.id, principal?.org_id]);
+
+  const sendCapaFromModal = async () => {
+    if (!deviation) return;
+    setCapaNcBusy(true);
+    try {
+      const res = await requestDeviationCapaNc(deviation.id);
+      setHasCapaNc(true);
+      onRefresh?.();
+      toast.success(
+        res.created
+          ? "Đã gửi yêu cầu sang CAPA. Trạng thái độ lệch: đang đợi duyệt."
+          : "Đã có yêu cầu CAPA (NC). Trạng thái đã đồng bộ.",
+      );
+    } catch (e) {
+      toast.error((e as Error).message || "Lỗi khi gửi yêu cầu CAPA.");
+    } finally {
+      setCapaNcBusy(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!deviation) return;
     setIsSubmitting(true);
@@ -2218,11 +3265,16 @@ function HandleDeviationModal({ isOpen, onClose, deviation, users, onSuccess }: 
   };
 
   const statusOptions = [
-    { value: 'NEW', label: '🆕 Mới' },
-    { value: 'INVESTIGATING', label: '🔍 Đang điều tra' },
-    { value: 'CORRECTIVE_ACTION', label: '🔧 Hành động khắc phục' },
-    { value: 'RESOLVED', label: '✅ Đã giải quyết' },
-    { value: 'CLOSED', label: '📋 Đã đóng' }
+    { value: "NEW", label: "🆕 Mới (chưa vào CAPA)" },
+    { value: "PENDING_CAPA", label: "⏳ Đang đợi duyệt" },
+    { value: "CAPA_OPEN", label: "✅ Đã duyệt" },
+    { value: "CAPA_IN_PROGRESS", label: "⚙️ CAPA đang thực hiện" },
+    { value: "CAPA_CLOSED", label: "✔️ CAPA đã đóng" },
+    { value: "CAPA_REJECTED", label: "✕ Từ chối" },
+    { value: "INVESTIGATING", label: "🔍 Đang điều tra (nội bộ)" },
+    { value: "CORRECTIVE_ACTION", label: "🔧 Khắc phục (nội bộ)" },
+    { value: "RESOLVED", label: "✅ Đã giải quyết" },
+    { value: "CLOSED", label: "📋 Đã đóng" },
   ];
 
   const severityOptions = [
@@ -2232,9 +3284,7 @@ function HandleDeviationModal({ isOpen, onClose, deviation, users, onSuccess }: 
     { value: 'LOW', label: '🔵 Thấp' }
   ];
 
-  if (!deviation) return null;
-
-  const ccp = deviation.ccp_id; // We'll need to fetch CCP info separately or pass it
+  if (!isOpen || !deviation) return null;
 
   return (
     <Modal
@@ -2252,6 +3302,35 @@ function HandleDeviationModal({ isOpen, onClose, deviation, users, onSuccess }: 
             <span>📦 Lô: {deviation.batch_number || "N/A"}</span>
             <span>🕐 Ca: {deviation.shift || "N/A"}</span>
             <span>📊 Giá trị: {deviation.measured_value} {deviation.unit}</span>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-amber-200 bg-amber-50/80 p-3 space-y-2">
+          <p className="text-sm font-semibold text-amber-900">Gửi sang module CAPA</p>
+          <p className="text-xs text-amber-800/90">
+            Tạo yêu cầu không phù hợp (NC) nguồn HACCP để đội CAPA khởi tạo hành động xử lý.
+          </p>
+          <div className="flex flex-wrap gap-2 items-center">
+            {hasCapaNc ? (
+              <span className="text-[10px] font-bold text-emerald-700 bg-white px-2 py-1 rounded border border-emerald-100">
+                ✓ Đã có yêu cầu CAPA
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void sendCapaFromModal()}
+                disabled={capaNcBusy}
+                className="text-xs font-bold bg-rose-600 text-white px-3 py-1.5 rounded-md hover:bg-rose-700 disabled:opacity-50"
+              >
+                {capaNcBusy ? "Đang gửi..." : "⚠️ Gửi yêu cầu CAPA"}
+              </button>
+            )}
+            <Link
+              href="/capa-management"
+              className="text-xs font-medium text-cyan-700 hover:underline"
+            >
+              Mở Quản lý CAPA →
+            </Link>
           </div>
         </div>
 
@@ -2358,7 +3437,7 @@ function HandleDeviationModal({ isOpen, onClose, deviation, users, onSuccess }: 
 interface CreateVersionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  plan: {id: string; version: string; name: string; scope?: string; product_id?: string} | null;
+  plan: { id: string; version: string; name: string; scope?: string; product_id?: string } | null;
   onSuccess: () => void;
 }
 
@@ -2375,7 +3454,7 @@ function CreateVersionModal({ isOpen, onClose, plan, onSuccess }: CreateVersionM
       console.log('[MODAL] Initializing with plan:', plan);
       setError(null);
       setIsSubmitting(false);
-      
+
       // Auto-generate next version
       const currentVersion = plan.version;
       const parts = currentVersion.split('.');
@@ -2390,7 +3469,7 @@ function CreateVersionModal({ isOpen, onClose, plan, onSuccess }: CreateVersionM
       } else {
         setNewVersion(`${currentVersion}.1`);
       }
-      
+
       setPlanName(plan.name || '');
       setPlanScope(plan.scope || '');
     }
@@ -2398,7 +3477,7 @@ function CreateVersionModal({ isOpen, onClose, plan, onSuccess }: CreateVersionM
 
   const handleSubmit = async () => {
     if (!plan) return;
-    
+
     // Validate version format
     const versionRegex = /^\d+\.\d+$/;
     if (!versionRegex.test(newVersion)) {
@@ -2408,29 +3487,29 @@ function CreateVersionModal({ isOpen, onClose, plan, onSuccess }: CreateVersionM
 
     setIsSubmitting(true);
     setError(null);
-    
+
     try {
       // Chỉ gửi nếu có thay đổi thực sự (không phải chuỗi rỗng)
       const payload: any = {
         new_version: newVersion,
         updated_by: currentUser.id
       };
-      
+
       // Chỉ gửi name nếu khác và không rỗng
       if (planName && planName !== plan.name) {
         payload.name = planName;
       }
-      
+
       // Chỉ gửi scope nếu khác và không rỗng  
       if (planScope !== undefined && planScope !== plan.scope) {
         payload.scope = planScope || null;  // Cho phép xóa scope
       }
-      
+
       console.log('Creating new version with payload:', payload);
-      
+
       const result = await createNewVersion(plan.id, payload);
       console.log('Version created successfully:', result);
-      
+
       alert(`✅ Đã tạo version ${newVersion} thành công! Kế hoạch đã chuyển sang trạng thái DRAFT để chỉnh sửa.`);
       onSuccess();
       onClose();
@@ -2469,7 +3548,7 @@ function CreateVersionModal({ isOpen, onClose, plan, onSuccess }: CreateVersionM
 
         <div className="border-t border-slate-200 pt-4">
           <p className="text-sm font-medium text-slate-700 mb-3">📝 Thông tin kế hoạch (tùy chọn chỉnh sửa)</p>
-          
+
           <div className="space-y-3">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -2562,10 +3641,10 @@ function ViewVersionsModal({ isOpen, onClose, planId }: ViewVersionsModalProps) 
                 <span className="w-32">Ngày tạo</span>
                 <span className="w-20">Thao tác</span>
               </div>
-              
+
               {versions.map((v, index) => (
-                <div 
-                  key={v.id} 
+                <div
+                  key={v.id}
                   className={`border rounded-lg p-4 ${index === 0 ? 'border-cyan-300 bg-cyan-50/50' : 'border-slate-200 bg-white'} hover:shadow-md transition-all`}
                 >
                   <div className="flex items-start gap-3">
@@ -2577,7 +3656,7 @@ function ViewVersionsModal({ isOpen, onClose, planId }: ViewVersionsModalProps) 
                       </span>
                       {index === 0 && <span className="text-[10px] bg-cyan-600 text-white px-2 py-0.5 rounded mt-1">Mới nhất</span>}
                     </div>
-                    
+
                     {/* Plan Info */}
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-slate-800">{v.name}</p>
@@ -2604,7 +3683,7 @@ function ViewVersionsModal({ isOpen, onClose, planId }: ViewVersionsModalProps) 
                         </div>
                       </div>
                     </div>
-                    
+
                     {/* Date */}
                     <div className="w-32 shrink-0 text-right">
                       <span className="text-xs text-slate-500">
@@ -2614,7 +3693,7 @@ function ViewVersionsModal({ isOpen, onClose, planId }: ViewVersionsModalProps) 
                         {new Date(v.created_at).toLocaleTimeString('vi-VN')}
                       </p>
                     </div>
-                    
+
                     {/* Action */}
                     <div className="w-20 shrink-0">
                       <button
@@ -2633,10 +3712,10 @@ function ViewVersionsModal({ isOpen, onClose, planId }: ViewVersionsModalProps) 
       </Modal>
 
       {/* Version Detail Modal */}
-      <Modal 
-        isOpen={!!selectedVersion} 
-        onClose={() => setSelectedVersion(null)} 
-        title={selectedVersion ? `Chi tiết version ${selectedVersion.version}` : ''} 
+      <Modal
+        isOpen={!!selectedVersion}
+        onClose={() => setSelectedVersion(null)}
+        title={selectedVersion ? `Chi tiết version ${selectedVersion.version}` : ''}
         maxWidth="2xl"
       >
         {selectedVersion && (
@@ -2719,5 +3798,152 @@ function ViewVersionsModal({ isOpen, onClose, planId }: ViewVersionsModalProps) 
         )}
       </Modal>
     </>
+  );
+}
+
+// ============================================================================
+// STEP DETAIL MODAL
+// ============================================================================
+function StepDetailModal({
+  isOpen,
+  onClose,
+  step,
+  allCcps,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  step: ProcessStep | null;
+  allCcps: CCP[];
+}) {
+  const { hazards, loading: hazardsLoading } = useHazards(step?.id ?? null);
+  const ccp = useMemo(() => allCcps.find(c => c.step_id === step?.id) ?? null, [allCcps, step]);
+
+  if (!step) return null;
+
+  const stepTypeLabel: Record<string, string> = {
+    RECEIVING: "Tiếp nhận",
+    PROCESSING: "Chế biến",
+    PACKAGING: "Đóng gói",
+    STORAGE: "Lưu kho",
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title={`Chi tiết công đoạn: ${step.name}`} maxWidth="3xl">
+      <div className="space-y-5 pb-2">
+        {/* ── Basic info ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-3">
+            <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Thông tin cơ bản</h4>
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-500">Thứ tự:</span>
+              <span className="font-semibold text-slate-700">Bước {step.step_order}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-500">Loại công đoạn:</span>
+              <span className="font-semibold text-slate-700">{stepTypeLabel[step.step_type ?? ""] || step.step_type || "—"}</span>
+            </div>
+            <div className="flex justify-between text-sm items-center">
+              <span className="text-slate-500">Phân loại:</span>
+              {step.is_ccp ? (
+                <span className="px-2 py-0.5 rounded-lg bg-orange-100 text-orange-700 text-[10px] font-bold uppercase">CCP – Kiểm soát tới hạn</span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-lg bg-blue-50 text-blue-600 text-[10px] font-bold uppercase">Công đoạn thường</span>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+            <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Mô tả</h4>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              {step.description || <span className="italic text-slate-400">Chưa có mô tả chi tiết.</span>}
+            </p>
+          </div>
+        </div>
+
+        {/* ── CCP detail ── */}
+        {ccp && (
+          <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-2xl p-5 border border-orange-200 space-y-4">
+            <div className="flex items-center gap-3">
+              <span className="px-3 py-1 rounded-xl bg-orange-500 text-white text-xs font-black shadow-sm">{ccp.ccp_code}</span>
+              <h4 className="font-bold text-orange-900">Điểm kiểm soát tới hạn (CCP)</h4>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="text-[10px] font-bold uppercase text-orange-400 mb-1">Giới hạn tới hạn (CL)</p>
+                <p className="bg-white rounded-xl p-3 border border-orange-100 font-medium text-orange-900">{ccp.critical_limit || "—"}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase text-orange-400 mb-1">Phương pháp giám sát</p>
+                <p className="bg-white rounded-xl p-3 border border-orange-100 text-orange-800">{ccp.monitoring_method || "—"}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase text-orange-400 mb-1">Tần suất giám sát</p>
+                <p className="text-orange-800">{ccp.monitoring_frequency || "—"}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase text-orange-400 mb-1">Người chịu trách nhiệm</p>
+                <p className="text-orange-800 font-medium">{ccp.responsible_user || "—"}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Hazard analysis ── */}
+        <div className="rounded-2xl border border-slate-200 overflow-hidden">
+          <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+            <h4 className="font-bold text-slate-800 text-sm">Phân tích mối nguy</h4>
+            <span className="text-[10px] text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-full">{hazards.length} mối nguy</span>
+          </div>
+          {hazardsLoading ? (
+            <div className="p-8 text-center text-slate-400 text-sm">Đang tải...</div>
+          ) : hazards.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 text-sm italic">Chưa có phân tích mối nguy cho công đoạn này.</div>
+          ) : (
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50/60 text-[11px] uppercase text-slate-500 border-b border-slate-100">
+                <tr>
+                  <th className="px-4 py-2 font-bold">Mối nguy</th>
+                  <th className="px-4 py-2 font-bold">Loại</th>
+                  <th className="px-4 py-2 font-bold">Điểm rủi ro</th>
+                  <th className="px-4 py-2 font-bold">Biện pháp kiểm soát</th>
+                  <th className="px-4 py-2 font-bold text-center">Đáng kể?</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {hazards.map(h => (
+                  <tr key={h.id} className="hover:bg-slate-50/60 transition-colors">
+                    <td className="px-4 py-3 font-medium text-slate-700">{h.hazard_name}</td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-0.5 rounded-full text-white text-[10px] font-bold ${h.hazard_type === "BIOLOGICAL" ? "bg-orange-500" :
+                        h.hazard_type === "CHEMICAL" ? "bg-emerald-500" : "bg-blue-500"
+                        }`}>
+                        {h.hazard_type === "BIOLOGICAL" ? "Sinh học" : h.hazard_type === "CHEMICAL" ? "Hóa học" : "Vật lý"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`font-bold ${h.risk_score >= 12 ? "text-red-600" : h.risk_score >= 6 ? "text-amber-600" : "text-slate-500"}`}>
+                        {h.risk_score ?? "—"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-500">{h.control_measure || "—"}</td>
+                    <td className="px-4 py-3 text-center">
+                      {h.is_significant
+                        ? <span className="text-red-500 font-bold">CÓ</span>
+                        : <span className="text-slate-300">Không</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="flex justify-end">
+          <button onClick={onClose} className="px-6 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold transition-colors">
+            Đóng
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }

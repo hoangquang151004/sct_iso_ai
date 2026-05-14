@@ -31,7 +31,7 @@ interface ParsedHazard {
 function parseDocumentSteps(content: string): ParsedStep[] {
   const steps: ParsedStep[] = [];
   const lines = content.split('\n');
-  
+
   // Regex patterns cho các định dạng bước khác nhau
   const stepPatterns = [
     /Bước\s*(\d+)[:\.]\s*(.+?)(?:\s*-\s*(.+))?$/i,  // "Bước 1: Tên - Mô tả"
@@ -39,36 +39,36 @@ function parseDocumentSteps(content: string): ParsedStep[] {
     /^(\d+)[:\.]\s+(.+?)(?:\s*-\s*(.+))?$/i,         // "1. Tên bước"
     /Step\s*(\d+)[:\.]\s*(.+?)(?:\s*-\s*(.+))?$/i,   // "Step 1: Name"
   ];
-  
+
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    
+
     for (const pattern of stepPatterns) {
       const match = trimmed.match(pattern);
       if (match) {
         const stepNum = parseInt(match[1]);
         let stepName = match[2]?.trim() || `Bước ${stepNum}`;
         const description = match[3]?.trim() || "";
-        
+
         // Detect CCP from description or name
         const isCcp = /CCP\d*|kiểm soát|giám sát|nhiệt độ|pH|kim loại/i.test(stepName + " " + description);
         const ccpMatch = description.match(/(CCP[\d-]*)/i) || stepName.match(/(CCP[\d-]*)/i);
         const ccpCode = ccpMatch ? ccpMatch[1] : (isCcp ? `CCP-${stepNum}` : undefined);
-        
+
         // Detect step type from keywords
         let type: ParsedStep['type'] = "PROCESSING";
         if (/tiếp nhận|nhận|nguyên liệu|nhập kho/i.test(stepName)) type = "RECEIVING";
         else if (/đóng gói|bao bì|pack/i.test(stepName)) type = "PACKAGING";
         else if (/lưu kho|kho|bảo quản|lạnh/i.test(stepName)) type = "STORAGE";
-        
+
         // Extract critical limit if mentioned
         const limitMatch = description.match(/([<>]?=?\s*\d+[°\.]?\w*\s*(?:°C|°F|%|ppm|phút|giờ|mm)?)/i);
         const criticalLimit = limitMatch ? limitMatch[1] : undefined;
-        
+
         // Build CCP name
         const ccpName = isCcp ? (description.split('-')[0]?.trim() || `Kiểm soát ${stepName}`) : undefined;
-        
+
         steps.push({
           name: stepName,
           type,
@@ -81,7 +81,7 @@ function parseDocumentSteps(content: string): ParsedStep[] {
       }
     }
   }
-  
+
   return steps;
 }
 
@@ -91,20 +91,20 @@ function parseDocumentSteps(content: string): ParsedStep[] {
 function parseDocumentHazards(content: string, steps: ParsedStep[]): ParsedHazard[] {
   const hazards: ParsedHazard[] = [];
   const lines = content.split('\n');
-  
+
   // Keywords for hazard types
   const bioKeywords = /vi khuẩn|nấm mốc|sinh học| Salmonella|E\.coli|Listeria|độc tố|toxin/i;
   const chemKeywords = /hóa chất|dư lượng thuốc|kim loại nặng|chất độc|dầu mỡ|chemical|phẩm màu|bảo quản/i;
   const physKeywords = /tạp chất|kim loại|mảnh vỡ|sợi|tóc|cát|bụi|physical|mảnh nhựa/i;
-  
+
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    
+
     // Look for hazard mentions
     let type: ParsedHazard['type'] | null = null;
     let name = "";
-    
+
     if (bioKeywords.test(trimmed)) {
       type = "BIOLOGICAL";
       name = trimmed.match(/vi khuẩn\s+\w+|nấm mốc|độc tố/)?.[0] || "Vi sinh vật gây bệnh";
@@ -115,11 +115,11 @@ function parseDocumentHazards(content: string, steps: ParsedStep[]): ParsedHazar
       type = "PHYSICAL";
       name = trimmed.match(/tạp chất|kim loại|mảnh vỡ/)?.[0] || "Tạp chất vật lý";
     }
-    
+
     if (type && name) {
       // Try to associate with a step
       const associatedStep = steps.find(s => trimmed.toLowerCase().includes(s.name.toLowerCase()));
-      
+
       hazards.push({
         stepName: associatedStep?.name || "Chung",
         type,
@@ -129,7 +129,7 @@ function parseDocumentHazards(content: string, steps: ParsedStep[]): ParsedHazar
       });
     }
   }
-  
+
   return hazards;
 }
 
@@ -180,7 +180,7 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
         try {
           // 1. Plan Info
           const plan = await apiFetch<any>(`/haccp/plans/${planId}`);
-          
+
           // 2. Steps
           const stepsData = await apiFetch<any[]>(`/haccp/plans/${planId}/steps`);
           const wizardSteps = stepsData.map(s => ({
@@ -258,6 +258,15 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
   };
 
   const handleSubmit = async () => {
+    // 0. Kiểm tra trùng lặp mã CCP trong dữ liệu wizard
+    const codes = data.ccps.map(c => c.ccpCode.trim().toUpperCase()).filter(c => c !== "");
+    const uniqueCodes = new Set(codes);
+    if (uniqueCodes.size !== codes.length) {
+      const duplicates = codes.filter((code, index) => codes.indexOf(code) !== index);
+      alert(`Lỗi: Có mã CCP bị trùng lặp: ${[...new Set(duplicates)].join(', ')}. Vui lòng kiểm tra lại tại Bước 4.`);
+      return;
+    }
+
     setLoading(true);
     try {
       let activePlanId = planId;
@@ -298,7 +307,7 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
       // --- Sync Steps ---
       const existingSteps = planId ? await apiFetch<any[]>(`/haccp/plans/${planId}/steps`) : [];
       const stepIdsToKeep = data.steps.filter(s => s.id.length > 20).map(s => s.id); // UUID length check
-      
+
       // Delete removed steps
       for (const es of existingSteps) {
         if (!stepIdsToKeep.includes(es.id)) {
@@ -333,13 +342,13 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
       // --- Sync Hazards ---
       console.log('[Wizard Save] Syncing hazards:', data.hazards.length, 'hazards');
       console.log('[Wizard Save] stepIdMap:', stepIdMap);
-      
+
       const hazardIdMap: Record<string, string> = {};
-      
+
       for (const h of data.hazards) {
         const dbStepId = stepIdMap[h.stepId];
         console.log(`[Wizard Save] Hazard ${h.name || 'unnamed'}: tempStepId=${h.stepId}, dbStepId=${dbStepId}`);
-        
+
         if (!dbStepId) {
           console.warn(`[Wizard Save] Skipping hazard - no dbStepId found for stepId ${h.stepId}`);
           continue;
@@ -387,7 +396,7 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
       for (const c of data.ccps) {
         const dbStepId = stepIdMap[c.stepId];
         const dbHazardId = c.hazardId ? (hazardIdMap[c.hazardId] || c.hazardId) : null;
-        
+
         const ccpBody = {
           step_id: dbStepId,
           hazard_id: dbHazardId,
@@ -397,7 +406,7 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
         };
 
         console.log(`[Wizard] Saving CCP ${c.ccpCode}:`, ccpBody);
-        
+
         if (c.id.length > 20) {
           try {
             await apiFetch(`/haccp/ccps/${c.id}`, { method: 'PATCH', body: JSON.stringify(ccpBody) });
@@ -544,7 +553,7 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
       const newStep = { id: Date.now().toString(), name: "", type: "PROCESSING", isCcp: false };
       updateData('steps', [...data.steps, newStep]);
     };
-    
+
     const updateStep = (id: string, field: string, value: any) => {
       updateData('steps', data.steps.map(s => s.id === id ? { ...s, [field]: value } : s));
     };
@@ -554,7 +563,7 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
     // Auto-fill 4 basic steps
     const autoFillFromDocument = () => {
       const selectedDoc = documents.find(d => d.id === data.selectedDocumentId);
-      
+
       // 4 bước cơ bản cố định
       const defaultSteps = [
         { name: "Thanh trùng", type: "PROCESSING", isCcp: true },
@@ -572,14 +581,16 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
       }));
 
       updateData('steps', newSteps);
+
+      // Create CCPs for Thanh trùng and Chế biến với tiền tố từ tên kế hoạch
+      const planPrefix = data.planInfo.name ? data.planInfo.name.split(' ').map(w => w[0]).join('').toUpperCase() : "HACCP";
       
-      // Create CCPs for Thanh trùng and Chế biến
       const newCcps = [
         {
           id: Date.now().toString() + '_ccp1',
           stepId: newSteps[0].id,
           hazardId: "",
-          ccpCode: "CCP-1",
+          ccpCode: `${planPrefix}-CCP-1`,
           name: "Kiểm soát nhiệt độ thanh trùng",
           criticalLimit: "T >= 72°C tối thiểu 15 giây"
         },
@@ -587,7 +598,7 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
           id: Date.now().toString() + '_ccp2',
           stepId: newSteps[1].id,
           hazardId: "",
-          ccpCode: "CCP-2",
+          ccpCode: `${planPrefix}-CCP-2`,
           name: "Kiểm soát quá trình chế biến",
           criticalLimit: "Nhiệt độ >= 85°C"
         }
@@ -630,7 +641,7 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
           <h3 className="text-sm font-semibold text-slate-800">Các công đoạn (Liệt kê theo thứ tự)</h3>
           <button onClick={addStep} className="text-xs bg-cyan-100 text-cyan-800 px-3 py-1.5 rounded-full font-medium hover:bg-cyan-200 transition-colors">+ Thêm Bước</button>
         </div>
-        
+
         {data.steps.length === 0 ? (
           <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-300 rounded-lg text-slate-400 text-sm">
             Chưa có công đoạn nào. Hãy thêm bước đầu tiên của quy trình.
@@ -640,14 +651,14 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
             {data.steps.map((step, index) => (
               <div key={step.id} className="flex items-center gap-3 bg-white p-3 border border-slate-200 rounded-lg shadow-sm">
                 <span className="w-6 h-6 shrink-0 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">{index + 1}</span>
-                <input 
-                  type="text" 
-                  value={step.name} 
+                <input
+                  type="text"
+                  value={step.name}
                   onChange={(e) => updateStep(step.id, 'name', e.target.value)}
-                  placeholder="Tên công đoạn (VD: Thanh trùng)" 
-                  className="flex-1 w-1/3 rounded border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-cyan-500" 
+                  placeholder="Tên công đoạn (VD: Thanh trùng)"
+                  className="flex-1 w-1/3 rounded border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-cyan-500"
                 />
-                 <select 
+                <select
                   value={step.type}
                   onChange={(e) => updateStep(step.id, 'type', e.target.value)}
                   className="w-32 rounded border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-cyan-500"
@@ -706,7 +717,7 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
       // First parse steps to understand context
       const parsedSteps = parseDocumentSteps(selectedDoc.content);
       const parsedHazards = parseDocumentHazards(selectedDoc.content, parsedSteps);
-      
+
       if (parsedHazards.length === 0) {
         alert("Không tìm thấy mối nguy trong tài liệu");
         return;
@@ -716,7 +727,7 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
       const newHazards: any[] = [];
       parsedHazards.forEach((hazard, index) => {
         // Find matching step
-        const matchingStep = data.steps.find(s => 
+        const matchingStep = data.steps.find(s =>
           s.name.toLowerCase().includes(hazard.stepName.toLowerCase()) ||
           hazard.stepName.toLowerCase().includes(s.name.toLowerCase())
         ) || data.steps[0]; // Default to first step if no match
@@ -773,7 +784,7 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
           <h3 className="text-sm font-semibold text-slate-800">
             Danh sách mối nguy ({data.hazards.length} mối nguy)
           </h3>
-          <select 
+          <select
             onChange={(e) => { if (e.target.value) { addHazard(e.target.value); e.target.value = ""; } }}
             className="text-xs bg-white border border-slate-300 text-slate-600 px-3 py-1.5 rounded hover:bg-slate-50 shadow-sm outline-none"
             value=""
@@ -809,15 +820,15 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
                   const step = data.steps.find(s => s.id === h.stepId);
                   const risk = h.likelihood * h.severity;
                   const isSignificant = risk >= 12;
-                  
+
                   return (
                     <tr key={h.id} className={isSignificant ? 'bg-red-50/50' : 'hover:bg-slate-50'}>
                       <td className="px-4 py-3">
                         <span className="text-xs text-slate-600">{step?.name || "-"}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <select 
-                          value={h.type} 
+                        <select
+                          value={h.type}
                           onChange={e => updateHazard(h.id, 'type', e.target.value)}
                           className="text-xs rounded border border-slate-300 px-2 py-1 outline-none focus:border-amber-500 bg-white"
                         >
@@ -828,9 +839,9 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
                       </td>
                       <td className="px-4 py-3">
                         <div className="space-y-1">
-                          <input 
-                            type="text" 
-                            value={h.name} 
+                          <input
+                            type="text"
+                            value={h.name}
                             onChange={e => updateHazard(h.id, 'name', e.target.value)}
                             placeholder="Mô tả mối nguy..."
                             className="w-full text-xs rounded border border-slate-300 px-2 py-1 outline-none focus:border-amber-500"
@@ -841,20 +852,20 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
                         </div>
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <input 
-                          type="number" 
-                          min="1" max="5" 
-                          value={h.likelihood} 
-                          onChange={e => updateHazard(h.id, 'likelihood', parseInt(e.target.value)||1)}
+                        <input
+                          type="number"
+                          min="1" max="5"
+                          value={h.likelihood}
+                          onChange={e => updateHazard(h.id, 'likelihood', parseInt(e.target.value) || 1)}
                           className="w-10 text-center text-xs border border-slate-300 rounded py-1 outline-none"
                         />
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <input 
-                          type="number" 
-                          min="1" max="5" 
-                          value={h.severity} 
-                          onChange={e => updateHazard(h.id, 'severity', parseInt(e.target.value)||1)}
+                        <input
+                          type="number"
+                          min="1" max="5"
+                          value={h.severity}
+                          onChange={e => updateHazard(h.id, 'severity', parseInt(e.target.value) || 1)}
                           className="w-10 text-center text-xs border border-slate-300 rounded py-1 outline-none"
                         />
                       </td>
@@ -865,8 +876,8 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <button 
-                          onClick={() => removeHazard(h.id)} 
+                        <button
+                          onClick={() => removeHazard(h.id)}
                           className="text-slate-400 hover:text-red-500 transition-colors"
                           title="Xóa"
                         >
@@ -907,10 +918,11 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
     if (data.steps.length === 0) return <div className="text-center p-8 text-slate-500 text-sm">Chưa có công đoạn nào để thiết lập CCP.</div>;
 
     const addCcp = (stepId: string) => {
-      const newCcp = { id: Date.now().toString(), stepId, hazardId: "", ccpCode: "CCP-", name: "", criticalLimit: "" };
+      const planPrefix = data.planInfo.name ? data.planInfo.name.split(' ').map(w => w[0]).join('').toUpperCase() : "HACCP";
+      const newCcp = { id: Date.now().toString(), stepId, hazardId: "", ccpCode: `${planPrefix}-CCP-`, name: "", criticalLimit: "" };
       updateData('ccps', [...data.ccps, newCcp]);
     };
-    
+
     const updateCcp = (id: string, field: string, value: any) => {
       updateData('ccps', data.ccps.map(c => c.id === id ? { ...c, [field]: value } : c));
     };
@@ -926,7 +938,7 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
           const stepHazards = data.hazards.filter(h => h.stepId === step.id);
           const hasSignificantRisk = stepHazards.some(h => h.isSignificant) || step.isCcp;
           const stepCcps = data.ccps.filter(c => c.stepId === step.id);
-          
+
           return (
             <div key={step.id} className={`border rounded-lg overflow-hidden ${hasSignificantRisk ? 'border-orange-200' : 'border-slate-200'}`}>
               <div className={`px-4 py-3 border-b flex justify-between items-center gap-4 ${hasSignificantRisk ? 'bg-orange-50 border-orange-200 text-orange-900' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
@@ -940,7 +952,20 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
                       <button onClick={() => removeCcp(ccp.id)} className="absolute top-2 right-2 text-slate-400 hover:text-red-500">✕</button>
                       <div>
                         <label className="text-[10px] font-bold text-slate-500 uppercase">Mã CCP</label>
-                        <input type="text" value={ccp.ccpCode} onChange={e => updateCcp(ccp.id, 'ccpCode', e.target.value)} className="w-full text-sm border p-1 rounded font-mono text-orange-600 outline-none focus:border-orange-400" placeholder="VD: CCP-1" />
+                        <input 
+                          type="text" 
+                          value={ccp.ccpCode} 
+                          onChange={e => updateCcp(ccp.id, 'ccpCode', e.target.value)} 
+                          className={`w-full text-sm border p-1 rounded font-mono outline-none focus:border-orange-400 ${
+                            data.ccps.filter(c => c.ccpCode.trim() !== "" && c.ccpCode.trim().toUpperCase() === ccp.ccpCode.trim().toUpperCase()).length > 1
+                              ? 'border-red-500 text-red-600 bg-red-50'
+                              : 'text-orange-600 border-slate-300'
+                          }`} 
+                          placeholder="VD: CCP-1" 
+                        />
+                        {data.ccps.filter(c => c.ccpCode.trim() !== "" && c.ccpCode.trim().toUpperCase() === ccp.ccpCode.trim().toUpperCase()).length > 1 && (
+                          <p className="text-[9px] text-red-500 mt-0.5 font-bold">Mã đã tồn tại!</p>
+                        )}
                       </div>
                       <div>
                         <label className="text-[10px] font-bold text-slate-500 uppercase">Tên / Mục tiêu kiểm soát</label>
@@ -1013,15 +1038,15 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
       <div className="flex h-[600px] flex-col relative">
         {initialLoading && (
           <div className="absolute inset-0 bg-white/80 z-50 flex flex-col items-center justify-center space-y-3">
-             <span className="w-10 h-10 border-4 border-cyan-200 border-t-cyan-600 rounded-full animate-spin"></span>
-             <p className="text-sm font-bold text-cyan-800">Đang tải dữ liệu quy trình...</p>
+            <span className="w-10 h-10 border-4 border-cyan-200 border-t-cyan-600 rounded-full animate-spin"></span>
+            <p className="text-sm font-bold text-cyan-800">Đang tải dữ liệu quy trình...</p>
           </div>
         )}
         {/* Stepper Header */}
         <div className="bg-white border-b border-slate-100 p-4 flex justify-between relative shrink-0 overflow-x-auto">
           {/* Progress bar line background */}
           <div className="absolute top-1/2 left-8 right-8 h-0.5 bg-slate-100 -z-10 -translate-y-1/2"></div>
-          
+
           {STEP_TITLES.map((title, index) => {
             const stepNum = index + 1;
             const isActive = stepNum === currentStep;
@@ -1029,12 +1054,11 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
 
             return (
               <div key={title} className="flex flex-col items-center gap-2 bg-white px-2">
-                <div 
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all duration-300 ${
-                    isActive ? 'border-cyan-500 bg-cyan-500 text-white shadow-lg shadow-cyan-500/30' : 
-                    isCompleted ? 'border-teal-500 bg-teal-500 text-white' : 
-                    'border-slate-200 bg-white text-slate-400'
-                  }`}
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all duration-300 ${isActive ? 'border-cyan-500 bg-cyan-500 text-white shadow-lg shadow-cyan-500/30' :
+                      isCompleted ? 'border-teal-500 bg-teal-500 text-white' :
+                        'border-slate-200 bg-white text-slate-400'
+                    }`}
                 >
                   {isCompleted ? '✓' : stepNum}
                 </div>
@@ -1118,13 +1142,13 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
         {/* Footer Actions */}
         <div className="bg-white border-t border-slate-100 px-6 py-4 flex justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <button 
+            <button
               onClick={onClose}
               className="text-slate-500 hover:bg-slate-100 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
             >
               Hủy Bỏ
             </button>
-            
+
             {/* Document Viewer Toggle Button - Moved to footer */}
             {data.selectedDocumentId && !showDocumentViewer && (
               <button
@@ -1139,26 +1163,26 @@ export default function HaccpWizard({ isOpen, onClose, onSuccess, planId }: Hacc
               </button>
             )}
           </div>
-          
+
           <div className="flex gap-3">
             {currentStep > 1 && (
-               <button 
+              <button
                 onClick={handleBack}
                 className="bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 px-6 py-2 rounded-lg text-sm font-medium transition-colors"
-               >
-                 Quay Lại
-               </button>
+              >
+                Quay Lại
+              </button>
             )}
-            
+
             {currentStep < 5 ? (
-              <button 
+              <button
                 onClick={handleNext}
                 className="bg-cyan-600 text-white hover:bg-cyan-700 px-8 py-2 rounded-lg text-sm font-bold shadow-md shadow-cyan-600/20 transition-all hover:-translate-y-0.5 active:translate-y-0"
               >
                 Tiếp Theo
               </button>
             ) : (
-              <button 
+              <button
                 onClick={handleSubmit}
                 disabled={loading}
                 className="bg-teal-600 text-white hover:bg-teal-700 px-8 py-2 rounded-lg text-sm font-bold shadow-md shadow-teal-600/20 transition-all hover:-translate-y-0.5 disabled:opacity-50 flex items-center gap-2"

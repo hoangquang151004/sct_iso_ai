@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch } from "@/api/api-client";
-import { HaccpPlan, ProcessStep, CCP, HazardAnalysis, CCPMonitoringLog, HaccpVerification } from "@/lib/types";
+import { HaccpPlan, ProcessStep, CCP, HazardAnalysis, CCPMonitoringLog, HaccpVerification, HaccpAssessment, HaccpAssessmentItem } from "@/lib/types";
 
 // ============================================================================
 // HACCP PLAN HOOKS
@@ -147,7 +147,7 @@ export function useCCPLogs(ccpId: string | null) {
 }
 
 // ============================================================================
-// ALL CCP LOGS FOR PLAN HOOK
+// ALL CCP LOGS HOOK (Tổng hợp toàn bộ nhật ký)
 // ============================================================================
 export function useAllCCPLogs(planId: string | null, enabled: boolean = true) {
   const [logs, setLogs] = useState<CCPMonitoringLog[]>([]);
@@ -155,23 +155,14 @@ export function useAllCCPLogs(planId: string | null, enabled: boolean = true) {
   const [error, setError] = useState<Error | null>(null);
 
   const fetchAllLogs = useCallback(async () => {
-    if (!planId) return;
     try {
       setLoading(true);
-      // Get all CCPs first, then fetch logs for each
-      const ccps = await apiFetch<CCP[]>(`/haccp/plans/${planId}/ccps`);
-      const allLogs: CCPMonitoringLog[] = [];
-      for (const ccp of ccps) {
-        const logsChunk = await apiFetch<CCPMonitoringLog[]>(
-          `/haccp/ccps/${ccp.id}/logs?limit=100`,
-        );
-        allLogs.push(...logsChunk);
-      }
-      setLogs(
-        allLogs.sort(
-          (a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime(),
-        ),
-      );
+      // Gọi endpoint tổng hợp /haccp/logs — hỗ trợ lọc theo plan hoặc lấy tất cả
+      const url = planId
+        ? `/haccp/logs?plan_id=${planId}&limit=500`
+        : `/haccp/logs?limit=500`;
+      const data = await apiFetch<CCPMonitoringLog[]>(url);
+      setLogs(data);
       setError(null);
     } catch (err) {
       setError(err as Error);
@@ -186,13 +177,8 @@ export function useAllCCPLogs(planId: string | null, enabled: boolean = true) {
       setLoading(false);
       return;
     }
-    if (!planId) {
-      setLogs([]);
-      setLoading(false);
-      return;
-    }
     void fetchAllLogs();
-  }, [fetchAllLogs, enabled, planId]);
+  }, [fetchAllLogs, enabled]);
 
   return { logs, loading, error, refetch: fetchAllLogs };
 }
@@ -200,16 +186,36 @@ export function useAllCCPLogs(planId: string | null, enabled: boolean = true) {
 // ============================================================================
 // DEVIATIONS HOOK
 // ============================================================================
+export type DeviationWorkflowStatus =
+  | "NEW"
+  | "PENDING_CAPA"
+  | "CAPA_OPEN"
+  | "CAPA_IN_PROGRESS"
+  | "CAPA_CLOSED"
+  | "CAPA_REJECTED"
+  | "INVESTIGATING"
+  | "CORRECTIVE_ACTION"
+  | "RESOLVED"
+  | "CLOSED";
+
 export interface DeviationFilters {
-  status?: 'NEW' | 'INVESTIGATING' | 'CORRECTIVE_ACTION' | 'RESOLVED' | 'CLOSED';
+  status?: DeviationWorkflowStatus;
   severity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  /** Lọc theo kế hoạch HACCP */
+  plan_id?: string;
+  /** Lọc theo CCP */
+  ccp_id?: string;
+  /** Tìm theo lô, ghi chú, tên/mã CCP */
+  search?: string;
+  /** Đã tạo NC gửi CAPA / chưa */
+  has_capa_nc?: 'yes' | 'no';
+  /** Lọc từ ngày ghi nhận (YYYY-MM-DD), theo recorded_at */
+  recorded_from?: string;
+  /** Lọc đến ngày ghi nhận (YYYY-MM-DD), bao gồm cả ngày */
+  recorded_to?: string;
 }
 
-export function useDeviations(
-  orgId: string | null,
-  filters?: DeviationFilters,
-  enabled: boolean = true,
-) {
+export function useDeviations(filters?: DeviationFilters, enabled: boolean = true) {
   const [deviations, setDeviations] = useState<CCPMonitoringLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -219,14 +225,32 @@ export function useDeviations(
       setLoading(true);
       const params = new URLSearchParams();
       params.set("limit", "500");
-      if (orgId) {
-        params.set("org_id", orgId);
-      }
+      params.set("_ts", String(Date.now()));
       if (filters?.status) {
         params.set("status", filters.status);
       }
       if (filters?.severity) {
         params.set("severity", filters.severity);
+      }
+      if (filters?.plan_id) {
+        params.set("plan_id", filters.plan_id);
+      }
+      if (filters?.ccp_id) {
+        params.set("ccp_id", filters.ccp_id);
+      }
+      if (filters?.search?.trim()) {
+        params.set("search", filters.search.trim());
+      }
+      if (filters?.has_capa_nc === "yes") {
+        params.set("has_capa_nc", "true");
+      } else if (filters?.has_capa_nc === "no") {
+        params.set("has_capa_nc", "false");
+      }
+      if (filters?.recorded_from?.trim()) {
+        params.set("recorded_from", filters.recorded_from.trim());
+      }
+      if (filters?.recorded_to?.trim()) {
+        params.set("recorded_to", filters.recorded_to.trim());
       }
       const data = await apiFetch<CCPMonitoringLog[]>(`/haccp/deviations?${params.toString()}`);
       setDeviations(data);
@@ -236,7 +260,16 @@ export function useDeviations(
     } finally {
       setLoading(false);
     }
-  }, [orgId, filters?.status, filters?.severity]);
+  }, [
+    filters?.status,
+    filters?.severity,
+    filters?.plan_id,
+    filters?.ccp_id,
+    filters?.search,
+    filters?.has_capa_nc,
+    filters?.recorded_from,
+    filters?.recorded_to,
+  ]);
 
   useEffect(() => {
     if (!enabled) {
@@ -245,6 +278,25 @@ export function useDeviations(
       return;
     }
     void fetchDeviations();
+  }, [fetchDeviations, enabled]);
+
+  useEffect(() => {
+    if (!enabled || typeof window === "undefined") return;
+
+    const refetchWhenVisible = () => {
+      if (document.visibilityState !== "hidden") {
+        void fetchDeviations();
+      }
+    };
+
+    window.addEventListener("focus", refetchWhenVisible);
+    window.addEventListener("pageshow", refetchWhenVisible);
+    document.addEventListener("visibilitychange", refetchWhenVisible);
+    return () => {
+      window.removeEventListener("focus", refetchWhenVisible);
+      window.removeEventListener("pageshow", refetchWhenVisible);
+      document.removeEventListener("visibilitychange", refetchWhenVisible);
+    };
   }, [fetchDeviations, enabled]);
 
   return { deviations, loading, error, refetch: fetchDeviations };
@@ -260,7 +312,7 @@ export interface DeviationStats {
   pending: number;
 }
 
-export function useDeviationStats(orgId: string | null, enabled: boolean = true) {
+export function useDeviationStats(filters?: DeviationFilters, enabled: boolean = true) {
   const [stats, setStats] = useState<DeviationStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -269,10 +321,17 @@ export function useDeviationStats(orgId: string | null, enabled: boolean = true)
     try {
       setLoading(true);
       const params = new URLSearchParams();
-      if (orgId) {
-        params.set("org_id", orgId);
+      params.set("_ts", String(Date.now()));
+      if (filters?.recorded_from?.trim()) {
+        params.set("recorded_from", filters.recorded_from.trim());
       }
-      const data = await apiFetch<DeviationStats>(`/haccp/deviations/stats?${params.toString()}`);
+      if (filters?.recorded_to?.trim()) {
+        params.set("recorded_to", filters.recorded_to.trim());
+      }
+      const qs = params.toString();
+      const data = await apiFetch<DeviationStats>(
+        qs ? `/haccp/deviations/stats?${qs}` : "/haccp/deviations/stats",
+      );
       setStats(data);
       setError(null);
     } catch (err) {
@@ -280,7 +339,7 @@ export function useDeviationStats(orgId: string | null, enabled: boolean = true)
     } finally {
       setLoading(false);
     }
-  }, [orgId]);
+  }, [filters?.recorded_from, filters?.recorded_to]);
 
   useEffect(() => {
     if (!enabled) {
@@ -298,7 +357,7 @@ export function useDeviationStats(orgId: string | null, enabled: boolean = true)
 // HANDLE DEVIATION HOOK (for mutation)
 // ============================================================================
 export interface HandleDeviationPayload {
-  deviation_status: 'NEW' | 'INVESTIGATING' | 'CORRECTIVE_ACTION' | 'RESOLVED' | 'CLOSED';
+  deviation_status: DeviationWorkflowStatus;
   deviation_severity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   corrective_action?: string;
   root_cause?: string;
@@ -310,6 +369,21 @@ export async function handleDeviation(logId: string, payload: HandleDeviationPay
   return apiFetch<CCPMonitoringLog>(`/haccp/deviations/${logId}/handle`, {
     method: 'PATCH',
     body: JSON.stringify(payload),
+  });
+}
+
+/** Gửi độ lệch CCP sang hàng đợi NC/CAPA (idempotent nếu NC đã tồn tại). */
+export interface DeviationCapaNcResult {
+  nc_id: string;
+  created: boolean;
+  title: string;
+  status: string;
+}
+
+export async function requestDeviationCapaNc(logId: string): Promise<DeviationCapaNcResult> {
+  return apiFetch<DeviationCapaNcResult>(`/haccp/deviations/${logId}/capa-nc`, {
+    method: 'POST',
+    body: JSON.stringify({}),
   });
 }
 
@@ -514,4 +588,136 @@ export function useAllCCPs(enabled: boolean = true) {
   }, [fetchAllCcps, enabled]);
 
   return { allCcps, loading, error, refetch: fetchAllCcps };
+}
+
+// ============================================================================
+// HACCP ASSESSMENT HOOKS (Phiếu đánh giá HACCP)
+// ============================================================================
+export type CreateAssessmentPayload = {
+  haccp_plan_id: string;
+  title: string;
+  assessment_date?: string;
+  overall_result?: string;
+  overall_note?: string;
+  items: {
+    item_type: "PROCESS_STEP" | "CCP" | "GENERAL";
+    ref_id?: string;
+    question: string;
+    expected_value?: string;
+    actual_value?: string;
+    result?: string;
+    note?: string;
+    evidence_url?: string;
+    order_index: number;
+  }[];
+};
+
+export type SubmitAssessmentPayload = {
+  overall_result: "PASS" | "FAIL" | "NEEDS_IMPROVEMENT";
+  overall_note?: string;
+};
+
+export function useHaccpAssessments(
+  haccp_plan_id: string | null = null,
+  status: string | null = null,
+  enabled: boolean = true,
+) {
+  const [assessments, setAssessments] = useState<HaccpAssessment[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const fetchAssessments = useCallback(async () => {
+    if (!enabled) return;
+    try {
+      setLoading(true);
+      const params = new URLSearchParams();
+      if (haccp_plan_id) params.append("haccp_plan_id", haccp_plan_id);
+      if (status) params.append("status", status);
+      const qs = params.toString() ? `?${params.toString()}` : "";
+      const data = await apiFetch<HaccpAssessment[]>(`/haccp/assessments${qs}`);
+      setAssessments(data);
+      setError(null);
+    } catch (err) {
+      setError(err as Error);
+    } finally {
+      setLoading(false);
+    }
+  }, [haccp_plan_id, status, enabled]);
+
+  useEffect(() => {
+    fetchAssessments();
+  }, [fetchAssessments]);
+
+  return { assessments, loading, error, refetch: fetchAssessments };
+}
+
+export function useHaccpAssessment(assessmentId: string | null) {
+  const [assessment, setAssessment] = useState<HaccpAssessment | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const fetchAssessment = useCallback(async () => {
+    if (!assessmentId) return;
+    try {
+      setLoading(true);
+      const data = await apiFetch<HaccpAssessment>(`/haccp/assessments/${assessmentId}`);
+      setAssessment(data);
+      setError(null);
+    } catch (err) {
+      setError(err as Error);
+    } finally {
+      setLoading(false);
+    }
+  }, [assessmentId]);
+
+  useEffect(() => {
+    fetchAssessment();
+  }, [fetchAssessment]);
+
+  return { assessment, loading, error, refetch: fetchAssessment };
+}
+
+export async function createAssessment(payload: CreateAssessmentPayload): Promise<HaccpAssessment> {
+  return apiFetch<HaccpAssessment>("/haccp/assessments", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function submitAssessment(
+  assessmentId: string,
+  payload: SubmitAssessmentPayload,
+): Promise<HaccpAssessment> {
+  return apiFetch<HaccpAssessment>(`/haccp/assessments/${assessmentId}/submit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateAssessmentItem(
+  itemId: string,
+  payload: Partial<HaccpAssessmentItem>,
+): Promise<HaccpAssessmentItem> {
+  return apiFetch<HaccpAssessmentItem>(`/haccp/assessment-items/${itemId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateAssessment(
+  assessmentId: string,
+  payload: Partial<HaccpAssessment>,
+): Promise<HaccpAssessment> {
+  return apiFetch<HaccpAssessment>(`/haccp/assessments/${assessmentId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteAssessment(assessmentId: string): Promise<void> {
+  await apiFetch(`/haccp/assessments/${assessmentId}`, { method: "DELETE" });
 }
