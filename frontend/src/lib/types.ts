@@ -118,6 +118,7 @@ export type HaccpAssessmentItem = {
   question: string;
   expected_value?: string;
   actual_value?: string;
+  batch_number?: string;
   result?: "PASS" | "FAIL" | "NA" | "";
   note?: string;
   evidence_url?: string;

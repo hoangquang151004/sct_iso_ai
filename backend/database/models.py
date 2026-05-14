@@ -663,6 +663,7 @@ class HaccpAssessmentItem(Base):
     question: Mapped[str] = mapped_column(Text, nullable=False)
     expected_value: Mapped[Optional[str]] = mapped_column(Text)
     actual_value: Mapped[Optional[str]] = mapped_column(Text)
+    batch_number: Mapped[Optional[str]] = mapped_column(String(100))
     result: Mapped[Optional[str]] = mapped_column(String(50))  # PASS, FAIL, NA
     note: Mapped[Optional[str]] = mapped_column(Text)
     evidence_url: Mapped[Optional[str]] = mapped_column(Text)

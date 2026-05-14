@@ -617,6 +617,13 @@ export type SubmitAssessmentPayload = {
   overall_note?: string;
 };
 
+export type AddAssessmentManualItemPayload = {
+  question: string;
+  expected_value?: string | null;
+  item_type?: "GENERAL" | "PROCESS_STEP" | "CCP";
+  ref_id?: string | null;
+};
+
 export function useHaccpAssessments(
   haccp_plan_id: string | null = null,
   status: string | null = null,
@@ -705,6 +712,26 @@ export async function updateAssessmentItem(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+}
+
+export async function addAssessmentManualItem(
+  assessmentId: string,
+  payload: AddAssessmentManualItemPayload,
+): Promise<HaccpAssessmentItem> {
+  return apiFetch<HaccpAssessmentItem>(`/haccp/assessments/${assessmentId}/items`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      question: payload.question,
+      expected_value: payload.expected_value ?? undefined,
+      item_type: payload.item_type ?? "GENERAL",
+      ref_id: payload.ref_id ?? undefined,
+    }),
+  });
+}
+
+export async function deleteAssessmentItem(itemId: string): Promise<void> {
+  await apiFetch(`/haccp/assessment-items/${itemId}`, { method: "DELETE" });
 }
 
 export async function updateAssessment(

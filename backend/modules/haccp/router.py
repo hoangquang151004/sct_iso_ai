@@ -20,6 +20,7 @@ from .schemas import (
     HaccpVerificationCreate, HaccpVerificationUpdate, HaccpVerificationResponse,
     HaccpAssessmentCreate, HaccpAssessmentUpdate, HaccpAssessmentResponse,
     HaccpAssessmentItemUpdate, HaccpAssessmentItemResponse,
+    HaccpAssessmentManualItemCreate,
     HaccpAssessmentSubmitRequest,
 )
 from .service import (
@@ -784,6 +785,34 @@ def get_assessment(assessment_id: UUID, db: Session = Depends(get_db)):
     return result
 
 
+@haccp_router.post(
+    "/assessments/{assessment_id}/items",
+    response_model=HaccpAssessmentItemResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Thêm hạng mục phiếu đánh giá (nháp)",
+    description="Thêm câu hỏi/hạng mục do người dùng soạn; chỉ áp dụng khi phiếu DRAFT và thuộc org của principal",
+)
+def add_assessment_manual_item(
+    assessment_id: UUID,
+    payload: HaccpAssessmentManualItemCreate,
+    db: Session = Depends(get_db),
+    principal: AuthPrincipal = Depends(get_current_principal),
+):
+    code, item = HaccpAssessmentService.add_assessment_manual_item_for_org(
+        db, assessment_id, principal.org_id, payload
+    )
+    if code == "not_found":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Phiếu đánh giá không tồn tại")
+    if code == "not_draft":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Chỉ thêm hạng mục khi phiếu đang ở trạng thái nháp (DRAFT)",
+        )
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Lỗi tạo hạng mục")
+    return item
+
+
 @haccp_router.patch(
     "/assessments/{assessment_id}",
     response_model=HaccpAssessmentResponse,
@@ -826,6 +855,23 @@ def update_assessment_item(item_id: UUID, payload: HaccpAssessmentItemUpdate, db
     if not result:
         raise HTTPException(status_code=404, detail="Hạng mục không tồn tại")
     return result
+
+
+@haccp_router.delete(
+    "/assessment-items/{item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Xóa hạng mục phiếu đánh giá (nháp)",
+    description="Xóa một hạng mục khi phiếu còn DRAFT và thuộc org của principal",
+)
+def delete_assessment_item_endpoint(
+    item_id: UUID,
+    db: Session = Depends(get_db),
+    principal: AuthPrincipal = Depends(get_current_principal),
+):
+    ok = HaccpAssessmentService.delete_assessment_item_if_draft_for_org(db, item_id, principal.org_id)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không xóa được hạng mục")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @haccp_router.delete(

@@ -5,7 +5,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from uuid import UUID, uuid4
 from typing import List, Optional
 
-from sqlalchemy import exists, or_
+from sqlalchemy import exists, func, or_
 from sqlalchemy.orm import Session
 
 from database.models import (
@@ -34,6 +34,7 @@ from .schemas import (
     HaccpVerificationCreate, HaccpVerificationUpdate, HaccpVerificationResponse,
     HaccpAssessmentCreate, HaccpAssessmentUpdate, HaccpAssessmentResponse,
     HaccpAssessmentItemCreate, HaccpAssessmentItemUpdate, HaccpAssessmentItemResponse,
+    HaccpAssessmentManualItemCreate,
     HaccpAssessmentSubmitRequest,
 )
 
@@ -1053,6 +1054,78 @@ class HaccpAssessmentService:
         db.commit()
         db.refresh(obj)
         return HaccpAssessmentItemResponse.model_validate(obj)
+
+    @staticmethod
+    def _insert_assessment_item_row(
+        db: Session,
+        assessment_id: UUID,
+        payload: HaccpAssessmentManualItemCreate,
+    ) -> HaccpAssessmentItemResponse:
+        max_order = (
+            db.query(func.max(HaccpAssessmentItemModel.order_index))
+            .filter(HaccpAssessmentItemModel.assessment_id == assessment_id)
+            .scalar()
+        )
+        next_order = (max_order if max_order is not None else -1) + 1
+        ev = payload.expected_value.strip() if payload.expected_value else None
+        row = HaccpAssessmentItemModel(
+            id=uuid4(),
+            assessment_id=assessment_id,
+            item_type=payload.item_type,
+            ref_id=payload.ref_id,
+            question=payload.question.strip(),
+            expected_value=ev,
+            order_index=next_order,
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return HaccpAssessmentItemResponse.model_validate(row)
+
+    @staticmethod
+    def add_assessment_manual_item_for_org(
+        db: Session,
+        assessment_id: UUID,
+        org_id: UUID,
+        payload: HaccpAssessmentManualItemCreate,
+    ) -> tuple[str, HaccpAssessmentItemResponse | None]:
+        assessment = (
+            db.query(HaccpAssessmentModel)
+            .filter(
+                HaccpAssessmentModel.id == assessment_id,
+                HaccpAssessmentModel.org_id == org_id,
+            )
+            .first()
+        )
+        if not assessment:
+            return ("not_found", None)
+        if assessment.status != "DRAFT":
+            return ("not_draft", None)
+        item = HaccpAssessmentService._insert_assessment_item_row(db, assessment_id, payload)
+        return ("ok", item)
+
+    @staticmethod
+    def delete_assessment_item_if_draft_for_org(
+        db: Session,
+        item_id: UUID,
+        org_id: UUID,
+    ) -> bool:
+        item = db.query(HaccpAssessmentItemModel).filter(HaccpAssessmentItemModel.id == item_id).first()
+        if not item:
+            return False
+        assessment = (
+            db.query(HaccpAssessmentModel)
+            .filter(
+                HaccpAssessmentModel.id == item.assessment_id,
+                HaccpAssessmentModel.org_id == org_id,
+            )
+            .first()
+        )
+        if not assessment or assessment.status != "DRAFT":
+            return False
+        db.delete(item)
+        db.commit()
+        return True
 
     @staticmethod
     def delete_assessment(db: Session, assessment_id: UUID) -> bool:

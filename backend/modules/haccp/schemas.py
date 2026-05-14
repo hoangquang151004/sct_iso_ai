@@ -361,6 +361,7 @@ class HaccpAssessmentItemBase(BaseModel):
     question: str
     expected_value: str | None = None
     actual_value: str | None = None
+    batch_number: str | None = Field(None, max_length=100)
     result: str | None = Field(None, pattern="^(PASS|FAIL|NA|)$")
     note: str | None = None
     evidence_url: str | None = None
@@ -373,9 +374,19 @@ class HaccpAssessmentItemCreate(HaccpAssessmentItemBase):
 
 class HaccpAssessmentItemUpdate(BaseModel):
     actual_value: str | None = None
+    batch_number: str | None = None
     result: str | None = Field(None, pattern="^(PASS|FAIL|NA|)$")
     note: str | None = None
     evidence_url: str | None = None
+
+
+class HaccpAssessmentManualItemCreate(BaseModel):
+    """Thêm một hạng mục do người dùng soạn (phiếu nháp)."""
+
+    question: str = Field(..., min_length=1)
+    expected_value: str | None = None
+    item_type: str = Field(default="GENERAL", pattern="^(PROCESS_STEP|CCP|GENERAL)$")
+    ref_id: UUID | None = None
 
 
 class HaccpAssessmentItemResponse(HaccpAssessmentItemBase):

@@ -197,3 +197,15 @@ Ngày cập nhật: 2026-04-20.
 - Permission: `audit.read`.
 - Query hỗ trợ: `action`, `actor_user_id`, `target_type`, `from_dt`, `to_dt`, `limit`, `offset`.
 - Response 200: `AuditLogResponse[]`.
+
+## 6) HACCP — phiếu đánh giá (bổ sung)
+
+### `POST /haccp/assessments/{assessment_id}/items`
+- Permission: bearer; phiếu thuộc `org_id` của principal.
+- Request body (`HaccpAssessmentManualItemCreate`): `question` (bắt buộc), `expected_value` (tuỳ chọn), `item_type` (`GENERAL` mặc định, hoặc `PROCESS_STEP` / `CCP`), `ref_id` (tuỳ chọn).
+- Response 201: `HaccpAssessmentItemResponse`.
+- Chỉ cho phép khi phiếu đang `DRAFT`; nếu không: `400` với mô tả trạng thái; `404` nếu không tìm thấy phiếu theo org.
+
+### `DELETE /haccp/assessment-items/{item_id}`
+- Permission: bearer; hạng mục thuộc phiếu `DRAFT` của org.
+- Response 204 khi xóa thành công; `404` nếu không xóa được (phiếu không nháp, sai org, hoặc không tồn tại).

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import AppShell from "@/components/layout/app-shell";
 import { haccpSidebarButtons, currentUser, getUserDisplayName } from "@/lib/mock-data";
@@ -74,6 +74,10 @@ export default function HaccpCompliancePage() {
   // States for Hazard Detail Modal
   const [isHazardModalOpen, setIsHazardModalOpen] = useState(false);
   const [selectedHazard, setSelectedHazard] = useState<HazardAnalysis | null>(null);
+  const [selectedHazardContext, setSelectedHazardContext] = useState<{
+    planId: string;
+    stepId: string;
+  } | null>(null);
   const [selectedStepInfo, setSelectedStepInfo] = useState<{ stepName: string; planName: string } | null>(null);
 
   // States for CCP Detail Modal
@@ -102,7 +106,36 @@ export default function HaccpCompliancePage() {
 
   const { plans, loading: plansLoading, refetch: refetchPlans } = useHaccpPlans();
 
-  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [showHiddenHaccpPlans, setShowHiddenHaccpPlans] = useState(false);
+
+  const plansForComplianceUi = useMemo(
+    () => (showHiddenHaccpPlans ? plans : plans.filter((p) => p.status !== "ARCHIVED")),
+    [plans, showHiddenHaccpPlans],
+  );
+  const compliancePlanIdSet = useMemo(
+    () => new Set(plansForComplianceUi.map((p) => p.id)),
+    [plansForComplianceUi],
+  );
+
+  const archivedPlansOnly = useMemo(
+    () => plans.filter((p) => p.status === "ARCHIVED"),
+    [plans],
+  );
+
+  const [isHiddenPlansListModalOpen, setIsHiddenPlansListModalOpen] = useState(false);
+  const [hiddenPlansSearch, setHiddenPlansSearch] = useState("");
+
+  const filteredArchivedPlansForModal = useMemo(() => {
+    const q = hiddenPlansSearch.trim().toLowerCase();
+    return archivedPlansOnly.filter((p) => {
+      if (!q) return true;
+      return (
+        p.name.toLowerCase().includes(q) ||
+        (p.scope || "").toLowerCase().includes(q) ||
+        p.version.toLowerCase().includes(q)
+      );
+    });
+  }, [archivedPlansOnly, hiddenPlansSearch]);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -118,6 +151,7 @@ export default function HaccpCompliancePage() {
   const [hazardPlanFilter, setHazardPlanFilter] = useState("ALL");
   const [hazardTypeFilter, setHazardTypeFilter] = useState("ALL");
   const [hazardRiskFilter, setHazardRiskFilter] = useState("ALL");
+  const [hazardCriticalLimitFilter, setHazardCriticalLimitFilter] = useState("ALL");
   const [ccpPlanFilter, setCcpPlanFilter] = useState("ALL");
   const [ccpSetupFilter, setCcpSetupFilter] = useState("ALL");
   const [logSearchTerm, setLogSearchTerm] = useState("");
@@ -184,7 +218,9 @@ export default function HaccpCompliancePage() {
       p.version.toLowerCase().includes(query);
     const matchesStatus = statusFilter === "ALL" || p.status === statusFilter;
     const matchesCreatedDate = isDateInRange(p.created_at, planCreatedFrom, planCreatedTo);
-    return matchesSearch && matchesStatus && matchesCreatedDate;
+    const matchesArchiveList =
+      showHiddenHaccpPlans || p.status !== "ARCHIVED" || statusFilter === "ARCHIVED";
+    return matchesSearch && matchesStatus && matchesCreatedDate && matchesArchiveList;
   });
 
   const filteredPlansForFlow = plans.filter(p => {
@@ -195,20 +231,26 @@ export default function HaccpCompliancePage() {
       (p.scope || "").toLowerCase().includes(query) ||
       p.version.toLowerCase().includes(query);
     const matchesStatus = flowStatusFilter === "ALL" || p.status === flowStatusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesArchiveFlow =
+      showHiddenHaccpPlans || p.status !== "ARCHIVED" || flowStatusFilter === "ARCHIVED";
+    return matchesSearch && matchesStatus && matchesArchiveFlow;
   });
 
-  useEffect(() => {
-    if (!selectedPlanId && plans && plans.length > 0) {
-      setSelectedPlanId(plans[0].id);
-    }
-  }, [selectedPlanId, plans]);
+  const selectedPlanIdResolved = useMemo(() => {
+    const visibleIds = plansForComplianceUi.map((p) => p.id);
+    return visibleIds[0] ?? null;
+  }, [plansForComplianceUi]);
 
-  const { steps, loading: stepsLoading } = useProcessSteps(selectedPlanId);
-  const { ccps, loading: ccpsLoading } = useCCPs(selectedPlanId);
+  const { steps, loading: stepsLoading } = useProcessSteps(selectedPlanIdResolved);
+  const { ccps, loading: ccpsLoading } = useCCPs(selectedPlanIdResolved);
 
   // Hook for all CCPs (for the CCPs tab showing all plans)
   const { allCcps, loading: allCcpsLoading, refetch: refetchAllCcps } = useAllCCPs(loadAllCcpsData);
+
+  const ccpsForComplianceUi = useMemo(
+    () => allCcps.filter((c) => compliancePlanIdSet.has(c.haccp_plan_id)),
+    [allCcps, compliancePlanIdSet],
+  );
 
   // Hook for users (for monitoring logs form)
   const { users, loading: usersLoading } = useUsers({ is_active: true }, loadUsersForForms);
@@ -221,9 +263,51 @@ export default function HaccpCompliancePage() {
 
   const allCcpMap = useMemo(() => new Map(allCcps.map((ccp) => [ccp.id, ccp])), [allCcps]);
 
+  /** Mối nguy → CCP + giới hạn tới hạn: ưu tiên hazard_id, fallback một CCP không gắn hazard trên cùng bước. */
+  const getHazardCriticalLimitStatus = useMemo(() => {
+    return (hazardId: string, stepId: string, planId: string) => {
+      const byHazard = allCcps.find((c) => c.hazard_id === hazardId);
+      if (byHazard) {
+        return {
+          ccp: byHazard,
+          hasLinkedCcp: true,
+          hasCriticalLimit: !!byHazard.critical_limit?.trim(),
+        };
+      }
+      const stepOnly = allCcps.filter(
+        (c) =>
+          c.haccp_plan_id === planId &&
+          c.step_id === stepId &&
+          !c.hazard_id,
+      );
+      if (stepOnly.length === 1) {
+        const c = stepOnly[0];
+        return { ccp: c, hasLinkedCcp: true, hasCriticalLimit: !!c.critical_limit?.trim() };
+      }
+      return { ccp: undefined, hasLinkedCcp: false, hasCriticalLimit: false };
+    };
+  }, [allCcps]);
+
+  const hazardPlanFilterSafe = useMemo(() => {
+    if (hazardPlanFilter === "ALL") return "ALL";
+    return compliancePlanIdSet.has(hazardPlanFilter) ? hazardPlanFilter : "ALL";
+  }, [hazardPlanFilter, compliancePlanIdSet]);
+
+  const ccpPlanFilterSafe = useMemo(() => {
+    if (ccpPlanFilter === "ALL") return "ALL";
+    return compliancePlanIdSet.has(ccpPlanFilter) ? ccpPlanFilter : "ALL";
+  }, [ccpPlanFilter, compliancePlanIdSet]);
+
+  const logCcpFilterSafe = useMemo(() => {
+    if (logCcpFilter === "ALL") return "ALL";
+    const c = allCcpMap.get(logCcpFilter);
+    if (!c || !compliancePlanIdSet.has(c.haccp_plan_id)) return "ALL";
+    return logCcpFilter;
+  }, [logCcpFilter, allCcpMap, compliancePlanIdSet]);
+
   const filteredAllCcps = useMemo(() => {
     const query = ccpSearchTerm.trim().toLowerCase();
-    return allCcps.filter((ccp) => {
+    return ccpsForComplianceUi.filter((ccp) => {
       const matchesSearch =
         !query ||
         ccp.name.toLowerCase().includes(query) ||
@@ -231,7 +315,7 @@ export default function HaccpCompliancePage() {
         (ccp.critical_limit || "").toLowerCase().includes(query) ||
         (ccp.monitoring_method || "").toLowerCase().includes(query) ||
         (ccp.monitoring_frequency || "").toLowerCase().includes(query);
-      const matchesPlan = ccpPlanFilter === "ALL" || ccp.haccp_plan_id === ccpPlanFilter;
+      const matchesPlan = ccpPlanFilterSafe === "ALL" || ccp.haccp_plan_id === ccpPlanFilterSafe;
       const setupComplete = isMonitoringPlanComplete(ccp);
       const matchesSetup =
         ccpSetupFilter === "ALL" ||
@@ -239,12 +323,15 @@ export default function HaccpCompliancePage() {
         (ccpSetupFilter === "incomplete" && !setupComplete);
       return matchesSearch && matchesPlan && matchesSetup;
     });
-  }, [allCcps, ccpPlanFilter, ccpSearchTerm, ccpSetupFilter]);
+  }, [ccpsForComplianceUi, ccpPlanFilterSafe, ccpSearchTerm, ccpSetupFilter]);
 
   const filteredMonitoringLogs = useMemo(() => {
     const query = logSearchTerm.trim().toLowerCase();
     return allLogs.filter((log) => {
       const ccp = allCcpMap.get(log.ccp_id);
+      const planIdForLog = ccp?.haccp_plan_id;
+      const matchesVisiblePlan =
+        !planIdForLog || compliancePlanIdSet.has(planIdForLog);
       const matchesSearch =
         !query ||
         (log.batch_number || "").toLowerCase().includes(query) ||
@@ -256,47 +343,68 @@ export default function HaccpCompliancePage() {
         logResultFilter === "ALL" ||
         (logResultFilter === "pass" && log.is_within_limit) ||
         (logResultFilter === "fail" && log.is_within_limit === false);
-      const matchesCcp = logCcpFilter === "ALL" || log.ccp_id === logCcpFilter;
+      const matchesCcp = logCcpFilterSafe === "ALL" || log.ccp_id === logCcpFilterSafe;
       const matchesDate = isDateInRange(log.recorded_at, logDateFrom, logDateTo);
-      return matchesSearch && matchesResult && matchesCcp && matchesDate;
+      return matchesSearch && matchesResult && matchesCcp && matchesDate && matchesVisiblePlan;
     });
-  }, [allCcpMap, allLogs, logCcpFilter, logDateFrom, logDateTo, logResultFilter, logSearchTerm]);
+  }, [allCcpMap, allLogs, compliancePlanIdSet, logCcpFilterSafe, logDateFrom, logDateTo, logResultFilter, logSearchTerm]);
 
   // Deviation management state (API lấy org từ JWT — chỉ gọi khi đã có principal)
   const [deviationFilters, setDeviationFilters] = useState<DeviationFilters>({});
+  const deviationFiltersForApi = useMemo(() => {
+    const pid = deviationFilters.plan_id;
+    if (pid && !compliancePlanIdSet.has(pid)) {
+      return { ...deviationFilters, plan_id: undefined, ccp_id: undefined };
+    }
+    return deviationFilters;
+  }, [deviationFilters, compliancePlanIdSet]);
   const deviationsEnabled = loadDeviationsData && !!principal?.org_id;
   const { deviations, loading: deviationsLoading, refetch: refetchDeviations } = useDeviations(
-    deviationFilters,
+    deviationFiltersForApi,
     deviationsEnabled,
   );
+  const deviationsForComplianceUi = useMemo(() => {
+    return deviations.filter((dev) => {
+      const ccp = allCcpMap.get(dev.ccp_id);
+      const pid = ccp?.haccp_plan_id;
+      if (!pid) return true;
+      return compliancePlanIdSet.has(pid);
+    });
+  }, [deviations, allCcpMap, compliancePlanIdSet]);
   const { stats: deviationStats, loading: deviationStatsLoading, refetch: refetchDeviationStats } =
-    useDeviationStats(deviationFilters, deviationsEnabled);
+    useDeviationStats(deviationFiltersForApi, deviationsEnabled);
   const [selectedDeviation, setSelectedDeviation] = useState<CCPMonitoringLog | null>(null);
   const [isHandleDeviationModalOpen, setIsHandleDeviationModalOpen] = useState(false);
 
   // Hook lấy tất cả công đoạn và mối nguy từ tất cả kế hoạch cho phân tích đầy đủ
-  const { allStepsWithHazards, loading: allHazardsFullLoading } =
+  const { allStepsWithHazards, loading: allHazardsFullLoading, refetch: refetchAllStepsWithHazards } =
     useAllProcessStepsWithHazards(loadFullHazardAnalysis);
-
-  // Build maps for AssessmentPanel
-  const stepsByPlan = useMemo(() => {
-    const map: Record<string, ProcessStep[]> = {};
-    for (const step of allStepsWithHazards) {
-      if (!map[step.plan_id]) map[step.plan_id] = [];
-      const { plan_id, plan_name, hazards, ...rest } = step as any;
-      map[step.plan_id].push(rest);
-    }
-    return map;
-  }, [allStepsWithHazards]);
 
   const ccpsByPlan = useMemo(() => {
     const map: Record<string, CCP[]> = {};
-    for (const ccp of allCcps) {
+    for (const ccp of ccpsForComplianceUi) {
       if (!map[ccp.haccp_plan_id]) map[ccp.haccp_plan_id] = [];
       map[ccp.haccp_plan_id].push(ccp);
     }
     return map;
-  }, [allCcps]);
+  }, [ccpsForComplianceUi]);
+
+  const allStepsWithHazardsForUi = useMemo(
+    () => allStepsWithHazards.filter((s) => compliancePlanIdSet.has(s.plan_id)),
+    [allStepsWithHazards, compliancePlanIdSet],
+  );
+
+  const hazardsMissingCriticalLimitCount = useMemo(() => {
+    let n = 0;
+    for (const step of allStepsWithHazardsForUi) {
+      if (hazardPlanFilterSafe !== "ALL" && step.plan_id !== hazardPlanFilterSafe) continue;
+      for (const h of step.hazards || []) {
+        const st = getHazardCriticalLimitStatus(h.id, step.id, step.plan_id);
+        if (!st.hasCriticalLimit) n += 1;
+      }
+    }
+    return n;
+  }, [allStepsWithHazardsForUi, hazardPlanFilterSafe, getHazardCriticalLimitStatus]);
 
   const hazardColor = (hazardType: string) => {
     if (hazardType === "BIOLOGICAL") return "bg-orange-500";
@@ -315,12 +423,32 @@ export default function HaccpCompliancePage() {
   // Refresh plans when Wizard finishes successfully to fetch new data
   const handleWizardSuccess = () => {
     refetchPlans();
+    void refetchAllCcps();
+    void refetchAllStepsWithHazards();
     setIsWizardOpen(false);
     setWizardPlanId(null);
   };
 
   // Handle plan approval - Không cần phân quyền, ai cũng có thể duyệt
   const handleApprovePlan = async (planId: string) => {
+    const planSteps = allStepsWithHazardsForUi.filter((s) => s.plan_id === planId);
+    let missingCritical = 0;
+    for (const step of planSteps) {
+      for (const h of step.hazards || []) {
+        if (!getHazardCriticalLimitStatus(h.id, step.id, planId).hasCriticalLimit) {
+          missingCritical += 1;
+        }
+      }
+    }
+    if (missingCritical > 0) {
+      alert(
+        `Chưa thể phê duyệt: còn ${missingCritical} mối nguy trong phân tích mối nguy chưa có giới hạn tới hạn (CCP) hợp lệ. Hãy mở «Sửa Quy trình», gắn CCP với từng mối nguy (hoặc một CCP cho bước) và nhập giới hạn tới hạn đầy đủ.`,
+      );
+      setWizardPlanId(planId);
+      setIsWizardOpen(true);
+      return;
+    }
+
     if (!confirm("Phê duyệt kế hoạch này?\n\nSau khi phê duyệt, kế hoạch sẽ chuyển sang trạng thái ACTIVE.")) return;
 
     try {
@@ -335,28 +463,56 @@ export default function HaccpCompliancePage() {
     }
   };
 
-  // Handle plan deletion with warning for ACTIVE plans
-  const handleDeletePlan = async (plan: any) => {
-    const isActive = plan.status === 'ACTIVE';
-    const warningMessage = isActive
-      ? `⚠️ CẢNH BÁO: Bạn đang xóa kế hoạch đang ACTIVE!\n\n` +
-      `Kế hoạch: "${plan.name}" (v${plan.version})\n\n` +
-      `Hậu quả:\n` +
-      `- Mọi dữ liệu (quy trình, CCP, mối nguy) sẽ bị xóa vĩnh viễn\n` +
-      `- Lịch sử giám sát CCP sẽ bị mất\n` +
-      `- Các lô sản phẩm liên quan sẽ không có liên kết HACCP\n\n` +
-      `Bạn có chắc chắn muốn xóa?`
-      : `Bạn có chắc chắn muốn xóa kế hoạch "${plan.name}"?\n\nMọi dữ liệu (quy trình, CCP) sẽ bị xóa vĩnh viễn.`;
-
-    if (!confirm(warningMessage)) return;
-    if (isActive && !confirm(`XÁC NHẬN LẦN 2: Kế hoạch ACTIVE sẽ bị xóa hoàn toàn.\nTiếp tục?`)) return;
+  // Ẩn quy trình: giữ dữ liệu, đặt trạng thái ARCHIVED (không gọi DELETE)
+  const handleHidePlan = async (plan: HaccpPlan) => {
+    if (
+      !confirm(
+        `Ẩn quy trình "${plan.name}"?\n\nQuy trình sẽ không còn hiển thị ở các mục HACCP cho đến khi bạn bật "Hiện quy trình đã ẩn" hoặc khôi phục. Dữ liệu CCP, mối nguy và nhật ký được giữ nguyên.`,
+      )
+    )
+      return;
 
     try {
-      await apiFetch(`/haccp/plans/${plan.id}`, { method: 'DELETE' });
-      alert(`Đã xóa kế hoạch "${plan.name}" thành công!`);
+      await apiFetch(`/haccp/plans/${plan.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "ARCHIVED" }),
+      });
+      alert(`Đã ẩn quy trình "${plan.name}".`);
       refetchPlans();
+      setHazardPlanFilter((f) => (f === plan.id ? "ALL" : f));
+      setCcpPlanFilter((f) => (f === plan.id ? "ALL" : f));
+      setLogCcpFilter((fid) => {
+        if (fid === "ALL") return fid;
+        const c = allCcps.find((x) => x.id === fid);
+        return c?.haccp_plan_id === plan.id ? "ALL" : fid;
+      });
+      setDeviationFilters((prev) =>
+        prev.plan_id === plan.id ? { ...prev, plan_id: undefined, ccp_id: undefined } : prev,
+      );
     } catch (err: any) {
-      alert("Lỗi khi xóa: " + err.message);
+      alert("Lỗi khi ẩn quy trình: " + err.message);
+    }
+  };
+
+  const handleRestorePlan = async (
+    plan: HaccpPlan,
+    opts?: { onAfterRestore?: () => void },
+  ) => {
+    if (!confirm(`Hiển thị lại quy trình "${plan.name}" vào danh sách làm việc?`)) return;
+
+    const nextStatus: "ACTIVE" | "DRAFT" =
+      plan.approved_at && plan.approved_by ? "ACTIVE" : "DRAFT";
+
+    try {
+      await apiFetch(`/haccp/plans/${plan.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      alert(`Đã hiển thị lại quy trình "${plan.name}" (${nextStatus}).`);
+      refetchPlans();
+      opts?.onAfterRestore?.();
+    } catch (err: any) {
+      alert("Lỗi khi khôi phục: " + err.message);
     }
   };
 
@@ -365,62 +521,11 @@ export default function HaccpCompliancePage() {
     return allCcpMap.get(ccpId) || ccps.find(c => c.id === ccpId);
   };
 
-  // ============================================================================
-  // MONITORING LOG FORM STATE & HANDLERS
-  // ============================================================================
-  const [showLogForm, setShowLogForm] = useState(false);
-  const [logFormData, setLogFormData] = useState({
-    ccp_id: "",
-    batch_number: "",
-    shift: "Ca 1",
-    measured_value: "",
-    unit: "°C",
-    is_within_limit: true,
-    deviation_note: "",
-    recorded_by: "",
-    deviation_severity: undefined as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | undefined
-  });
-
-  const handleCreateLog = async () => {
-    if (!logFormData.ccp_id || !logFormData.measured_value || !logFormData.recorded_by) {
-      alert("Vui lòng điền đầy đủ thông tin bắt buộc (CCP, Giá trị đo, Người ghi nhận)");
-      return;
-    }
-    try {
-      // Convert measured_value to number before sending
-      const payload = {
-        ...logFormData,
-        measured_value: logFormData.measured_value ? parseFloat(logFormData.measured_value) : undefined,
-        recorded_at: new Date().toISOString()
-      };
-      // Remove empty/undefined fields
-      if (!payload.measured_value && payload.measured_value !== 0) delete payload.measured_value;
-      if (!payload.deviation_severity) delete payload.deviation_severity;
-
-      await apiFetch(`/haccp/ccps/${logFormData.ccp_id}/logs`, {
-        method: 'POST',
-        body: JSON.stringify(payload)
-      });
-      alert("Đã tạo nhật ký giám sát thành công!");
-      setShowLogForm(false);
-      setLogFormData({
-        ccp_id: "",
-        batch_number: "",
-        shift: "Ca 1",
-        measured_value: "",
-        unit: "°C",
-        is_within_limit: true,
-        deviation_note: "",
-        recorded_by: "",
-        deviation_severity: undefined
-      });
-      refetchLogs();
-      if (refetchDeviations) refetchDeviations();
-      if (refetchDeviationStats) refetchDeviationStats();
-    } catch (err: any) {
-      alert("Lỗi khi tạo nhật ký: " + err.message);
-    }
-  };
+  const [pendingAssessmentAfterMonitoringSavePlanId, setPendingAssessmentAfterMonitoringSavePlanId] =
+    useState<string | null>(null);
+  const consumePendingAssessmentCreate = useCallback(() => {
+    setPendingAssessmentAfterMonitoringSavePlanId(null);
+  }, []);
 
   return (
     <AppShell activePath="/haccp-compliance">
@@ -449,12 +554,58 @@ export default function HaccpCompliancePage() {
               </div> */}
             </div>
 
-            <button
-              onClick={() => { setWizardPlanId(null); setIsWizardOpen(true); }}
-              className="bg-white text-[#1e8b9b] px-4 py-2 rounded font-semibold text-sm hover:bg-slate-100 shadow-sm transition-transform hover:-translate-y-0.5 active:translate-y-0 shadow-white/20"
-            >
-              + Tạo Quy Trình HACCP
-            </button>
+            <div className="flex items-center gap-4 shrink-0">
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-white/95 select-none">
+                <input
+                  type="checkbox"
+                  checked={showHiddenHaccpPlans}
+                  onChange={(e) => {
+                    const v = e.target.checked;
+                    setShowHiddenHaccpPlans(v);
+                    if (!v) {
+                      const archivedPlanIds = new Set(
+                        plans.filter((p) => p.status === "ARCHIVED").map((p) => p.id),
+                      );
+                      setHazardPlanFilter((f) => (f !== "ALL" && archivedPlanIds.has(f) ? "ALL" : f));
+                      setCcpPlanFilter((f) => (f !== "ALL" && archivedPlanIds.has(f) ? "ALL" : f));
+                      setLogCcpFilter((fid) => {
+                        if (fid === "ALL") return fid;
+                        const c = allCcps.find((x) => x.id === fid);
+                        return c && archivedPlanIds.has(c.haccp_plan_id) ? "ALL" : fid;
+                      });
+                      setDeviationFilters((prev) =>
+                        prev.plan_id && archivedPlanIds.has(prev.plan_id)
+                          ? { ...prev, plan_id: undefined, ccp_id: undefined }
+                          : prev,
+                      );
+                    }
+                  }}
+                  className="h-4 w-4 rounded border-white/50 text-[#1e8b9b] focus:ring-2 focus:ring-white/40"
+                />
+                Hiện quy trình đã ẩn
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setHiddenPlansSearch("");
+                  setIsHiddenPlansListModalOpen(true);
+                }}
+                className="rounded-lg border border-white/45 bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/20"
+              >
+                Danh sách đã ẩn
+                {archivedPlansOnly.length > 0 ? (
+                  <span className="ml-1.5 rounded-full bg-white/25 px-2 py-0.5 text-xs font-bold">
+                    {archivedPlansOnly.length}
+                  </span>
+                ) : null}
+              </button>
+              <button
+                onClick={() => { setWizardPlanId(null); setIsWizardOpen(true); }}
+                className="bg-white text-[#1e8b9b] px-4 py-2 rounded font-semibold text-sm hover:bg-slate-100 shadow-sm transition-transform hover:-translate-y-0.5 active:translate-y-0 shadow-white/20"
+              >
+                + Tạo Quy Trình HACCP
+              </button>
+            </div>
           </div>
         </div>
 
@@ -487,7 +638,22 @@ export default function HaccpCompliancePage() {
             {activeTab === "plans-list" ? (
               <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-100">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                  <h3 className="text-lg font-bold text-slate-800">Danh sách Kế hoạch HACCP</h3>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-800">Danh sách Kế hoạch HACCP</h3>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHiddenPlansSearch("");
+                        setIsHiddenPlansListModalOpen(true);
+                      }}
+                      className="mt-1 text-left text-sm text-cyan-700 hover:text-cyan-900 hover:underline"
+                    >
+                      Xem danh sách quy trình đã ẩn và hiển thị lại…
+                      {archivedPlansOnly.length > 0 ? (
+                        <span className="ml-1 text-slate-500">({archivedPlansOnly.length})</span>
+                      ) : null}
+                    </button>
+                  </div>
 
                   <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
                     <div className="relative flex-1 sm:w-64">
@@ -508,7 +674,7 @@ export default function HaccpCompliancePage() {
                       <option value="ALL">Tất cả trạng thái</option>
                       <option value="DRAFT">Nháp (DRAFT)</option>
                       <option value="ACTIVE">Hoạt động (ACTIVE)</option>
-                      <option value="ARCHIVED">Lưu kho (ARCHIVED)</option>
+                      <option value="ARCHIVED">Đã ẩn (ARCHIVED)</option>
                     </select>
                     <div className="grid h-[58px] w-[620px] max-w-full shrink-0 grid-cols-[64px_184px_320px] items-center gap-2 overflow-hidden rounded-xl border border-cyan-100 bg-cyan-50/70 px-3 py-2">
                       <span className="whitespace-nowrap text-[10px] font-bold uppercase tracking-wide text-cyan-800">
@@ -652,14 +818,24 @@ export default function HaccpCompliancePage() {
                                 p.status === 'ARCHIVED' ? 'bg-slate-100 text-slate-600' :
                                   'bg-amber-100 text-amber-700'
                                 }`}>
-                                {p.status || 'DRAFT'}
+                                {p.status === 'ARCHIVED' ? 'Đã ẩn' : (p.status || 'DRAFT')}
                               </span>
                             </td>
                             <td className="px-4 py-3 text-xs">{new Date(p.created_at).toLocaleDateString("vi-VN")}</td>
                             <td className="px-4 py-3 text-right">
                               <div className="flex flex-wrap justify-end gap-2">
-                                {p.status === 'DRAFT' && (
+                                {p.status === "ARCHIVED" && (
                                   <button
+                                    type="button"
+                                    onClick={() => handleRestorePlan(p)}
+                                    className="text-xs text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded transition-colors font-medium border border-emerald-200"
+                                  >
+                                    Hiện lại
+                                  </button>
+                                )}
+                                {p.status === "DRAFT" && (
+                                  <button
+                                    type="button"
                                     onClick={() => handleApprovePlan(p.id)}
                                     className="text-xs text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded transition-colors font-medium border border-emerald-100"
                                   >
@@ -667,6 +843,7 @@ export default function HaccpCompliancePage() {
                                   </button>
                                 )}
                                 <button
+                                  type="button"
                                   onClick={() => {
                                     setFlowModalPlanId(p.id);
                                     setIsFlowModalOpen(true);
@@ -675,11 +852,11 @@ export default function HaccpCompliancePage() {
                                 >
                                   Xem luồng
                                 </button>
-                                {p.status === 'ACTIVE' ? (
+                                {p.status === "ACTIVE" && (
                                   <button
+                                    type="button"
                                     onClick={() => {
                                       try {
-                                        console.log('[BUTTON] Opening version modal for plan:', p);
                                         const planData = {
                                           id: p.id,
                                           version: p.version,
@@ -687,12 +864,9 @@ export default function HaccpCompliancePage() {
                                           scope: p.scope,
                                           product_id: p.product_id
                                         };
-                                        console.log('[BUTTON] Setting selectedPlanForVersion:', planData);
                                         setSelectedPlanForVersion(planData);
                                         setIsVersionModalOpen(true);
-                                        console.log('[BUTTON] Modal should be open now');
                                       } catch (err) {
-                                        console.error('[BUTTON] Error opening modal:', err);
                                         alert('Lỗi khi mở modal: ' + (err as Error).message);
                                       }
                                     }}
@@ -701,20 +875,25 @@ export default function HaccpCompliancePage() {
                                   >
                                     📝 Cập nhật
                                   </button>
-                                ) : (
+                                )}
+                                {p.status === "DRAFT" && (
                                   <button
+                                    type="button"
                                     onClick={() => { setWizardPlanId(p.id); setIsWizardOpen(true); }}
                                     className="text-xs text-purple-600 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded transition-colors font-medium border border-purple-100"
                                   >
                                     Sửa Quy trình
                                   </button>
                                 )}
-                                <button
-                                  onClick={() => handleDeletePlan(p)}
-                                  className={`text-xs px-3 py-1.5 rounded transition-colors font-medium border ${p.status === 'ACTIVE' ? 'text-amber-700 bg-amber-50 hover:bg-amber-100 border-amber-200' : 'text-red-600 bg-red-50 hover:bg-red-100 border-red-100'}`}
-                                >
-                                  {p.status === 'ACTIVE' ? 'Xóa' : 'Xóa'}
-                                </button>
+                                {p.status !== "ARCHIVED" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleHidePlan(p)}
+                                    className="text-xs text-amber-800 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded transition-colors font-medium border border-amber-200"
+                                  >
+                                    Ẩn quy trình
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -724,7 +903,7 @@ export default function HaccpCompliancePage() {
                   </table>
                 </div>
               </div>
-            ) : !selectedPlanId ? (
+            ) : !selectedPlanIdResolved ? (
               <div className="flex h-full items-center justify-center text-slate-400">
                 {plansLoading ? "Đang tải dữ liệu..." : "Vui lòng tạo hoặc chọn một kế hoạch HACCP"}
               </div>
@@ -754,7 +933,7 @@ export default function HaccpCompliancePage() {
                           <option value="ALL">Tất cả trạng thái</option>
                           <option value="DRAFT">Nháp</option>
                           <option value="ACTIVE">Hoạt động</option>
-                          <option value="ARCHIVED">Lưu kho</option>
+                          <option value="ARCHIVED">Đã ẩn</option>
                         </select>
                         {(flowSearchTerm || flowStatusFilter !== "ALL") && (
                           <button
@@ -771,9 +950,11 @@ export default function HaccpCompliancePage() {
                         <span className="text-xs text-slate-500">{filteredPlansForFlow.length} kế hoạch</span>
                       </div>
                     </div>
-                    {plans.length === 0 ? (
+                    {plansForComplianceUi.length === 0 ? (
                       <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-100 text-center text-slate-400">
-                        Chưa có kế hoạch HACCP nào. Hãy tạo kế hoạch mới.
+                        {plans.length === 0
+                          ? "Chưa có kế hoạch HACCP nào. Hãy tạo kế hoạch mới."
+                          : "Không có quy trình đang hiển thị. Các quy trình đã ẩn được lọc ra — bật «Hiện quy trình đã ẩn» ở thanh trên hoặc khôi phục từ tab Danh sách kế hoạch."}
                       </div>
                     ) : filteredPlansForFlow.length === 0 ? (
                       <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-100 text-center text-slate-400">
@@ -793,7 +974,7 @@ export default function HaccpCompliancePage() {
                                   <p className="text-xs text-slate-500">v{plan.version} | {plan.scope || "N/A"}</p>
                                 </div>
                                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase shrink-0 ml-2 ${plan.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' : plan.status === 'DRAFT' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
-                                  {plan.status || 'DRAFT'}
+                                  {plan.status === "ARCHIVED" ? "Đã ẩn" : (plan.status || "DRAFT")}
                                 </span>
                               </div>
                               <div className="bg-slate-50 rounded-lg p-2 mb-2 h-24 overflow-hidden">
@@ -819,7 +1000,7 @@ export default function HaccpCompliancePage() {
                     <div className="flex justify-between items-center mb-4">
                       <div>
                         <h3 className="text-base font-bold text-slate-800">Phân tích Mối nguy</h3>
-                        <p className="text-[10px] text-slate-500">Tất cả mối nguy từ các quy trình HACCP</p>
+                        <p className="text-[10px] text-slate-500">Tất cả mối nguy từ các quy trình HACCP — mỗi mối nguy cần có giới hạn tới hạn (CCP) đã thiết lập.</p>
                       </div>
                       <div className="flex gap-2 text-[10px]">
                         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span>Sinh học</span>
@@ -827,6 +1008,16 @@ export default function HaccpCompliancePage() {
                         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500"></span>Vật lý</span>
                       </div>
                     </div>
+                    {hazardsMissingCriticalLimitCount > 0 && (
+                      <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                        <span className="font-semibold">Cần hoàn thiện: </span>
+                        Có{" "}
+                        <span className="font-bold">{hazardsMissingCriticalLimitCount}</span> mối nguy
+                        {hazardPlanFilterSafe === "ALL" ? "" : " (theo kế hoạch đang lọc)"} chưa có{" "}
+                        <span className="font-medium">giới hạn tới hạn</span> hợp lệ. Thiết lập CCP và nhập giới hạn
+                        trong trình soạn quy trình HACCP (gắn CCP với mối nguy hoặc một CCP cho bước công đoạn).
+                      </div>
+                    )}
                     {/* Search Bar for Hazards */}
                     <div className="mb-4 relative">
                       <input
@@ -852,12 +1043,12 @@ export default function HaccpCompliancePage() {
                     </div>
                     <div className="mb-4 flex flex-wrap gap-2 items-center">
                       <select
-                        value={hazardPlanFilter}
+                        value={hazardPlanFilterSafe}
                         onChange={(e) => setHazardPlanFilter(e.target.value)}
                         className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
                       >
                         <option value="ALL">Tất cả kế hoạch</option>
-                        {plans.map((plan) => (
+                        {plansForComplianceUi.map((plan) => (
                           <option key={plan.id} value={plan.id}>
                             {plan.name}
                           </option>
@@ -884,7 +1075,16 @@ export default function HaccpCompliancePage() {
                         <option value="medium">Rủi ro trung bình (8-11)</option>
                         <option value="low">Rủi ro thấp (&lt; 8)</option>
                       </select>
-                      {(hazardSearchTerm || hazardPlanFilter !== "ALL" || hazardTypeFilter !== "ALL" || hazardRiskFilter !== "ALL") && (
+                      <select
+                        value={hazardCriticalLimitFilter}
+                        onChange={(e) => setHazardCriticalLimitFilter(e.target.value)}
+                        className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
+                      >
+                        <option value="ALL">Giới hạn tới hạn: tất cả</option>
+                        <option value="missing">Chưa thiết lập GL</option>
+                        <option value="ok">Đã có GL</option>
+                      </select>
+                      {(hazardSearchTerm || hazardPlanFilter !== "ALL" || hazardTypeFilter !== "ALL" || hazardRiskFilter !== "ALL" || hazardCriticalLimitFilter !== "ALL") && (
                         <button
                           type="button"
                           onClick={() => {
@@ -892,6 +1092,7 @@ export default function HaccpCompliancePage() {
                             setHazardPlanFilter("ALL");
                             setHazardTypeFilter("ALL");
                             setHazardRiskFilter("ALL");
+                            setHazardCriticalLimitFilter("ALL");
                           }}
                           className="text-sm text-slate-500 hover:text-slate-800 px-2 py-2"
                         >
@@ -905,7 +1106,7 @@ export default function HaccpCompliancePage() {
                         <div className="w-10 h-10 border-2 border-cyan-200 border-t-cyan-500 rounded-full animate-spin mx-auto mb-3"></div>
                         <p className="text-sm">Đang tải dữ liệu...</p>
                       </div>
-                    ) : allStepsWithHazards.length === 0 ? (
+                    ) : allStepsWithHazardsForUi.length === 0 ? (
                       <div className="text-center py-12 text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200 flex-1">
                         <span className="text-3xl mb-2 block">📊</span>
                         <p className="text-sm font-medium">Chưa có dữ liệu phân tích mối nguy</p>
@@ -915,11 +1116,16 @@ export default function HaccpCompliancePage() {
                       <div className="space-y-4 overflow-y-auto flex-1 pr-2 custom-scrollbar">
                         {(() => {
                           const query = hazardSearchTerm.trim().toLowerCase();
-                          const filteredSteps = allStepsWithHazards
-                            .filter((step) => hazardPlanFilter === "ALL" || step.plan_id === hazardPlanFilter)
+                          const filteredSteps = allStepsWithHazardsForUi
+                            .filter((step) => hazardPlanFilterSafe === "ALL" || step.plan_id === hazardPlanFilterSafe)
                             .map((step) => ({
                               ...step,
                               hazards: (step.hazards || []).filter((h) => {
+                                const cl = getHazardCriticalLimitStatus(h.id, step.id, step.plan_id);
+                                const matchesCl =
+                                  hazardCriticalLimitFilter === "ALL" ||
+                                  (hazardCriticalLimitFilter === "missing" && !cl.hasCriticalLimit) ||
+                                  (hazardCriticalLimitFilter === "ok" && cl.hasCriticalLimit);
                                 const matchesSearch =
                                   !query ||
                                   h.hazard_name.toLowerCase().includes(query) ||
@@ -934,7 +1140,7 @@ export default function HaccpCompliancePage() {
                                   (hazardRiskFilter === "high" && h.risk_score >= 12) ||
                                   (hazardRiskFilter === "medium" && h.risk_score >= 8 && h.risk_score < 12) ||
                                   (hazardRiskFilter === "low" && h.risk_score < 8);
-                                return matchesSearch && matchesType && matchesRisk;
+                                return matchesSearch && matchesType && matchesRisk && matchesCl;
                               }),
                             }))
                             .filter((step) => (step.hazards || []).length > 0);
@@ -960,6 +1166,14 @@ export default function HaccpCompliancePage() {
                             const totalHazards = planData.steps.reduce((sum, s) => sum + (s.hazards?.length || 0), 0);
                             const hasSignificant = planData.steps.some(s => s.hazards?.some(h => h.is_significant || h.risk_score >= 12));
                             const significantCount = planData.steps.reduce((sum, s) => sum + (s.hazards?.filter(h => h.is_significant || h.risk_score >= 12).length || 0), 0);
+                            const missingClCount = planData.steps.reduce(
+                              (sum, s) =>
+                                sum +
+                                (s.hazards || []).filter(
+                                  (h) => !getHazardCriticalLimitStatus(h.id, s.id, planId).hasCriticalLimit,
+                                ).length,
+                              0,
+                            );
 
                             return (
                               <div key={planId} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow">
@@ -975,6 +1189,11 @@ export default function HaccpCompliancePage() {
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-2">
+                                    {missingClCount > 0 && (
+                                      <span className="px-2 py-1 rounded-full text-[10px] font-medium bg-amber-100 text-amber-900 border border-amber-200">
+                                        {missingClCount} chưa GL
+                                      </span>
+                                    )}
                                     {hasSignificant && (
                                       <span className="px-2.5 py-1 bg-red-100 text-red-700 rounded-full text-[10px] font-medium flex items-center gap-1">
                                         <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></span>
@@ -990,10 +1209,10 @@ export default function HaccpCompliancePage() {
                                 {/* Bảng mối nguy - Table Header */}
                                 <div className="bg-slate-50/50 px-4 py-2 border-b border-slate-100 grid grid-cols-12 gap-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
                                   <div className="col-span-1 text-center">STT</div>
-                                  <div className="col-span-5">Tên mối nguy</div>
+                                  <div className="col-span-4">Tên mối nguy</div>
                                   <div className="col-span-2 text-center">Loại</div>
                                   <div className="col-span-2 text-center">Rủi ro</div>
-                                  <div className="col-span-2 text-center">Thông tin</div>
+                                  <div className="col-span-3 text-center">Giới hạn tới hạn (CCP)</div>
                                 </div>
 
                                 {/* Bảng mối nguy - Data Rows */}
@@ -1003,12 +1222,15 @@ export default function HaccpCompliancePage() {
                                     if (hazards.length === 0) return null;
                                     return (
                                       <div key={`step-group-${step.id}`} className="contents">
-                                        {hazards.map((h, hIdx) => (
+                                        {hazards.map((h) => {
+                                          const clStatus = getHazardCriticalLimitStatus(h.id, step.id, step.plan_id);
+                                          return (
                                           <div
                                             key={`${step.id}-${h.id}`}
-                                            className={`px-4 py-3 grid grid-cols-12 gap-3 items-center cursor-pointer transition-all duration-200 hover:bg-slate-50 group ${h.is_significant || h.risk_score >= 12 ? 'bg-red-50/40 hover:bg-red-50/60' : ''}`}
+                                            className={`px-4 py-3 grid grid-cols-12 gap-3 items-center cursor-pointer transition-all duration-200 hover:bg-slate-50 group ${!clStatus.hasCriticalLimit ? "border-l-4 border-amber-400 bg-amber-50/30" : ""} ${h.is_significant || h.risk_score >= 12 ? 'bg-red-50/40 hover:bg-red-50/60' : ''}`}
                                             onClick={() => {
                                               setSelectedHazard(h);
+                                              setSelectedHazardContext({ planId: step.plan_id, stepId: step.id });
                                               setSelectedStepInfo({ stepName: step.name, planName: planData.planName });
                                               setIsHazardModalOpen(true);
                                             }}
@@ -1026,7 +1248,7 @@ export default function HaccpCompliancePage() {
                                             </div>
 
                                             {/* Tên mối nguy + Mô tả + Tên công đoạn */}
-                                            <div className="col-span-5 min-w-0">
+                                            <div className="col-span-4 min-w-0">
                                               <p className="text-sm font-semibold text-slate-800 group-hover:text-cyan-700 transition-colors truncate">
                                                 {h.hazard_name}
                                               </p>
@@ -1063,29 +1285,59 @@ export default function HaccpCompliancePage() {
                                               <span className="text-[9px] text-slate-400 mt-1">L{h.likelihood} × S{h.severity}</span>
                                             </div>
 
-                                            {/* Icons chỉ báo */}
-                                            <div className="col-span-2 flex items-center justify-center gap-2">
-                                              {h.is_significant && (
-                                                <span className="w-7 h-7 rounded-lg bg-red-100 flex items-center justify-center text-red-600" title="Mối nguy đáng kể">
-                                                  ⚠️
-                                                </span>
+                                            {/* Giới hạn tới hạn + thiết lập */}
+                                            <div className="col-span-3 flex flex-col gap-1.5 min-w-0 justify-center">
+                                              {clStatus.hasCriticalLimit && clStatus.ccp ? (
+                                                <div className="rounded-md border border-emerald-200 bg-emerald-50/80 px-2 py-1.5">
+                                                  <p className="text-[9px] font-semibold uppercase text-emerald-800">GL ({clStatus.ccp.ccp_code})</p>
+                                                  <p className="text-xs text-slate-800 line-clamp-2" title={clStatus.ccp.critical_limit}>
+                                                    {clStatus.ccp.critical_limit}
+                                                  </p>
+                                                </div>
+                                              ) : (
+                                                <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5">
+                                                  <p className="text-[10px] font-semibold text-amber-900">
+                                                    {!clStatus.hasLinkedCcp
+                                                      ? "Chưa gắn CCP với mối nguy"
+                                                      : "CCP chưa có giới hạn tới hạn"}
+                                                  </p>
+                                                  <button
+                                                    type="button"
+                                                    className="mt-1 text-left text-[10px] font-medium text-cyan-700 underline hover:text-cyan-900"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      setWizardPlanId(step.plan_id);
+                                                      setIsWizardOpen(true);
+                                                    }}
+                                                  >
+                                                    Mở sửa quy trình để thiết lập
+                                                  </button>
+                                                </div>
                                               )}
-                                              {h.control_measure && (
-                                                <span className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600" title="Có biện pháp kiểm soát">
-                                                  🛡️
+                                              <div className="flex flex-wrap items-center gap-1">
+                                                {h.is_significant && (
+                                                  <span className="rounded bg-red-100 px-1 py-0.5 text-[8px] font-bold text-red-700" title="Mối nguy đáng kể">
+                                                    Đáng kể
+                                                  </span>
+                                                )}
+                                                {h.control_measure && (
+                                                  <span className="text-[9px] text-emerald-600" title="Có biện pháp kiểm soát">
+                                                    🛡️
+                                                  </span>
+                                                )}
+                                                {h.ai_suggestion && (
+                                                  <span className="text-[9px] text-blue-600" title="Có đề xuất AI">
+                                                    🤖
+                                                  </span>
+                                                )}
+                                                <span className="ml-auto text-[10px] text-slate-400 opacity-0 transition-opacity group-hover:opacity-100">
+                                                  Xem chi tiết →
                                                 </span>
-                                              )}
-                                              {h.ai_suggestion && (
-                                                <span className="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600" title="Có đề xuất AI">
-                                                  🤖
-                                                </span>
-                                              )}
-                                              <span className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" title="Click xem chi tiết">
-                                                →
-                                              </span>
+                                              </div>
                                             </div>
                                           </div>
-                                        ))}
+                                        );
+                                        })}
                                       </div>
                                     );
                                   })}
@@ -1102,7 +1354,10 @@ export default function HaccpCompliancePage() {
                 {/* Hazard Detail Modal */}
                 <Modal
                   isOpen={isHazardModalOpen}
-                  onClose={() => setIsHazardModalOpen(false)}
+                  onClose={() => {
+                    setIsHazardModalOpen(false);
+                    setSelectedHazardContext(null);
+                  }}
                   title="Chi tiết Phân tích Mối nguy"
                 >
                   {selectedHazard && selectedStepInfo && (
@@ -1184,6 +1439,57 @@ export default function HaccpCompliancePage() {
                         </div>
                       </div>
 
+                      {selectedHazard && (() => {
+                        const stepId = selectedHazardContext?.stepId ?? selectedHazard.step_id;
+                        const planId =
+                          selectedHazardContext?.planId ??
+                          allStepsWithHazardsForUi.find((s) => s.id === stepId)?.plan_id ??
+                          "";
+                        if (!planId) return null;
+                        const st = getHazardCriticalLimitStatus(selectedHazard.id, stepId, planId);
+                        return (
+                          <div
+                            className={`rounded-xl border p-4 ${st.hasCriticalLimit ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}
+                          >
+                            <p className="text-xs font-bold uppercase tracking-wide text-slate-700 mb-2">
+                              Giới hạn tới hạn (CCP)
+                            </p>
+                            {st.hasCriticalLimit && st.ccp ? (
+                              <div className="space-y-2">
+                                <p className="text-sm text-slate-800">
+                                  <span className="font-semibold text-emerald-800">{st.ccp.ccp_code}</span>
+                                  {" — "}
+                                  {st.ccp.name}
+                                </p>
+                                <p className="text-sm text-slate-700 leading-relaxed border-t border-emerald-200/60 pt-2">
+                                  {st.ccp.critical_limit}
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="space-y-3">
+                                <p className="text-sm text-amber-950">
+                                  {!st.hasLinkedCcp
+                                    ? "Mối nguy này chưa được gắn với CCP (hoặc chưa có đúng một CCP cho bước công đoạn). Cần thiết lập để có giới hạn tới hạn."
+                                    : "CCP đã gắn nhưng chưa nhập giới hạn tới hạn (critical limit)."}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setWizardPlanId(planId);
+                                    setIsWizardOpen(true);
+                                    setIsHazardModalOpen(false);
+                                    setSelectedHazardContext(null);
+                                  }}
+                                  className="rounded-lg bg-cyan-700 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-800"
+                                >
+                                  Mở sửa quy trình HACCP
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                       {/* Description Card */}
                       {selectedHazard.description && (
                         <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
@@ -1251,7 +1557,7 @@ export default function HaccpCompliancePage() {
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="text-lg font-bold text-slate-800">Danh sách Điểm Kiểm soát Tới hạn (CCP)</h3>
                       <span className="text-xs text-slate-500">
-                        {filteredAllCcps.length}/{allCcps.length} CCP từ tất cả quy trình
+                        {filteredAllCcps.length}/{ccpsForComplianceUi.length} CCP từ quy trình đang hiển thị
                       </span>
                     </div>
 
@@ -1281,12 +1587,12 @@ export default function HaccpCompliancePage() {
 
                     <div className="mb-4 flex flex-wrap gap-2 items-center">
                       <select
-                        value={ccpPlanFilter}
+                        value={ccpPlanFilterSafe}
                         onChange={(e) => setCcpPlanFilter(e.target.value)}
                         className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
                       >
                         <option value="ALL">Tất cả kế hoạch</option>
-                        {plans.map((plan) => (
+                        {plansForComplianceUi.map((plan) => (
                           <option key={plan.id} value={plan.id}>
                             {plan.name}
                           </option>
@@ -1341,7 +1647,7 @@ export default function HaccpCompliancePage() {
                           }
 
                           // Tạo map plan_id -> plan_name
-                          const planMap = new Map(plans.map(p => [p.id, p.name]));
+                          const planMap = new Map(plansForComplianceUi.map(p => [p.id, p.name]));
                           // Tạo map step_id -> step_name
                           const stepMap = new Map(steps.map(s => [s.id, s.name]));
 
@@ -1562,16 +1868,15 @@ export default function HaccpCompliancePage() {
                 {/* MONITORING PLAN TAB */}
                 {activeTab === "monitoring" && (
                   <MonitoringPlanEditor
-                    plans={plans}
-                    allCcps={allCcps}
+                    plans={plansForComplianceUi}
+                    allCcps={ccpsForComplianceUi}
                     allCcpsLoading={allCcpsLoading}
                     refetchAllCcps={refetchAllCcps}
                     users={users}
                     usersLoading={usersLoading}
-                    onCreateLog={(ccpId) => {
-                      setLogFormData(prev => ({ ...prev, ccp_id: ccpId }));
-                      setActiveTab("monitoring-logs");
-                      setShowLogForm(true);
+                    onMonitoringPlanSaved={(planId) => {
+                      setPendingAssessmentAfterMonitoringSavePlanId(planId);
+                      setActiveTab("assessments");
                     }}
                   />
                 )}
@@ -1579,177 +1884,20 @@ export default function HaccpCompliancePage() {
                 {/* MONITORING LOGS TAB */}
                 {activeTab === "monitoring-logs" && (
                   <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-100">
-                    <div className="flex justify-between items-center mb-6">
+                    <div className="flex justify-between items-center mb-4">
                       <h3 className="text-lg font-bold text-slate-800">Nhật ký Giám sát CCP</h3>
-                      <div className="flex items-center gap-4">
-                        <span className="text-xs text-slate-500">
-                          {filteredMonitoringLogs.length}/{allLogs.length} bản ghi
-                        </span>
-                        <button
-                          onClick={() => setShowLogForm(!showLogForm)}
-                          className="bg-cyan-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-cyan-700 transition-colors"
-                        >
-                          {showLogForm ? 'Đóng form' : '+ Ghi nhật ký'}
-                        </button>
-                      </div>
+                      <span className="text-xs text-slate-500">
+                        {filteredMonitoringLogs.length}/{allLogs.length} bản ghi
+                      </span>
                     </div>
-
-                    {/* Form tạo nhật ký */}
-                    {showLogForm && (
-                      <div className="mb-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
-                        <h4 className="text-sm font-bold text-slate-700 mb-4">Tạo nhật ký giám sát mới</h4>
-
-                        {/* Hiển thị thông tin kế hoạch giám sát khi chọn CCP */}
-                        {logFormData.ccp_id && (() => {
-                          const selectedCcp = allCcps.find(c => c.id === logFormData.ccp_id);
-                          if (!selectedCcp) return null;
-                          return (
-                            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                              <h5 className="text-xs font-bold text-blue-800 mb-2">📋 Thông tin Kế hoạch Giám sát</h5>
-                              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-                                <div>
-                                  <span className="text-blue-600 font-medium">Giới hạn tới hạn:</span>
-                                  <p className="text-blue-900 font-semibold">{selectedCcp.critical_limit || "Chưa thiết lập"}</p>
-                                </div>
-                                <div>
-                                  <span className="text-blue-600 font-medium">Phương pháp:</span>
-                                  <p className="text-blue-900">{selectedCcp.monitoring_method || "-"}</p>
-                                </div>
-                                <div>
-                                  <span className="text-blue-600 font-medium">Tần suất:</span>
-                                  <p className="text-blue-900">{selectedCcp.monitoring_frequency || "-"}</p>
-                                </div>
-                                <div>
-                                  <span className="text-blue-600 font-medium">Người phụ trách:</span>
-                                  <p className="text-blue-900">{selectedCcp.responsible_user ? getUserDisplayName(selectedCcp.responsible_user) : "-"}</p>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })()}
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div>
-                            <label className="block text-xs font-medium text-slate-600 mb-1">CCP *</label>
-                            <select
-                              value={logFormData.ccp_id}
-                              onChange={(e) => setLogFormData({ ...logFormData, ccp_id: e.target.value })}
-                              className="w-full text-sm p-2 rounded border border-slate-300"
-                            >
-                              <option value="">-- Chọn CCP --</option>
-                              {allCcpsLoading ? (
-                                <option value="">Đang tải...</option>
-                              ) : (
-                                allCcps.map((ccp) => (
-                                  <option key={ccp.id} value={ccp.id}>{ccp.ccp_code} - {ccp.name}</option>
-                                ))
-                              )}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-slate-600 mb-1">Lô sản xuất</label>
-                            <input
-                              type="text"
-                              value={logFormData.batch_number}
-                              onChange={(e) => setLogFormData({ ...logFormData, batch_number: e.target.value })}
-                              placeholder="VD: LOT-2024-001"
-                              className="w-full text-sm p-2 rounded border border-slate-300"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-slate-600 mb-1">Ca làm việc</label>
-                            <select
-                              value={logFormData.shift}
-                              onChange={(e) => setLogFormData({ ...logFormData, shift: e.target.value })}
-                              className="w-full text-sm p-2 rounded border border-slate-300"
-                            >
-                              <option value="Ca 1">Ca 1 (6h-14h)</option>
-                              <option value="Ca 2">Ca 2 (14h-22h)</option>
-                              <option value="Ca 3">Ca 3 (22h-6h)</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-slate-600 mb-1">Giá trị đo *</label>
-                            <input
-                              type="text"
-                              value={logFormData.measured_value}
-                              onChange={(e) => setLogFormData({ ...logFormData, measured_value: e.target.value })}
-                              placeholder="VD: 72.5"
-                              className="w-full text-sm p-2 rounded border border-slate-300"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-slate-600 mb-1">Đơn vị</label>
-                            <select
-                              value={logFormData.unit}
-                              onChange={(e) => setLogFormData({ ...logFormData, unit: e.target.value })}
-                              className="w-full text-sm p-2 rounded border border-slate-300"
-                            >
-                              <option value="°C">°C (Nhiệt độ)</option>
-                              <option value="Kg">Kg (Khối lượng)</option>
-                              <option value="%">% (Độ ẩm/pH)</option>
-                              <option value="ppm">ppm (Hóa chất)</option>
-                              <option value="ph">pH</option>
-                              <option value="phút">phút (Thời gian)</option>
-                              <option value="giây">giây</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-slate-600 mb-1">Kết quả</label>
-                            <select
-                              value={logFormData.is_within_limit.toString()}
-                              onChange={(e) => setLogFormData({ ...logFormData, is_within_limit: e.target.value === 'true' })}
-                              className="w-full text-sm p-2 rounded border border-slate-300"
-                            >
-                              <option value="true">✅ Đạt (Trong giới hạn)</option>
-                              <option value="false">❌ Không đạt </option>
-                            </select>
-                          </div>
-                          {!logFormData.is_within_limit && (
-                            <div className="md:col-span-3">
-                              <label className="block text-xs font-medium text-slate-600 mb-1">Ghi chú độ lệch *</label>
-                              <textarea
-                                value={logFormData.deviation_note}
-                                onChange={(e) => setLogFormData({ ...logFormData, deviation_note: e.target.value })}
-                                placeholder="Mô tả chi tiết độ lệch và hành động khắc phục..."
-                                className="w-full text-sm p-2 rounded border border-slate-300 h-20"
-                              />
-                            </div>
-                          )}
-                          <div className="md:col-span-3">
-                            <label className="block text-xs font-medium text-slate-600 mb-1">Người ghi nhận *</label>
-                            <select
-                              value={logFormData.recorded_by}
-                              onChange={(e) => setLogFormData({ ...logFormData, recorded_by: e.target.value })}
-                              className="w-full text-sm p-2 rounded border border-slate-300"
-                            >
-                              <option value="">-- Chọn người ghi nhận --</option>
-                              {usersLoading ? (
-                                <option value="">Đang tải...</option>
-                              ) : (
-                                users.filter((u: User) => u.is_active).map((user: User) => (
-                                  <option key={user.id} value={user.id}>{user.full_name} ({user.department})</option>
-                                ))
-                              )}
-                            </select>
-                          </div>
-                        </div>
-                        <div className="mt-4 flex justify-end gap-2">
-                          <button
-                            onClick={() => setShowLogForm(false)}
-                            className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded transition-colors"
-                          >
-                            Hủy
-                          </button>
-                          <button
-                            onClick={handleCreateLog}
-                            className="px-4 py-2 text-sm bg-cyan-600 text-white rounded hover:bg-cyan-700 transition-colors"
-                          >
-                            Lưu nhật ký
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                    <div className="mb-4 rounded-lg border border-cyan-100 bg-cyan-50/80 px-4 py-3 text-sm text-slate-700">
+                      <p className="font-medium text-cyan-900">Chỉ xem — không tạo nhật ký tại đây</p>
+                      <p className="mt-1 text-slate-600">
+                        Sau khi lưu kế hoạch giám sát, hệ thống tạo mẫu phiếu ở tab «Đánh giá HACCP». Khi bạn điền phiếu và
+                        «Gửi phiếu», nhật ký giám sát theo mục kiểm tra giới hạn tới hạn (đạt / không đạt) được ghi tự động
+                        và hiển thị tại đây.
+                      </p>
+                    </div>
 
                     <div className="mb-4 p-3 bg-slate-50 rounded-lg border border-slate-100 space-y-3">
                       <div className="flex flex-wrap gap-3 items-end">
@@ -1778,12 +1926,12 @@ export default function HaccpCompliancePage() {
                         <div className="flex flex-col gap-1">
                           <label className="text-[10px] font-semibold text-slate-500 uppercase">CCP</label>
                           <select
-                            value={logCcpFilter}
+                            value={logCcpFilterSafe}
                             onChange={(e) => setLogCcpFilter(e.target.value)}
                             className="text-sm px-3 py-2 border border-slate-200 rounded-lg bg-white min-w-[200px]"
                           >
                             <option value="ALL">Tất cả CCP</option>
-                            {allCcps.map((ccp) => (
+                            {ccpsForComplianceUi.map((ccp) => (
                               <option key={ccp.id} value={ccp.id}>
                                 {ccp.ccp_code} - {ccp.name}
                               </option>
@@ -1875,13 +2023,13 @@ export default function HaccpCompliancePage() {
                 {/* DEVIATIONS TAB - Organization wide */}
                 {activeTab === "deviations" && (
                   <DeviationManagementPanel
-                    plans={plans}
-                    allCcps={allCcps}
-                    deviations={deviations}
+                    plans={plansForComplianceUi}
+                    allCcps={ccpsForComplianceUi}
+                    deviations={deviationsForComplianceUi}
                     deviationsLoading={deviationsLoading}
                     deviationStats={deviationStats}
                     deviationStatsLoading={deviationStatsLoading}
-                    filters={deviationFilters}
+                    filters={deviationFiltersForApi}
                     onFiltersChange={setDeviationFilters}
                     onRefresh={() => { refetchDeviations(); refetchDeviationStats(); }}
                     onHandleDeviation={(dev) => { setSelectedDeviation(dev); setIsHandleDeviationModalOpen(true); }}
@@ -1893,9 +2041,15 @@ export default function HaccpCompliancePage() {
                 {/* ASSESSMENTS TAB - Phiếu đánh giá HACCP */}
                 {activeTab === "assessments" && (
                   <AssessmentPanel
-                    plans={plans}
-                    stepsMap={stepsByPlan}
+                    plans={plansForComplianceUi}
                     ccpsMap={ccpsByPlan}
+                    pendingCreateFromPlanId={pendingAssessmentAfterMonitoringSavePlanId}
+                    onConsumePendingCreate={consumePendingAssessmentCreate}
+                    onLogsSyncedFromAssessment={() => {
+                      void refetchLogs();
+                      void refetchDeviations();
+                      void refetchDeviationStats();
+                    }}
                   />
                 )}
 
@@ -1910,6 +2064,98 @@ export default function HaccpCompliancePage() {
         onSuccess={handleWizardSuccess}
         planId={wizardPlanId}
       />
+
+      {/* Danh sách quy trình đã ẩn — chọn để hiển thị lại */}
+      <Modal
+        isOpen={isHiddenPlansListModalOpen}
+        onClose={() => {
+          setIsHiddenPlansListModalOpen(false);
+          setHiddenPlansSearch("");
+        }}
+        title="Quy trình đã ẩn"
+        maxWidth="3xl"
+      >
+        <div className="space-y-4 p-4">
+          <p className="text-sm text-slate-600">
+            Các quy trình dưới đây đang ẩn khỏi màn hình làm việc. Chọn &quot;Hiển thị lại&quot; để đưa về trạng thái
+            hoạt động (ACTIVE nếu đã từng phê duyệt, hoặc DRAFT).
+          </p>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
+            <input
+              type="search"
+              value={hiddenPlansSearch}
+              onChange={(e) => setHiddenPlansSearch(e.target.value)}
+              placeholder="Tìm theo tên, phạm vi, phiên bản…"
+              className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
+            />
+          </div>
+          {plansLoading ? (
+            <p className="py-8 text-center text-slate-400">Đang tải…</p>
+          ) : archivedPlansOnly.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 py-10 text-center text-sm text-slate-500">
+              Chưa có quy trình nào đang ẩn.
+            </p>
+          ) : filteredArchivedPlansForModal.length === 0 ? (
+            <p className="py-8 text-center text-sm text-slate-500">Không khớp tìm kiếm.</p>
+          ) : (
+            <div className="max-h-[min(420px,55vh)] overflow-auto rounded-lg border border-slate-200">
+              <table className="w-full text-left text-sm text-slate-600">
+                <thead className="sticky top-0 bg-[#eef6fa] text-cyan-900">
+                  <tr>
+                    <th className="px-3 py-2 font-semibold">Tên</th>
+                    <th className="px-3 py-2 font-semibold">Phiên bản</th>
+                    <th className="px-3 py-2 font-semibold">Phạm vi</th>
+                    <th className="px-3 py-2 font-semibold">Ngày tạo</th>
+                    <th className="px-3 py-2 text-right font-semibold">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredArchivedPlansForModal.map((p) => (
+                    <tr key={p.id} className="hover:bg-slate-50">
+                      <td className="px-3 py-2 font-medium text-cyan-800">{p.name}</td>
+                      <td className="px-3 py-2 font-mono text-xs">v{p.version}</td>
+                      <td className="max-w-[140px] truncate px-3 py-2 text-xs">{p.scope || "—"}</td>
+                      <td className="px-3 py-2 text-xs">
+                        {new Date(p.created_at).toLocaleDateString("vi-VN")}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <div className="flex flex-wrap justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleRestorePlan(p, {
+                                onAfterRestore: () => {
+                                  setIsHiddenPlansListModalOpen(false);
+                                  setHiddenPlansSearch("");
+                                },
+                              })
+                            }
+                            className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+                          >
+                            Hiển thị lại
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsHiddenPlansListModalOpen(false);
+                              setFlowModalPlanId(p.id);
+                              setIsFlowModalOpen(true);
+                            }}
+                            className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                          >
+                            Xem luồng
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </Modal>
 
       {/* Flow Modal */}
       <Modal
@@ -2043,7 +2289,7 @@ function ProcessFlowDisplay({ planId, compact = false, onStepClick }: { planId: 
 
 function MonitoringPlanEditor({
   plans,
-  onCreateLog,
+  onMonitoringPlanSaved,
   allCcps: ccps,
   allCcpsLoading: ccpsLoading,
   refetchAllCcps: refetch,
@@ -2051,7 +2297,7 @@ function MonitoringPlanEditor({
   usersLoading,
 }: {
   plans: any[];
-  onCreateLog?: (ccpId: string) => void;
+  onMonitoringPlanSaved?: (planId: string) => void;
   allCcps: CCP[];
   allCcpsLoading: boolean;
   refetchAllCcps: () => void | Promise<void>;
@@ -2122,6 +2368,10 @@ function MonitoringPlanEditor({
       });
 
       await refetch();
+
+      if (onMonitoringPlanSaved && editableCcp.haccp_plan_id) {
+        onMonitoringPlanSaved(String(editableCcp.haccp_plan_id));
+      }
 
       // Show success and return to list
       alert("✅ Đã lưu kế hoạch giám sát thành công!");
@@ -2291,22 +2541,9 @@ function MonitoringPlanEditor({
                       </div>
                       <div className="flex items-center gap-2">
                         {isComplete ? (
-                          <>
-                            <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded">
-                              ✅ Hoàn thiện
-                            </span>
-                            {onCreateLog && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onCreateLog(ccp.id);
-                                }}
-                                className="text-xs bg-cyan-600 text-white px-3 py-1 rounded hover:bg-cyan-700 transition-colors"
-                              >
-                                📝 Ghi nhật ký
-                              </button>
-                            )}
-                          </>
+                          <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded">
+                            ✅ Hoàn thiện
+                          </span>
                         ) : (
                           <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded">
                             ⚠️ Chưa đầy đủ
