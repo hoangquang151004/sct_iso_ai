@@ -21,33 +21,12 @@ import {
   snapshotPrpCompliancePct,
 } from "@/lib/report-export-scope";
 import {
-  type InternalAuditSummaryDto,
   type KpiSnapshotDto,
-  getInternalAuditSummary,
   listKpiSnapshots,
   listReportLocations,
 } from "@/api/reports-api";
 import { buildKpiDrillQueryFromReports } from "@/lib/report-kpi-drill-period";
 import { slugFromReportKpiLabel } from "@/lib/report-kpi-slugs";
-
-function signalPanelClass(level: string): string {
-  if (level === "danger") {
-    return "border-rose-200 bg-rose-50 text-rose-950";
-  }
-  if (level === "warning") {
-    return "border-amber-200 bg-amber-50 text-amber-950";
-  }
-  return "border-slate-200 bg-slate-50 text-slate-800";
-}
-
-/** Tín hiệu “chưa có phiên PRP / chưa nhập biên bản” — ẩn trên UI, không ẩn thanh tóm tắt số liệu. */
-function isPrpEmptySessionInfoSignal(message: string): boolean {
-  const m = message.trim();
-  return (
-    m.includes("Chưa có phiên PRP trong phạm vi") &&
-    m.includes("chưa nhập biên bản")
-  );
-}
 
 function localIsoDate(d = new Date()): string {
   const y = d.getFullYear();
@@ -173,12 +152,6 @@ export default function ReportsPage() {
   const [reportLocations, setReportLocations] = useState<
     { id: string; name: string }[]
   >([]);
-  const [internalLocationId, setInternalLocationId] = useState("");
-  const [internalPeriodDays, setInternalPeriodDays] = useState(120);
-  const [internalSummary, setInternalSummary] =
-    useState<InternalAuditSummaryDto | null>(null);
-  const [internalLoading, setInternalLoading] = useState(false);
-  const [internalError, setInternalError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -232,43 +205,6 @@ export default function ReportsPage() {
       cancelled = true;
     };
   }, [principal?.org_id]);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const envOrg = process.env.NEXT_PUBLIC_ORG_ID?.trim() ?? "";
-      const orgId = envOrg || principal?.org_id || "";
-      if (!orgId) {
-        if (!cancelled) {
-          setInternalSummary(null);
-          setInternalError(null);
-        }
-        return;
-      }
-      setInternalLoading(true);
-      setInternalError(null);
-      try {
-        const data = await getInternalAuditSummary(
-          orgId,
-          internalLocationId || undefined,
-          internalPeriodDays,
-        );
-        if (!cancelled) setInternalSummary(data);
-      } catch (e) {
-        if (!cancelled) {
-          setInternalSummary(null);
-          setInternalError(
-            e instanceof Error ? e.message : "Không tải được tóm tắt đánh giá nội bộ",
-          );
-        }
-      } finally {
-        if (!cancelled) setInternalLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [principal?.org_id, internalLocationId, internalPeriodDays]);
 
   useEffect(() => {
     const t = new Date();
@@ -623,7 +559,6 @@ export default function ReportsPage() {
             onClick={() => {
               setExportModalError(null);
               setExportLocationId("");
-              setExportPeriodDays(internalPeriodDays);
               setExportModalOpen(true);
             }}
             className="mt-5 w-full rounded-lg bg-cyan-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-cyan-600/25 transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50"
@@ -633,111 +568,20 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      <div className="mt-4">
-        <section className="rounded-xl bg-white p-5 shadow-sm">
-          <h2 className="text-xl font-bold text-slate-900">
-            Báo cáo đánh giá nội bộ
-          </h2>
-
-          <div className="mt-4 flex flex-wrap items-end gap-4">
-            <label className="flex min-w-[200px] flex-col gap-1 text-sm font-medium text-slate-700">
-              Khu vực
-              <select
-                value={internalLocationId}
-                onChange={(e) => setInternalLocationId(e.target.value)}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500"
-              >
-                <option value="">Tất cả khu vực</option>
-                {reportLocations.map((loc) => (
-                  <option key={loc.id} value={loc.id}>
-                    {loc.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex min-w-[160px] flex-col gap-1 text-sm font-medium text-slate-700">
-              Kỳ xem lại
-              <select
-                value={internalPeriodDays}
-                onChange={(e) => setInternalPeriodDays(Number(e.target.value))}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500"
-              >
-                <option value={30}>30 ngày</option>
-                <option value={90}>90 ngày</option>
-                <option value={120}>120 ngày</option>
-                <option value={180}>180 ngày</option>
-                <option value={365}>365 ngày</option>
-              </select>
-            </label>
-          </div>
-
-          {internalError ? (
-            <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900">
-              {internalError}
-            </p>
-          ) : null}
-
-          {internalLoading ? (
-            <p className="mt-3 text-sm text-slate-500">Đang tải tóm tắt theo khu vực…</p>
-          ) : internalSummary ? (
-            <div className="mt-4 space-y-3">
-              <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-700">
-                <span className="font-semibold text-slate-900">
-                  {internalSummary.location_name}
-                </span>
-                <span className="mx-2 text-slate-300">|</span>
-                <span>{internalSummary.period_days} ngày gần nhất</span>
-                <span className="mx-2 text-slate-300">|</span>
-                <span>PRP: {internalSummary.prp_audit_count} phiên</span>
-                <span className="mx-2 text-slate-300">|</span>
-                <span>
-                  TB tuân thủ PRP:{" "}
-                  {internalSummary.prp_avg_compliance != null
-                    ? `${internalSummary.prp_avg_compliance}%`
-                    : "—"}
-                </span>
-                <span className="mx-2 text-slate-300">|</span>
-                <span>NC mở (toàn TC): {internalSummary.open_nc_org_count}</span>
-                <span className="mx-2 text-slate-300">|</span>
-                <span>Lệch CCP (toàn TC): {internalSummary.haccp_deviation_org_count}</span>
-              </div>
-              {(() => {
-                const rows = internalSummary.signals.filter(
-                  (s) => !isPrpEmptySessionInfoSignal(s.message),
-                );
-                if (rows.length === 0) return null;
-                return (
-                  <ul className="space-y-2">
-                    {rows.map((s, idx) => (
-                      <li
-                        key={`${s.level}-${idx}`}
-                        className={`rounded-lg border px-3 py-2.5 text-sm leading-snug ${signalPanelClass(s.level)}`}
-                      >
-                        {s.message}
-                      </li>
-                    ))}
-                  </ul>
-                );
-              })()}
-            </div>
-          ) : null}
-
-          <div className="mt-6">
-            <h3 className="text-base font-bold text-slate-900">
-              Biểu đồ KPI theo kỳ snapshot
-            </h3>
-            <p className="mt-1 text-xs text-slate-600">
-              Mỗi cột là một kỳ trong phạm vi bạn chọn ở trên: cột màu đỏ là{" "}
-              <strong>số CAPA quá hạn</strong> (trục trái); ba chuỗi còn lại là{" "}
-              <strong>% CAPA đóng đúng hạn</strong>, <strong>% tuân thủ PRP</strong> và{" "}
-              <strong>% tuân thủ HACCP (CCP)</strong> — thể hiện mức &quot;đạt&quot; theo snapshot (trục phải 0–100%).
-            </p>
-            <div className="mt-3 rounded-lg bg-slate-50 p-3">
-              <ReportsKpiSnapshotBarChart chartData={reportsOverviewChartData} />
-            </div>
-          </div>
-        </section>
-      </div>
+      <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
+        <h2 className="text-base font-bold text-slate-900">
+          Biểu đồ KPI theo kỳ snapshot
+        </h2>
+        <p className="mt-1 text-xs text-slate-600">
+          Mỗi cột là một kỳ trong phạm vi bạn chọn ở trên: cột màu đỏ là{" "}
+          <strong>số CAPA quá hạn</strong> (trục trái); ba chuỗi còn lại là{" "}
+          <strong>% CAPA đóng đúng hạn</strong>, <strong>% tuân thủ PRP</strong> và{" "}
+          <strong>% tuân thủ HACCP (CCP)</strong> — thể hiện mức &quot;đạt&quot; theo snapshot (trục phải 0–100%).
+        </p>
+        <div className="mt-3 rounded-lg bg-slate-50 p-3">
+          <ReportsKpiSnapshotBarChart chartData={reportsOverviewChartData} />
+        </div>
+      </section>
 
       {exportModalOpen ? (
         <div

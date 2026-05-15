@@ -33,7 +33,7 @@ class CAPABase(BaseModel):
 
 
 class CAPACreate(CAPABase):
-    pass
+    severity: Optional[str] = Field(None, description="Mức độ nghiêm trọng/ưu tiên thiết lập khi tạo CAPA")
 
 
 class CAPAUpdate(BaseModel):
@@ -53,6 +53,7 @@ class NCUpdate(BaseModel):
 
 class CAPAResponse(CAPABase):
     id: UUID
+    severity: Optional[str] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

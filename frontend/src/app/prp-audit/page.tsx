@@ -77,7 +77,13 @@ export default function PrpAuditPage() {
   const [programs, setPrograms] = useState<PRPProgram[]>([]);
   const [selectedZone, setSelectedZone] = useState<string>("");
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]); 
-  const [filterType, setFilterType] = useState<"day" | "month">("day");
+  const [filterType, setFilterType] = useState<"day" | "month" | "year">("day");
+  
+  // Helper states for Month/Year selection UI (matching HACCP)
+  const [selectedMonth, setSelectedMonth] = useState<string>("");
+  const [selectedMonthYear, setSelectedMonthYear] = useState<string>(String(new Date().getFullYear()));
+  const [selectedYear, setSelectedYear] = useState<string>("");
+  
   const [loading, setLoading] = useState(true);
 
   // States for Modals
@@ -118,6 +124,7 @@ export default function PrpAuditPage() {
         }
       } catch (error) {
         console.error("Failed to fetch PRP data:", error);
+        toast.error("Không thể tải dữ liệu PRP. Vui lòng thử lại sau.");
       } finally {
         setLoading(false);
       }
@@ -126,10 +133,9 @@ export default function PrpAuditPage() {
   }, [orgId]);
 
   // Logic tính tỉ lệ thực tế
-  const closureRate = kpis?.total > 0 
-    ? Math.round((kpis.closed / kpis.total) * 100) 
+  const closureRate = kpis?.total > 0
+    ? Math.round((kpis.closed / kpis.total) * 1000) / 10
     : 0;
-
   const refreshPrograms = async () => {
     const progs = await prpService.listPrograms();
     setPrograms(progs);
@@ -149,7 +155,7 @@ export default function PrpAuditPage() {
     }
   };
 
-  const handleFilterChange = async (zoneId: string, dateValue?: string, type?: "day" | "month") => {
+  const handleFilterChange = async (zoneId: string, dateValue?: string, type?: "day" | "month" | "year") => {
     const zId = zoneId !== undefined ? zoneId : selectedZone;
     const dVal = dateValue !== undefined ? dateValue : selectedDate;
     const fType = type !== undefined ? type : filterType;
@@ -165,10 +171,12 @@ export default function PrpAuditPage() {
       if (dVal) {
         if (fType === "day") {
           params.audit_date = dVal;
-        } else {
+        } else if (fType === "month") {
           const [year, month] = dVal.split("-");
           params.month = parseInt(month);
           params.year = parseInt(year);
+        } else if (fType === "year") {
+          params.year = parseInt(dVal);
         }
       }
       
@@ -188,6 +196,13 @@ export default function PrpAuditPage() {
   );
 
   const highestRiskAudit = [...audits].sort((a, b) => (a.compliance_rate || 0) - (b.compliance_rate || 0))[0];
+
+  const thisYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 8 }, (_, index) => String(thisYear - index));
+  const monthOptions = Array.from({ length: 12 }, (_, index) => {
+    const month = String(index + 1).padStart(2, "0");
+    return { value: month, label: `Tháng ${index + 1}` };
+  });
 
   return (
     <AppShell activePath="/prp-audit">
@@ -221,62 +236,132 @@ export default function PrpAuditPage() {
         </div>
       </div>
 
-      <div className="mb-6 flex items-center gap-4">
-        <select
-          value={selectedZone}
-          onChange={(e) => handleFilterChange(e.target.value)}
-          className="rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-700 focus:ring-2 focus:ring-[#1e8b9b] outline-none"
-        >
-          <option value="">Tất cả khu vực</option>
-          {locations.map((loc) => (
-            <option key={loc.id} value={loc.id}>
-              {loc.name}
-            </option>
-          ))}
-        </select>
-
-        <div className="flex bg-slate-100 p-1 rounded-lg">
-          <button
-            onClick={() => handleFilterChange(selectedZone, new Date().toISOString().split('T')[0], "day")}
-            className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
-              filterType === "day" ? "bg-white text-[#1e8b9b] shadow-sm" : "text-slate-500 hover:text-slate-700"
-            }`}
+      <div className="mb-6 flex flex-wrap items-end gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Khu vực</label>
+          <select
+            value={selectedZone}
+            onChange={(e) => handleFilterChange(e.target.value)}
+            className="rounded-lg border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:ring-2 focus:ring-[#1e8b9b] outline-none min-w-[180px] shadow-sm"
           >
-            Theo Ngày
-          </button>
-          <button
-            onClick={() => handleFilterChange(selectedZone, new Date().toISOString().slice(0, 7), "month")}
-            className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
-              filterType === "month" ? "bg-white text-[#1e8b9b] shadow-sm" : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            Theo Tháng
-          </button>
+            <option value="">Tất cả khu vực</option>
+            {locations.map((loc) => (
+              <option key={loc.id} value={loc.id}>
+                {loc.name}
+              </option>
+            ))}
+          </select>
         </div>
 
-        <div className="relative">
-          <input
-            type={filterType === "day" ? "date" : "month"}
-            value={selectedDate}
-            onChange={(e) => handleFilterChange(selectedZone, e.target.value)}
-            className="rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#1e8b9b]"
-          />
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Lọc theo thời gian</label>
+          <div className="flex bg-slate-200/50 p-1 rounded-lg border border-slate-200">
+            {[
+              { value: "day", label: "Ngày" },
+              { value: "month", label: "Tháng" },
+              { value: "year", label: "Năm" },
+            ].map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => {
+                  if (opt.value === "day") {
+                    handleFilterChange(selectedZone, new Date().toISOString().split('T')[0], "day");
+                  } else if (opt.value === "month") {
+                    handleFilterChange(selectedZone, `${thisYear}-${String(new Date().getMonth() + 1).padStart(2, "0")}`, "month");
+                    setSelectedMonth(String(new Date().getMonth() + 1).padStart(2, "0"));
+                    setSelectedMonthYear(String(thisYear));
+                  } else if (opt.value === "year") {
+                    handleFilterChange(selectedZone, String(thisYear), "year");
+                    setSelectedYear(String(thisYear));
+                  }
+                }}
+                className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${
+                  filterType === opt.value ? "bg-white text-[#1e8b9b] shadow-sm" : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {filterType === "day" && (
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Chọn ngày</label>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => handleFilterChange(selectedZone, e.target.value, "day")}
+              className="rounded-lg border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#1e8b9b] shadow-sm"
+            />
+          </div>
+        )}
+
+        {filterType === "month" && (
+          <div className="flex gap-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tháng</label>
+              <select
+                value={selectedMonth}
+                onChange={(e) => {
+                  const newMonth = e.target.value;
+                  setSelectedMonth(newMonth);
+                  handleFilterChange(selectedZone, `${selectedMonthYear}-${newMonth}`, "month");
+                }}
+                className="rounded-lg border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:ring-2 focus:ring-[#1e8b9b] outline-none min-w-[120px] shadow-sm"
+              >
+                <option value="">Tất cả các tháng</option>
+                {monthOptions.map((m) => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Năm</label>
+              <select
+                value={selectedMonthYear}
+                onChange={(e) => {
+                  setSelectedMonthYear(e.target.value);
+                  if (selectedMonth) handleFilterChange(selectedZone, `${e.target.value}-${selectedMonth}`, "month");
+                }}
+                className="rounded-lg border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:ring-2 focus:ring-[#1e8b9b] outline-none min-w-[100px] shadow-sm"
+              >
+                {yearOptions.map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {filterType === "year" && (
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Năm</label>
+            <select
+              value={selectedYear}
+              onChange={(e) => {
+                setSelectedYear(e.target.value);
+                handleFilterChange(selectedZone, e.target.value, "year");
+              }}
+              className="rounded-lg border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:ring-2 focus:ring-[#1e8b9b] outline-none min-w-[120px] shadow-sm"
+            >
+              <option value="">Tất cả các năm</option>
+              {yearOptions.map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
-      {loading ? (
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1e8b9b]"></div>
-        </div>
-      ) : (
-        <div className="flex gap-6 items-stretch">
+      <div className="flex gap-6 items-stretch">
           <section className="w-64 space-y-6 flex flex-col">
             <div className="rounded-xl bg-white p-6 shadow flex flex-col flex-1">
               <h2 className="mb-4 font-bold text-slate-800 uppercase text-xs tracking-wider text-slate-400">Hiệu suất chung</h2>
               <div className="flex-1 flex flex-col justify-center">
                 <div className="text-5xl font-black text-[#1e8b9b] mb-1">
                   {audits.length > 0 
-                    ? Math.round(audits.reduce((acc, a) => acc + (a.compliance_rate ?? 0), 0) / audits.length) 
+                    ? Math.round((audits.reduce((acc, a) => acc + (a.compliance_rate ?? 0), 0) / audits.length) * 10) / 10 
                     : 0}%
                 </div>
                 <p className="text-xs text-slate-500 font-medium">Tỉ lệ tuân thủ trung bình</p>
@@ -314,14 +399,14 @@ export default function PrpAuditPage() {
             <h2 className="mb-4 text-lg font-bold text-slate-800 px-2">
               Lịch sử đánh giá
             </h2>
-            <div className="overflow-x-auto flex-1">
+            <div className="overflow-auto flex-1 max-h-[600px]">
               <table className="w-full text-left text-sm text-slate-700">
-                <thead className="bg-blue-50/50">
+                <thead className="bg-blue-50 sticky top-0 z-10 shadow-sm">
                   <tr>
-                    <th className="px-4 py-3 font-medium">Ngày</th>
-                    <th className="px-4 py-3 font-medium">Khu vực</th>
-                    <th className="px-4 py-3 text-center font-medium">Tỉ lệ tuân thủ</th>
-                    <th className="px-4 py-3 font-medium">Kết quả</th>
+                    <th className="px-4 py-3 font-medium bg-blue-50">Ngày</th>
+                    <th className="px-4 py-3 font-medium bg-blue-50">Khu vực</th>
+                    <th className="px-4 py-3 text-center font-medium bg-blue-50">Tỉ lệ tuân thủ</th>
+                    <th className="px-4 py-3 font-medium bg-blue-50">Kết quả</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -455,7 +540,6 @@ export default function PrpAuditPage() {
             </section>
           </aside>
         </div>
-      )}
 
       {/* Modals */}
       {showProgramManager && (
@@ -483,7 +567,7 @@ export default function PrpAuditPage() {
           onClose={() => setShowAuditForm(false)}
           onSuccess={() => {
             setShowAuditForm(false);
-            prpService.listAudits().then(setAudits);
+            handleFilterChange(selectedZone);
           }}
         />
       )}
@@ -584,27 +668,27 @@ function NCTrackingModal({ onClose }: { onClose: () => void }) {
           ))}
         </div>
         
-        <div className="p-6 flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto">
           {loading ? (
             <div className="text-center py-10 text-slate-400">Đang tải danh sách lỗi...</div>
           ) : ncs.length === 0 ? (
-            <div className="text-center py-20 text-slate-400 border-2 border-dashed rounded-xl">
+            <div className="text-center py-20 text-slate-400 border-2 border-dashed rounded-xl m-6">
               Không tìm thấy điểm lỗi nào trong danh mục này.
             </div>
           ) : (
             <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 sticky top-0">
+              <thead className="bg-slate-50 sticky top-0 z-20 shadow-md">
                 <tr>
-                  <th className="px-4 py-3 font-bold text-slate-600">Ngày phát hiện</th>
-                  <th className="px-4 py-3 font-bold text-slate-600">Nội dung lỗi</th>
-                  <th className="px-4 py-3 font-bold text-slate-600 text-center">Mức độ</th>
-                  <th className="px-4 py-3 font-bold text-slate-600 text-right">Tiến độ xử lý</th>
+                  <th className="pl-6 pr-4 py-3 font-bold text-slate-600 bg-slate-50">Ngày phát hiện</th>
+                  <th className="px-4 py-3 font-bold text-slate-600 bg-slate-50">Nội dung lỗi</th>
+                  <th className="px-4 py-3 font-bold text-slate-600 text-center bg-slate-50">Mức độ</th>
+                  <th className="pl-4 pr-6 py-3 font-bold text-slate-600 text-right bg-slate-50">Tiến độ xử lý</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {ncs.map((nc) => (
                   <tr key={nc.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-4 text-slate-500 w-32">
+                    <td className="pl-6 pr-4 py-4 text-slate-500 w-32">
                       {new Date(nc.detected_at).toLocaleDateString()}
                     </td>
                     <td className="px-4 py-4 font-medium text-slate-800">
@@ -617,7 +701,7 @@ function NCTrackingModal({ onClose }: { onClose: () => void }) {
                         {nc.severity}
                       </span>
                     </td>
-                    <td className="px-4 py-4 text-right w-40">
+                    <td className="pl-4 pr-6 py-4 text-right w-40">
                       {getNCStatusBadge(nc)}
                     </td>
                   </tr>
@@ -1027,12 +1111,12 @@ function AuditDetailModal({
 
         <div className="p-6 flex-1 overflow-auto">
           <table className="w-full text-left text-sm text-slate-700">
-            <thead className="bg-slate-100 sticky top-0">
+            <thead className="bg-slate-100 sticky top-0 z-20 shadow-sm">
               <tr>
-                <th className="px-4 py-3 font-bold">Hạng mục kiểm tra</th>
-                <th className="px-4 py-3 text-center font-bold">Kết quả</th>
-                <th className="px-4 py-3 font-bold">Auditor Quan sát</th>
-                <th className="px-4 py-3 text-right font-bold">Hành động</th>
+                <th className="px-4 py-3 font-bold bg-slate-100">Hạng mục kiểm tra</th>
+                <th className="px-4 py-3 text-center font-bold bg-slate-100">Kết quả</th>
+                <th className="px-4 py-3 font-bold bg-slate-100">Auditor Quan sát</th>
+                <th className="px-4 py-3 text-right font-bold bg-slate-100">Hành động</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">

@@ -56,6 +56,7 @@ function isMonitoringPlanComplete(ccp: CCP) {
 
 export default function HaccpCompliancePage() {
   const { principal } = useAuth();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState(haccpSidebarButtons[0]?.id ?? "process-flow");
   const loadMonitoringLogsData = true;
   const loadMonitoringData = true;
