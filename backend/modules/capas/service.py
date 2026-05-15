@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from database.models import CAPA, NonConformity
+from core import calculate_capa_ontime_rate, is_capa_overdue
 from .schemas import CAPACreate, CAPAStatus, CAPAUpdate, NCUpdate
 
 
@@ -165,13 +166,17 @@ class CAPAService:
             source_dist[s] = source_dist.get(s, 0) + 1
 
         now = datetime.now().date()
+        closed_count = len([c for c in all_capas if c.status == CAPAStatus.CLOSED])
+        overdue_count = len([c for c in all_capas if is_capa_overdue(c.due_date, c.status, now)])
+        
         return {
             "total": len(all_capas),
             "open": len([c for c in all_capas if c.status == CAPAStatus.OPEN]),
             "in_progress": len([c for c in all_capas if c.status == CAPAStatus.IN_PROGRESS]),
             "verifying": len([c for c in all_capas if c.status == CAPAStatus.VERIFYING]),
-            "closed": len([c for c in all_capas if c.status == CAPAStatus.CLOSED]),
-            "overdue": len([c for c in all_capas if c.status != CAPAStatus.CLOSED and c.due_date and c.due_date < now]),
+            "closed": closed_count,
+            "overdue": overdue_count,
+            "ontime_rate": calculate_capa_ontime_rate(closed_count, closed_count + overdue_count),
             "source_distribution": source_dist,
         }
 

@@ -14,6 +14,7 @@ from database.models import (
     CalendarEvent,
     NonConformity,
 )
+from core import calculate_prp_audit_rate
 from .schemas import (
     PRPChecklistTemplateCreate,
     PRPAuditFullCreate,
@@ -186,7 +187,15 @@ class PRPAuditService:
         return self.db.scalar(stmt)
 
     def create_full_audit(self, payload: PRPAuditFullCreate) -> PRPAudit:
-        db_audit = PRPAudit(**payload.audit_data.model_dump())
+        audit_data = payload.audit_data.model_dump()
+        
+        # Tự động tính tỷ lệ tuân thủ nếu chưa có (backend tự tính lại cho chuẩn)
+        if not audit_data.get("compliance_rate"):
+            pass_count = sum(1 for d in payload.details if d.result.upper() == "PASS")
+            total_count = len(payload.details)
+            audit_data["compliance_rate"] = calculate_prp_audit_rate(pass_count, total_count)
+
+        db_audit = PRPAudit(**audit_data)
         self.db.add(db_audit)
         self.db.flush()
 
@@ -304,7 +313,7 @@ class PRPAuditService:
             .where(
                 CalendarEvent.org_id == org_id,
                 CalendarEvent.event_type == "PRP_AUDIT",
-                CalendarEvent.start_time >= datetime.now(),
+                CalendarEvent.start_time >= datetime.now().astimezone(),
                 CalendarEvent.status == "SCHEDULED",
             )
             .order_by(CalendarEvent.start_time.asc())
@@ -325,7 +334,7 @@ class PRPAuditService:
             .limit(limit)
         )
         events = self.db.scalars(stmt).all()
-        now = datetime.now()
+        now = datetime.now().astimezone()
 
         results = []
         for e in events:
