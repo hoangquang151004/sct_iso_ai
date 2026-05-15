@@ -144,13 +144,26 @@ export default function AssessmentPanel({
   const { schedules, loading: schedulesLoading, refetch: refetchSchedules } = useHaccpSchedules(null, true);
 
   const visiblePlanIds = useMemo(() => new Set(plans.map((p) => p.id)), [plans]);
+  const scheduleIdsWithAssessment = useMemo(() => {
+    const fromAssessments = new Set(
+      assessments
+        .map((a) => a.calendar_event_id)
+        .filter((id): id is string => Boolean(id)),
+    );
+    for (const s of schedules) {
+      if (s.has_assessment) fromAssessments.add(s.id);
+    }
+    return fromAssessments;
+  }, [assessments, schedules]);
+
   const schedulesEligibleForCreate = useMemo(() => {
     return schedules.filter((s) => {
       if (!s.haccp_plan_id || !visiblePlanIds.has(s.haccp_plan_id)) return false;
       if (s.status === "COMPLETED") return false;
+      if (s.has_assessment || scheduleIdsWithAssessment.has(s.id)) return false;
       return true;
     });
-  }, [schedules, visiblePlanIds]);
+  }, [schedules, visiblePlanIds, scheduleIdsWithAssessment]);
 
   const scheduleByEventId = useMemo(() => {
     const map: Record<string, HaccpSchedule> = {};
@@ -731,13 +744,13 @@ function CreateAssessmentModal({
               )}
             </div>
             <p className="mt-1 text-[10px] text-slate-500">
-              Danh sách ưu tiên lịch quá hạn, sau đó sắp theo thời gian bắt đầu.
+              Chỉ hiện lịch chưa có phiếu (mỗi lịch tối đa một phiếu). Ưu tiên lịch quá hạn, sau đó theo thời gian bắt đầu.
             </p>
             {noSchedulesAvailable && (
               <p className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-md px-3 py-2 leading-relaxed">
                 {presetPlanId
-                  ? "Chưa có lịch khả dụng cho kế hoạch này (chưa hoàn thành). Hãy lập lịch từ màn hình chính."
-                  : "Chưa có lịch khả dụng: thuộc kế hoạch đang mở và chưa hoàn thành."}
+                  ? "Chưa có lịch khả dụng cho kế hoạch này (chưa có phiếu và chưa hoàn thành). Hãy lập lịch từ màn hình chính."
+                  : "Chưa có lịch khả dụng: thuộc kế hoạch đang mở, chưa có phiếu và chưa hoàn thành."}
               </p>
             )}
             {planIdResolved && monitoringReadyByPlanId[planIdResolved] !== true && (

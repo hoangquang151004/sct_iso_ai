@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 from typing import List, Optional
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import exists, func, or_
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from database.models import (
@@ -42,6 +42,7 @@ from .schemas import (
     HaccpAssessmentSubmitRequest,
     HaccpScheduleRequest,
     HaccpScheduleFrequency,
+    HaccpAssigneeResponse,
 )
 
 
@@ -1055,14 +1056,14 @@ class HaccpAssessmentService:
         dup = (
             db.query(HaccpAssessmentModel)
             .filter(
+                HaccpAssessmentModel.org_id == payload.org_id,
                 HaccpAssessmentModel.calendar_event_id == event_id,
-                HaccpAssessmentModel.status.in_(["DRAFT", "SUBMITTED", "REVIEWED"]),
             )
             .first()
         )
         if dup:
             raise ValueError(
-                "Đã có phiếu đánh giá liên kết với lịch này. Hoàn thành hoặc xóa phiếu nháp hiện có trước khi tạo mới."
+                "Mỗi lịch đánh giá chỉ được tạo một phiếu. Lịch này đã có phiếu liên kết."
             )
 
         obj = HaccpAssessmentModel(
@@ -1456,6 +1457,16 @@ class HaccpAssessmentService:
         )
         events = db.scalars(stmt).all()
         now = datetime.now(timezone.utc)
+        used_event_ids: set[UUID] = {
+            row[0]
+            for row in db.execute(
+                select(HaccpAssessmentModel.calendar_event_id).where(
+                    HaccpAssessmentModel.org_id == org_id,
+                    HaccpAssessmentModel.calendar_event_id.isnot(None),
+                )
+            ).all()
+            if row[0] is not None
+        }
         plan_ids: set[UUID] = set()
         for e in events:
             pid = _haccp_plan_id_from_calendar_event(e)
@@ -1486,6 +1497,7 @@ class HaccpAssessmentService:
                 "plan_name": plan_name_by_id.get(pid_str) if pid_str else None,
                 "schedule_batch_id": batch_id,
                 "can_delete": _is_schedule_deletable(e, now),
+                "has_assessment": e.id in used_event_ids,
             }
 
             if status:
@@ -1553,3 +1565,23 @@ class HaccpAssessmentService:
             status="SCHEDULED",
             assigned_to=req.assigned_to,
         )
+
+
+def list_haccp_assignees(
+    db: Session,
+    org_id: UUID,
+    is_active: bool | None = None,
+) -> list[HaccpAssigneeResponse]:
+    query = select(User).where(User.org_id == org_id)
+    if is_active is not None:
+        query = query.where(User.is_active == is_active)
+    users = db.scalars(query.order_by(User.full_name.asc())).all()
+    return [
+        HaccpAssigneeResponse(
+            id=item.id,
+            full_name=item.full_name,
+            department=item.department,
+            is_active=item.is_active,
+        )
+        for item in users
+    ]

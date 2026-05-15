@@ -261,8 +261,8 @@ export default function HaccpPlansListPanel({
           <table className="w-full table-fixed text-left text-sm text-slate-700">
             <colgroup>
               <col className="w-[24%] min-w-0" />
-              <col className="w-[8%] min-w-0" />
-              <col className="w-[20%] min-w-0" />
+              <col className="w-[10%] min-w-0" />
+              <col className="w-[15%] min-w-0" />
               <col className="w-[11%] min-w-0" />
               <col className="w-[11%] min-w-0" />
               <col className="w-[26%] min-w-0" />
@@ -270,10 +270,10 @@ export default function HaccpPlansListPanel({
             <thead className="sticky top-0 z-[1] border-b border-slate-200 bg-slate-100/95 text-slate-800 backdrop-blur-sm">
               <tr>
                 <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wide">Kế hoạch</th>
-                <th className="whitespace-nowrap px-3 py-3.5 text-xs font-bold uppercase tracking-wide">Phiên bản</th>
-                <th className="px-3 py-3.5 text-xs font-bold uppercase tracking-wide">Phạm vi</th>
-                <th className="whitespace-nowrap px-3 py-3.5 text-xs font-bold uppercase tracking-wide">Trạng thái</th>
-                <th className="whitespace-nowrap px-3 py-3.5 text-xs font-bold uppercase tracking-wide">Ngày tạo</th>
+                <th className="whitespace-nowrap px-3 py-3.5 text-xs font-bold uppercase tracking-wide">Phiên bản  - </th>
+                <th className="px-3 py-3.5 text-xs font-bold uppercase tracking-wide"> -  Phạm vi</th>
+                <th className="whitespace-nowrap px-3 py-3.5 text-xs font-bold uppercase tracking-wide">Trạng thái  - </th>
+                <th className="whitespace-nowrap px-3 py-3.5 text-xs font-bold uppercase tracking-wide"> - Ngày tạo</th>
                 <th className="px-3 py-3.5 text-right text-xs font-bold uppercase tracking-wide">Thao tác</th>
               </tr>
             </thead>

@@ -47,6 +47,7 @@ Ngày cập nhật: 2026-04-22.
 
 ## 5) HACCP — phiếu đánh giá & lịch
 - Bảng `haccp_assessments` có cột **`calendar_event_id`** (uuid, nullable, FK → `sct_iso.calendar_events.id`, ON DELETE SET NULL) để gắn phiếu với một sự kiện lịch `HACCP_ASSESSMENT` tương ứng.
+- Unique partial index `uq_haccp_assessments_calendar_event_id` trên `calendar_event_id` (WHERE NOT NULL): **mỗi lịch tối đa một phiếu** trong org.
 
 ## 6) Vận hành và thay đổi schema
 - Chỉ thay đổi schema qua Alembic migration.

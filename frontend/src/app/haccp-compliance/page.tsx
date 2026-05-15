@@ -3,13 +3,15 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import AppShell from "@/components/layout/app-shell";
-import { haccpSidebarButtons, currentUser, getUserDisplayName } from "@/lib/mock-data";
-import { useUsers, User } from "@/api/hooks/use-users";
+import { haccpSidebarButtons, currentUser } from "@/lib/mock-data";
 import { useAuth, useToast } from "@/hooks";
 import { prpService } from "@/services";
 import { Location } from "@/types";
 import { capaService } from "@/services/capa-service";
 import {
+  useHaccpAssignees,
+  HaccpAssignee,
+  getHaccpAssigneeDisplayName,
   useHaccpPlans,
   useProcessSteps,
   useCCPs,
@@ -66,7 +68,7 @@ export default function HaccpCompliancePage() {
   const loadDeviationsData = true;
   const loadAllCcpsData = true;
   const loadFullHazardAnalysis = true;
-  const loadUsersForForms = true;
+  const loadAssigneesForForms = !!principal?.org_id;
 
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [wizardPlanId, setWizardPlanId] = useState<string | null>(null);
@@ -280,8 +282,19 @@ export default function HaccpCompliancePage() {
     [allCcps, compliancePlanIdSet],
   );
 
-  // Hook for users (for monitoring plan forms)
-  const { users, loading: usersLoading } = useUsers({ is_active: true }, loadUsersForForms);
+  // Danh sách người phụ trách/xử lý (GET /haccp/assignees — haccp.read)
+  const { assignees, loading: assigneesLoading } = useHaccpAssignees(
+    undefined,
+    loadAssigneesForForms,
+  );
+  const activeAssignees = useMemo(
+    () => assignees.filter((a) => a.is_active),
+    [assignees],
+  );
+  const getAssigneeDisplayName = useCallback(
+    (userId: string | null | undefined) => getHaccpAssigneeDisplayName(assignees, userId),
+    [assignees],
+  );
 
   // New hooks for all features
   const allCcpMap = useMemo(() => new Map(allCcps.map((ccp) => [ccp.id, ccp])), [allCcps]);
@@ -1535,7 +1548,7 @@ export default function HaccpCompliancePage() {
                                       {ccp.responsible_user && (
                                         <div className="flex items-center gap-1 text-slate-600">
                                           <span>👤</span>
-                                          <span className="truncate font-mono text-[9px]">{ccp.responsible_user.slice(0, 8)}...</span>
+                                          <span className="truncate text-[10px]">{getAssigneeDisplayName(ccp.responsible_user)}</span>
                                         </div>
                                       )}
                                     </div>
@@ -1618,7 +1631,7 @@ export default function HaccpCompliancePage() {
                         {selectedCCP.responsible_user && (
                           <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
                             <p className="text-xs font-semibold text-slate-500 uppercase mb-1">👤 Người chịu trách nhiệm</p>
-                            <p className="text-sm text-slate-700 font-mono">{selectedCCP.responsible_user}</p>
+                            <p className="text-sm text-slate-700">{getAssigneeDisplayName(selectedCCP.responsible_user)}</p>
                           </div>
                         )}
                       </div>
@@ -1657,8 +1670,8 @@ export default function HaccpCompliancePage() {
                     allCcps={ccpsForComplianceUi}
                     allCcpsLoading={allCcpsLoading}
                     refetchAllCcps={refetchAllCcps}
-                    users={users}
-                    usersLoading={usersLoading}
+                    assignees={activeAssignees}
+                    assigneesLoading={assigneesLoading}
                     onMonitoringPlanSaved={async (planId) => {
                       await refetchAllCcps();
                       setPendingAssessmentAfterMonitoringSavePlanId(planId);
@@ -1681,7 +1694,7 @@ export default function HaccpCompliancePage() {
                     onRefresh={() => { refetchDeviations(); refetchDeviationStats(); }}
                     onHandleDeviation={(dev) => { setSelectedDeviation(dev); setIsHandleDeviationModalOpen(true); }}
                     getCCPInfo={getCCPInfo}
-                    getUserDisplayName={getUserDisplayName}
+                    getAssigneeDisplayName={getAssigneeDisplayName}
                   />
                 )}
 
@@ -1882,7 +1895,7 @@ export default function HaccpCompliancePage() {
         isOpen={isHandleDeviationModalOpen}
         onClose={() => { setIsHandleDeviationModalOpen(false); setSelectedDeviation(null); }}
         deviation={selectedDeviation}
-        users={users}
+        assignees={activeAssignees}
         onRefresh={() => { refetchDeviations(); refetchDeviationStats(); }}
         onSuccess={() => { refetchDeviations(); refetchDeviationStats(); setIsHandleDeviationModalOpen(false); setSelectedDeviation(null); }}
       />
@@ -1903,6 +1916,7 @@ export default function HaccpCompliancePage() {
         onClose={() => setIsStepDetailOpen(false)}
         step={selectedStepDetail}
         allCcps={allCcps}
+        getAssigneeDisplayName={getAssigneeDisplayName}
       />
 
       {showScheduleModal && (
@@ -2020,16 +2034,16 @@ function MonitoringPlanEditor({
   allCcps: ccps,
   allCcpsLoading: ccpsLoading,
   refetchAllCcps: refetch,
-  users,
-  usersLoading,
+  assignees,
+  assigneesLoading,
 }: {
   plans: any[];
   onMonitoringPlanSaved?: (planId: string) => void;
   allCcps: CCP[];
   allCcpsLoading: boolean;
   refetchAllCcps: () => void | Promise<void>;
-  users: User[];
-  usersLoading: boolean;
+  assignees: HaccpAssignee[];
+  assigneesLoading: boolean;
 }) {
   const [selectedCcpId, setSelectedCcpId] = useState<string | null>(null);
   const [editableCcp, setEditableCcp] = useState<any>(null);
@@ -2390,10 +2404,10 @@ function MonitoringPlanEditor({
               className="w-full p-3 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 bg-white"
             >
               <option value="">-- Chọn người phụ trách --</option>
-              {usersLoading ? (
+              {assigneesLoading ? (
                 <option value="">Đang tải...</option>
               ) : (
-                users.filter((u: User) => u.is_active).map((user: User) => (
+                assignees.filter((u) => u.is_active).map((user) => (
                   <option key={user.id} value={user.id}>
                     {user.full_name}
                   </option>
@@ -2448,7 +2462,7 @@ interface DeviationManagementPanelProps {
   onRefresh: () => void;
   onHandleDeviation: (dev: CCPMonitoringLog) => void;
   getCCPInfo: (ccpId: string) => CCP | undefined;
-  getUserDisplayName: (userId: string) => string;
+  getAssigneeDisplayName: (userId: string | null | undefined) => string;
 }
 
 function DeviationManagementPanel({
@@ -2463,7 +2477,7 @@ function DeviationManagementPanel({
   onRefresh,
   onHandleDeviation,
   getCCPInfo,
-  getUserDisplayName
+  getAssigneeDisplayName,
 }: DeviationManagementPanelProps) {
   const { principal } = useAuth();
   const toast = useToast();
@@ -2991,7 +3005,10 @@ function DeviationManagementPanel({
                         <span>📦 Lô: {dev.batch_number || "N/A"}</span>
                         <span>🕐 Ca: {dev.shift || "N/A"}</span>
                         <span>📊 Giá trị: {dev.measured_value} {dev.unit}</span>
-                        <span>👤 Ghi nhận: {dev.recorded_by ? getUserDisplayName(dev.recorded_by) : "—"}</span>
+                        <span>👤 Ghi nhận: {getAssigneeDisplayName(dev.recorded_by)}</span>
+                        {dev.handled_by && (
+                          <span>🛠 Xử lý: {getAssigneeDisplayName(dev.handled_by)}</span>
+                        )}
                       </div>
 
                       {dev.deviation_note && (
@@ -3099,13 +3116,13 @@ interface HandleDeviationModalProps {
   isOpen: boolean;
   onClose: () => void;
   deviation: CCPMonitoringLog | null;
-  users: User[];
+  assignees: HaccpAssignee[];
   /** Làm mới danh sách/thống kê không đóng modal (sau gửi CAPA). */
   onRefresh?: () => void;
   onSuccess: () => void;
 }
 
-function HandleDeviationModal({ isOpen, onClose, deviation, users, onRefresh, onSuccess }: HandleDeviationModalProps) {
+function HandleDeviationModal({ isOpen, onClose, deviation, assignees, onRefresh, onSuccess }: HandleDeviationModalProps) {
   const toast = useToast();
   const { principal } = useAuth();
   const [hasCapaNc, setHasCapaNc] = useState(false);
@@ -3351,7 +3368,7 @@ function HandleDeviationModal({ isOpen, onClose, deviation, users, onRefresh, on
             className="w-full p-2 border border-slate-200 rounded-lg text-sm"
           >
             <option value="">-- Chọn người xử lý --</option>
-            {users.filter(u => u.is_active).map(user => (
+            {assignees.filter((u) => u.is_active).map((user) => (
               <option key={user.id} value={user.id}>{user.full_name} ({user.department})</option>
             ))}
           </select>
@@ -3569,11 +3586,13 @@ function StepDetailModal({
   onClose,
   step,
   allCcps,
+  getAssigneeDisplayName,
 }: {
   isOpen: boolean;
   onClose: () => void;
   step: ProcessStep | null;
   allCcps: CCP[];
+  getAssigneeDisplayName: (userId: string | null | undefined) => string;
 }) {
   const { hazards, loading: hazardsLoading } = useHazards(step?.id ?? null);
   const ccp = useMemo(() => allCcps.find(c => c.step_id === step?.id) ?? null, [allCcps, step]);
@@ -3638,7 +3657,7 @@ function StepDetailModal({
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase text-orange-400 mb-1">Người chịu trách nhiệm</p>
-                <p className="text-orange-800 font-medium">{ccp.responsible_user || "—"}</p>
+                <p className="text-orange-800 font-medium">{getAssigneeDisplayName(ccp.responsible_user)}</p>
               </div>
             </div>
           </div>

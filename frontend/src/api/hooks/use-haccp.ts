@@ -771,6 +771,8 @@ export interface HaccpSchedule {
   plan_name?: string | null;
   schedule_batch_id?: string | null;
   can_delete?: boolean;
+  /** Đã có phiếu đánh giá gắn với lịch này — không tạo phiếu thứ hai. */
+  has_assessment?: boolean;
 }
 
 export function isHaccpScheduleAssessmentReady(schedule: HaccpSchedule): boolean {
@@ -866,4 +868,67 @@ export async function deleteHaccpSchedule(
       method: "DELETE",
     },
   );
+}
+
+// ============================================================================
+// HACCP ASSIGNEES (dropdown — chỉ cần haccp.read)
+// ============================================================================
+export interface HaccpAssignee {
+  id: string;
+  full_name: string;
+  department: string | null;
+  is_active: boolean;
+}
+
+export function getHaccpAssigneeDisplayName(
+  assignees: HaccpAssignee[],
+  userId: string | null | undefined,
+): string {
+  if (!userId?.trim()) return "—";
+  const found = assignees.find((a) => a.id === userId);
+  if (!found) return userId;
+  return found.department
+    ? `${found.full_name} (${found.department})`
+    : found.full_name;
+}
+
+export function useHaccpAssignees(
+  filters?: { is_active?: boolean },
+  enabled: boolean = true,
+) {
+  const [assignees, setAssignees] = useState<HaccpAssignee[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!enabled) {
+      setAssignees([]);
+      setLoading(false);
+      return;
+    }
+
+    const fetchAssignees = async () => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (filters?.is_active !== undefined) {
+          params.append("is_active", String(filters.is_active));
+        }
+        const url = `/haccp/assignees${params.toString() ? `?${params.toString()}` : ""}`;
+        const data = await apiFetch<HaccpAssignee[]>(url);
+        setAssignees(data ?? []);
+        setError(null);
+      } catch (err: unknown) {
+        console.error("[useHaccpAssignees] Error:", err);
+        setError(err instanceof Error ? err.message : "Unknown error");
+        setAssignees([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void fetchAssignees();
+  }, [filters?.is_active, enabled]);
+
+  return { assignees, loading, error };
 }

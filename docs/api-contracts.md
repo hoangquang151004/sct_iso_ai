@@ -200,11 +200,18 @@ Ngày cập nhật: 2026-04-20.
 
 ## 6) HACCP — phiếu đánh giá (bổ sung)
 
+### `GET /haccp/assignees`
+- Permission: `haccp.read` (không yêu cầu `users.read`).
+- Query: `is_active` (boolean, tuỳ chọn; bỏ qua = trả về mọi user trong org).
+- Response 200: `HaccpAssigneeResponse[]` — `{ id, full_name, department, is_active }` trong phạm vi `org_id` của principal.
+- Dùng cho dropdown «Người phụ trách» / «Người xử lý» trên màn HACCP.
+
 ### `POST /haccp/assessments`
 - Permission: bearer; `org_id` gắn từ principal.
 - Request body (`HaccpAssessmentCreate`): `haccp_plan_id`, **`calendar_event_id`** (bắt buộc), `title`, `assessment_date` (tuỳ chọn), `items` (tuỳ chọn).
 - `calendar_event_id` phải trỏ tới `calendar_events` của org, `event_type = HACCP_ASSESSMENT`, trạng thái còn `SCHEDULED`, và `haccp_plan_id` trong payload phải trùng `haccp_plan_id` lưu trong JSON `description` của sự kiện lịch.
-- Không cho tạo nếu đã tồn tại phiếu (DRAFT/SUBMITTED/REVIEWED) khác cùng `calendar_event_id`.
+- **Mỗi `calendar_event_id` chỉ một phiếu** (mọi trạng thái). Nếu đã có phiếu gắn lịch → `400` với mô tả tiếng Việt. Xóa phiếu nháp (`DELETE`) thì có thể tạo lại cho cùng lịch.
+- `GET /haccp/plans/schedules`: mỗi phần tử có thêm `has_assessment` (boolean) — `true` nếu org đã có phiếu gắn `id` lịch đó.
 - Response 201: `HaccpAssessmentResponse` (có thể có `calendar_event_id`).
 - Lỗi nghiệp vụ: `400` với `detail` là chuỗi mô tả (tiếng Việt).
 

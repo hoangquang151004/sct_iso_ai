@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from database.deps import get_db
-from modules.auth.dependencies import get_current_principal
+from modules.auth.dependencies import get_current_principal, require_permissions
 from modules.auth.schemas import AuthPrincipal
 from .schemas import (
     ProductCreate, ProductUpdate, ProductResponse,
@@ -25,6 +25,7 @@ from .schemas import (
     HaccpAssessmentSubmitResponse,
     HaccpScheduleRequest,
     HaccpScheduleDeleteResponse,
+    HaccpAssigneeResponse,
 )
 from .service import (
     ProductService,
@@ -35,9 +36,24 @@ from .service import (
     CCPMonitoringLogService,
     HaccpVerificationService,
     HaccpAssessmentService,
+    list_haccp_assignees,
 )
 
 haccp_router = APIRouter(prefix="/haccp", tags=["HACCP"])
+
+
+@haccp_router.get(
+    "/assignees",
+    response_model=list[HaccpAssigneeResponse],
+    summary="Danh sách người dùng trong tổ chức (HACCP)",
+    description="Trả về id, họ tên, phòng ban cho dropdown phụ trách/xử lý. Yêu cầu haccp.read (không cần users.read).",
+)
+def get_haccp_assignees(
+    is_active: bool | None = Query(default=None),
+    db: Session = Depends(get_db),
+    principal: AuthPrincipal = Depends(require_permissions("haccp.read")),
+) -> list[HaccpAssigneeResponse]:
+    return list_haccp_assignees(db, principal.org_id, is_active)
 
 
 # =============================================================================

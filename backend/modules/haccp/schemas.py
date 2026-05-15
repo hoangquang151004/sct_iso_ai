@@ -496,3 +496,14 @@ class HaccpScheduleRequest(BaseModel):
 class HaccpScheduleDeleteResponse(BaseModel):
     deleted_count: int
     skipped_locked_count: int = 0
+
+
+class HaccpAssigneeResponse(BaseModel):
+    """Người dùng trong org — dùng chọn phụ trách/xử lý trên màn HACCP (không cần users.read)."""
+
+    id: UUID
+    full_name: str
+    department: str | None = None
+    is_active: bool
+
+    model_config = ConfigDict(from_attributes=True)
