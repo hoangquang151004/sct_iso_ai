@@ -30,25 +30,6 @@ import {
 import { buildKpiDrillQueryFromReports } from "@/lib/report-kpi-drill-period";
 import { slugFromReportKpiLabel } from "@/lib/report-kpi-slugs";
 
-function signalPanelClass(level: string): string {
-  if (level === "danger") {
-    return "border-rose-200 bg-rose-50 text-rose-950";
-  }
-  if (level === "warning") {
-    return "border-amber-200 bg-amber-50 text-amber-950";
-  }
-  return "border-slate-200 bg-slate-50 text-slate-800";
-}
-
-/** Tín hiệu “chưa có phiên PRP / chưa nhập biên bản” — ẩn trên UI, không ẩn thanh tóm tắt số liệu. */
-function isPrpEmptySessionInfoSignal(message: string): boolean {
-  const m = message.trim();
-  return (
-    m.includes("Chưa có phiên PRP trong phạm vi") &&
-    m.includes("chưa nhập biên bản")
-  );
-}
-
 function localIsoDate(d = new Date()): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -680,45 +661,25 @@ export default function ReportsPage() {
           {internalLoading ? (
             <p className="mt-3 text-sm text-slate-500">Đang tải tóm tắt theo khu vực…</p>
           ) : internalSummary ? (
-            <div className="mt-4 space-y-3">
-              <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-700">
-                <span className="font-semibold text-slate-900">
-                  {internalSummary.location_name}
-                </span>
-                <span className="mx-2 text-slate-300">|</span>
-                <span>{internalSummary.period_days} ngày gần nhất</span>
-                <span className="mx-2 text-slate-300">|</span>
-                <span>PRP: {internalSummary.prp_audit_count} phiên</span>
-                <span className="mx-2 text-slate-300">|</span>
-                <span>
-                  TB tuân thủ PRP:{" "}
-                  {internalSummary.prp_avg_compliance != null
-                    ? `${internalSummary.prp_avg_compliance}%`
-                    : "—"}
-                </span>
-                <span className="mx-2 text-slate-300">|</span>
-                <span>NC mở (toàn TC): {internalSummary.open_nc_org_count}</span>
-                <span className="mx-2 text-slate-300">|</span>
-                <span>Lệch CCP (toàn TC): {internalSummary.haccp_deviation_org_count}</span>
-              </div>
-              {(() => {
-                const rows = internalSummary.signals.filter(
-                  (s) => !isPrpEmptySessionInfoSignal(s.message),
-                );
-                if (rows.length === 0) return null;
-                return (
-                  <ul className="space-y-2">
-                    {rows.map((s, idx) => (
-                      <li
-                        key={`${s.level}-${idx}`}
-                        className={`rounded-lg border px-3 py-2.5 text-sm leading-snug ${signalPanelClass(s.level)}`}
-                      >
-                        {s.message}
-                      </li>
-                    ))}
-                  </ul>
-                );
-              })()}
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-700">
+              <span className="font-semibold text-slate-900">
+                {internalSummary.location_name}
+              </span>
+              <span className="mx-2 text-slate-300">|</span>
+              <span>{internalSummary.period_days} ngày gần nhất</span>
+              <span className="mx-2 text-slate-300">|</span>
+              <span>PRP: {internalSummary.prp_audit_count} phiên</span>
+              <span className="mx-2 text-slate-300">|</span>
+              <span>
+                TB tuân thủ PRP:{" "}
+                {internalSummary.prp_avg_compliance != null
+                  ? `${internalSummary.prp_avg_compliance}%`
+                  : "—"}
+              </span>
+              <span className="mx-2 text-slate-300">|</span>
+              <span>NC mở (toàn TC): {internalSummary.open_nc_org_count}</span>
+              <span className="mx-2 text-slate-300">|</span>
+              <span>Lệch CCP (toàn TC): {internalSummary.haccp_deviation_org_count}</span>
             </div>
           ) : null}
 
