@@ -58,6 +58,7 @@ class PRPAuditData(BaseModel):
     org_id: UUID
     prp_program_id: Optional[UUID] = None
     area_id: Optional[UUID] = None  # Dùng ID từ bảng Location
+    calendar_event_id: Optional[UUID] = None  # Liên kết với lịch
     audit_date: date
     total_score: Optional[float] = Field(None, ge=0)
     compliance_rate: Optional[float] = Field(None, ge=0, le=100)

@@ -37,6 +37,7 @@ export interface PRPAudit {
   org_id: string;
   prp_program_id?: string;
   area_id?: string;
+  calendar_event_id?: string;
   audit_date: string;
   total_score?: number;
   compliance_rate?: number;
@@ -64,6 +65,7 @@ export interface PRPAuditFullCreate {
     org_id: string;
     prp_program_id?: string;
     area_id?: string;
+    calendar_event_id?: string;
     audit_date: string;
     total_score?: number;
     compliance_rate?: number;

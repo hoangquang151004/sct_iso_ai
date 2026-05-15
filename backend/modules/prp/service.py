@@ -199,6 +199,12 @@ class PRPAuditService:
         self.db.add(db_audit)
         self.db.flush()
 
+        # Cập nhật trạng thái lịch nếu có liên kết
+        if db_audit.calendar_event_id:
+            event = self.db.get(CalendarEvent, db_audit.calendar_event_id)
+            if event:
+                event.status = "COMPLETED"
+
         for detail_in in payload.details:
             detail_data = detail_in.model_dump()
             should_create_nc = detail_data.pop("create_nc", False)

@@ -94,6 +94,7 @@ export default function PrpAuditPage() {
   const [showUpcomingModal, setShowUpcomingModal] = useState(false);
   const [showNCTracking, setShowNCTracking] = useState(false);
   const [selectedAuditId, setSelectedAuditId] = useState<string | null>(null);
+  const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null);
 
   const [kpis, setKpis] = useState<any>(null);
 
@@ -469,7 +470,7 @@ export default function PrpAuditPage() {
                 ) : (
                   upcomingSchedules.slice(0, 4).map((s) => (
                     <div key={s.id} className="group p-3 border border-slate-50 rounded-xl bg-slate-50/50 hover:bg-white hover:shadow-sm transition-all">
-                      <div className="flex gap-3">
+                      <div className="flex gap-3 items-center">
                         <div className="flex flex-col items-center justify-center bg-white border border-sky-100 rounded-lg w-12 h-12 shadow-sm shrink-0">
                           <span className="text-[8px] uppercase font-bold text-sky-500 leading-none">T{new Date(s.start_time).getMonth() + 1}</span>
                           <span className="text-lg font-bold text-slate-700 leading-none mt-0.5">{new Date(s.start_time).getDate()}</span>
@@ -478,13 +479,32 @@ export default function PrpAuditPage() {
                           <h3 className="font-bold text-slate-700 text-xs truncate group-hover:text-sky-600 transition-colors" title={s.title}>
                             {s.title}
                           </h3>
-                          <div className="mt-1 flex items-center gap-1.5 text-[10px] text-slate-400 font-medium">
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            {new Date(s.start_time).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+                          <div className="mt-1 flex items-center gap-1.5 text-[10px] font-medium">
+                            <div className="flex items-center gap-1 text-slate-400">
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              {new Date(s.start_time).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+                            </div>
+                            {s.status === "OVERDUE" && (
+                              <span className="text-rose-500 font-bold ml-auto">[Quá hạn]</span>
+                            )}
                           </div>
                         </div>
+                        {s.status === "SCHEDULED" && (
+                          <button
+                            onClick={() => {
+                              setSelectedScheduleId(s.id);
+                              setShowAuditForm(true);
+                            }}
+                            className="p-1.5 bg-sky-100 text-sky-600 rounded-lg hover:bg-sky-600 hover:text-white transition opacity-0 group-hover:opacity-100"
+                            title="Thực hiện đánh giá"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                            </svg>
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))
@@ -564,10 +584,16 @@ export default function PrpAuditPage() {
         <AuditFormModal
           locations={locations}
           programs={programs}
-          onClose={() => setShowAuditForm(false)}
+          initialScheduleId={selectedScheduleId}
+          onClose={() => {
+            setShowAuditForm(false);
+            setSelectedScheduleId(null);
+          }}
           onSuccess={() => {
             setShowAuditForm(false);
+            setSelectedScheduleId(null);
             handleFilterChange(selectedZone);
+            refreshUpcoming();
           }}
         />
       )}
@@ -600,7 +626,14 @@ export default function PrpAuditPage() {
       )}
 
       {showUpcomingModal && (
-        <ScheduleManagementModal onClose={() => setShowUpcomingModal(false)} />
+        <ScheduleManagementModal 
+          onClose={() => setShowUpcomingModal(false)} 
+          onStartAudit={(id) => {
+            setSelectedScheduleId(id);
+            setShowUpcomingModal(false);
+            setShowAuditForm(true);
+          }}
+        />
       )}
 
       {showNCTracking && (
@@ -719,7 +752,7 @@ function NCTrackingModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function ScheduleManagementModal({ onClose }: { onClose: () => void }) {
+function ScheduleManagementModal({ onClose, onStartAudit }: { onClose: () => void, onStartAudit: (id: string) => void }) {
   const { principal } = useAuth();
   const orgId = principal?.org_id;
   const [schedules, setSchedules] = useState<any[]>([]);
@@ -798,7 +831,7 @@ function ScheduleManagementModal({ onClose }: { onClose: () => void }) {
           ) : (
             <div className="space-y-3">
               {schedules.map((s) => (
-                <div key={s.id} className="flex gap-4 p-4 border border-slate-100 rounded-xl bg-white hover:shadow-md transition-all group">
+                <div key={s.id} className="flex gap-4 p-4 border border-slate-100 rounded-xl bg-white hover:shadow-md transition-all group items-center">
                   <div className={`flex flex-col items-center justify-center border rounded-lg px-4 py-2 min-w-[90px] shadow-sm ${
                     s.status === "OVERDUE" ? "bg-rose-50 border-rose-100" : "bg-slate-50 border-slate-100"
                   }`}>
@@ -813,7 +846,7 @@ function ScheduleManagementModal({ onClose }: { onClose: () => void }) {
                       {getStatusBadge(s.status)}
                       <span className="text-[10px] text-slate-400 font-bold">{new Date(s.start_time).getFullYear()}</span>
                     </div>
-                    <h3 className="font-bold text-slate-800 group-hover:text-sky-600 transition-colors truncate">
+                    <h3 className="font-bold text-slate-800 group-hover:text-[#1e8b9b] transition-colors truncate">
                       {s.title}
                     </h3>
                     <div className="mt-2 flex items-center gap-3 text-xs text-slate-500">
@@ -823,14 +856,21 @@ function ScheduleManagementModal({ onClose }: { onClose: () => void }) {
                         </svg>
                         {new Date(s.start_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       </div>
-                      <div className="flex items-center gap-1 italic opacity-60">
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                        </svg>
-                        PRP Schedule
-                      </div>
                     </div>
                   </div>
+                  {s.status === "SCHEDULED" && (
+                    <button
+                      onClick={() => onStartAudit(s.id)}
+                      className="px-4 py-2 bg-[#1e8b9b] text-white rounded-lg text-xs font-bold hover:bg-[#166a77] transition shadow-sm shrink-0"
+                    >
+                      ✓ Thực hiện
+                    </button>
+                  )}
+                  {s.status === "OVERDUE" && (
+                    <span className="px-3 py-2 bg-slate-100 text-slate-400 rounded-lg text-[10px] font-bold italic border border-slate-200">
+                      Đã quá hạn
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
@@ -1623,17 +1663,65 @@ function FormBuilderModal({ locations, programs, onClose }: any) {
   );
 }
 
-function AuditFormModal({ locations, programs, onClose, onSuccess }: any) {
+function AuditFormModal({ locations, programs, onClose, onSuccess, initialScheduleId }: any) {
   const toast = useToast();
   const { principal } = useAuth();
   const orgId = principal?.org_id;
 
-  const [selectedLocation, setSelectedLocation] = useState(locations[0]?.id || "");
-  const [selectedProgram, setSelectedProgram] = useState(programs[0]?.id || "");
+  const [upcomingSchedules, setUpcomingSchedules] = useState<any[]>([]);
+  const [selectedScheduleId, setSelectedScheduleId] = useState(initialScheduleId || "");
+  const [selectedLocation, setSelectedLocation] = useState("");
+  const [selectedProgram, setSelectedProgram] = useState("");
+  
+  // Thêm bộ lọc cho danh sách lịch trình
+  const [filterProgram, setFilterProgram] = useState("");
+  const [filterLocation, setFilterLocation] = useState("");
+
   const [templates, setTemplates] = useState<PRPChecklistTemplate[]>([]);
   const [results, setResults] = useState<Record<string, string>>({});
   const [observations, setObservations] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+
+  // Fetch upcoming schedules for the dropdown
+  useEffect(() => {
+    if (orgId) {
+      prpService.getUpcomingSchedules(orgId).then(setUpcomingSchedules);
+    }
+  }, [orgId]);
+
+  // Lọc danh sách lịch trình dựa trên bộ lọc và CHỈ LẤY LỊCH TRÌNH CHƯA QUÁ HẠN
+  const filteredSchedules = upcomingSchedules
+    .filter(s => s.status === "SCHEDULED") // Chỉ lấy lịch còn hạn
+    .filter(s => {
+      if (!s.description) return true;
+      try {
+        const desc = JSON.parse(s.description);
+        const matchProg = !filterProgram || desc.prp_program_id === filterProgram;
+        const matchLoc = !filterLocation || desc.location_id === filterLocation;
+        return matchProg && matchLoc;
+      } catch (e) {
+        return true;
+      }
+    });
+
+  // Handle schedule selection
+  useEffect(() => {
+    if (selectedScheduleId && upcomingSchedules.length > 0) {
+      const schedule = upcomingSchedules.find(s => s.id === selectedScheduleId);
+      if (schedule && schedule.description) {
+        try {
+          const desc = JSON.parse(schedule.description);
+          if (desc.location_id) setSelectedLocation(desc.location_id);
+          if (desc.prp_program_id) setSelectedProgram(desc.prp_program_id);
+        } catch (e) {
+          console.error("Failed to parse schedule description", e);
+        }
+      }
+    } else {
+      setSelectedLocation("");
+      setSelectedProgram("");
+    }
+  }, [selectedScheduleId, upcomingSchedules]);
 
   useEffect(() => {
     if (selectedLocation && selectedProgram) {
@@ -1653,12 +1741,18 @@ function AuditFormModal({ locations, programs, onClose, onSuccess }: any) {
           setObservations(initialObs);
         })
         .finally(() => setLoading(false));
+    } else {
+      setTemplates([]);
     }
   }, [selectedLocation, selectedProgram]);
 
   const handleSubmit = async () => {
     if (!orgId) {
       toast.error("Không tìm thấy thông tin tổ chức.");
+      return;
+    }
+    if (!selectedScheduleId) {
+      toast.warning("Vui lòng chọn một lịch trình để thực hiện đánh giá.");
       return;
     }
     try {
@@ -1693,7 +1787,7 @@ function AuditFormModal({ locations, programs, onClose, onSuccess }: any) {
           result: val,
           score: isPass ? 100 : 0,
           observation: obs,
-          create_nc: false // Auditor không tự tạo NC nữa
+          create_nc: false 
         };
       });
 
@@ -1704,6 +1798,7 @@ function AuditFormModal({ locations, programs, onClose, onSuccess }: any) {
           org_id: orgId,
           prp_program_id: selectedProgram,
           area_id: selectedLocation,
+          calendar_event_id: selectedScheduleId,
           audit_date: auditDate,
           compliance_rate: complianceRate,
           overall_result: complianceRate >= 80 ? "PASSED" : "FAILED",
@@ -1721,115 +1816,166 @@ function AuditFormModal({ locations, programs, onClose, onSuccess }: any) {
     }
   };
 
+  const selectedProgramName = programs.find((p: any) => p.id === selectedProgram)?.name;
+  const selectedLocationName = locations.find((l: any) => l.id === selectedLocation)?.name;
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
         <div className="p-6 border-b flex justify-between items-center bg-[#1e8b9b] text-white">
-          <h2 className="text-xl font-bold">Bắt đầu Đánh giá tuân thủ</h2>
+          <h2 className="text-xl font-bold">Thực hiện Đánh giá theo Lịch</h2>
           <button onClick={onClose} className="text-white/80 hover:text-white text-2xl">&times;</button>
         </div>
 
         <div className="p-6 flex-1 overflow-auto space-y-6">
-          <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
-            <div>
-              <label className="block text-xs uppercase font-bold text-slate-400 mb-1">1. Chọn Chương trình</label>
-              <select
-                value={selectedProgram}
-                onChange={(e) => setSelectedProgram(e.target.value)}
-                className="w-full rounded-lg border-slate-300 shadow-sm focus:ring-[#1e8b9b] text-sm font-medium"
-              >
-                {programs.map((p: any) => (
-                  <option key={p.id} value={p.id}>{p.name} ({p.category})</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs uppercase font-bold text-slate-400 mb-1">2. Chọn Khu vực</label>
-              <select
-                value={selectedLocation}
-                onChange={(e) => setSelectedLocation(e.target.value)}
-                className="w-full rounded-lg border-slate-300 shadow-sm focus:ring-[#1e8b9b] text-sm font-medium"
-              >
-                {locations.map((loc: any) => (
-                  <option key={loc.id} value={loc.id}>{loc.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="space-y-8">
-            {loading ? (
-              <div className="text-center py-20">
-                <div className="animate-spin inline-block w-8 h-8 border-4 border-current border-t-transparent text-[#1e8b9b] rounded-full mb-2"></div>
-                <p className="text-slate-400">Đang tải danh sách kiểm tra...</p>
+          <div className="p-5 bg-sky-50 rounded-2xl border border-sky-100 shadow-sm space-y-4">
+            <div className="flex justify-between items-center mb-1">
+              <label className="block text-xs uppercase font-black text-sky-600 tracking-widest">1. Chọn Lịch trình Đánh giá</label>
+              <div className="flex gap-2">
+                <select
+                  value={filterProgram}
+                  onChange={(e) => setFilterProgram(e.target.value)}
+                  className="text-[10px] py-1 px-2 rounded-md border-sky-200 focus:ring-sky-500 bg-white"
+                >
+                  <option value="">Chương trình</option>
+                  {programs.map((p: any) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <select
+                  value={filterLocation}
+                  onChange={(e) => setFilterLocation(e.target.value)}
+                  className="text-[10px] py-1 px-2 rounded-md border-sky-200 focus:ring-sky-500 bg-white"
+                >
+                  <option value="">Khu vực</option>
+                  {locations.map((l: any) => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
               </div>
-            ) : templates.length === 0 ? (
-              <div className="text-center py-20 text-slate-400 border-2 border-dashed rounded-xl italic">
-                Không tìm thấy câu hỏi nào cho cấu hình đã chọn.
-              </div>
-            ) : (
-              templates.map((t) => (
-                <div key={t.id} className="border-b border-slate-100 pb-6 last:border-0">
-                  <div className="flex justify-between items-start mb-4">
-                    <p className="font-semibold text-slate-800 flex-1 mr-4">{t.question_text}</p>
-                    {t.answer_type === "NUMBER" && (
-                      <span className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded font-bold">Mục tiêu: ≥ {t.target_value}</span>
-                    )}
-                  </div>
+            </div>
 
-                  <div className="mb-4">
-                    {t.answer_type === "BOOLEAN" ? (
-                      <div className="flex gap-4">
-                        <button
-                          onClick={() => setResults({ ...results, [t.id]: "PASS" })}
-                          className={`flex-1 py-2 rounded-lg border font-bold transition-all ${
-                            results[t.id] === "PASS" ? "bg-emerald-500 border-emerald-500 text-white shadow-md" : "bg-white border-slate-200 text-slate-500 hover:border-emerald-200"
-                          }`}
-                        >
-                          ✓ Đạt
-                        </button>
-                        <button
-                          onClick={() => setResults({ ...results, [t.id]: "FAIL" })}
-                          className={`flex-1 py-2 rounded-lg border font-bold transition-all ${
-                            results[t.id] === "FAIL" ? "bg-red-500 border-red-500 text-white shadow-md" : "bg-white border-slate-200 text-slate-500 hover:border-red-200"
-                          }`}
-                        >
-                          × Không đạt
-                        </button>
-                      </div>
-                    ) : (
-                      <input
-                        type="number"
-                        value={results[t.id]}
-                        onChange={(e) => setResults({ ...results, [t.id]: e.target.value })}
-                        className="w-full rounded-lg border-slate-200 shadow-sm focus:ring-[#1e8b9b] focus:border-[#1e8b9b]"
-                        placeholder="Nhập giá trị thực tế..."
-                      />
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block">Ghi chú / Quan sát</label>
-                    <textarea
-                      value={observations[t.id]}
-                      onChange={(e) => setObservations({ ...observations, [t.id]: e.target.value })}
-                      className="w-full rounded-lg border-slate-200 shadow-sm text-sm focus:ring-[#1e8b9b] focus:border-[#1e8b9b]"
-                      placeholder="Ghi rõ tình trạng thực tế..."
-                      rows={2}
-                    />
-                  </div>
-                </div>
-              ))
+            <select
+              value={selectedScheduleId}
+              onChange={(e) => setSelectedScheduleId(e.target.value)}
+              className="w-full rounded-xl border-sky-200 shadow-sm focus:ring-[#1e8b9b] focus:border-[#1e8b9b] text-sm font-bold bg-white p-3"
+            >
+              <option value="">-- Vui lòng chọn lịch đánh giá --</option>
+              {filteredSchedules.map((s) => (
+                <option key={s.id} value={s.id}>
+                  [{new Date(s.start_time).toLocaleDateString()}] {s.title}
+                </option>
+              ))}
+            </select>
+            {filteredSchedules.length === 0 && upcomingSchedules.length > 0 && (
+              <p className="text-[10px] text-amber-600 mt-2 font-bold italic">
+                ⚠️ Không tìm thấy lịch phù hợp với bộ lọc hiện tại.
+              </p>
+            )}
+            {upcomingSchedules.length === 0 && (
+              <p className="text-[10px] text-amber-600 mt-2 font-bold italic">
+                ⚠️ Không có lịch trình nào sắp tới. Vui lòng lập lịch trước.
+              </p>
             )}
           </div>
+
+          {selectedScheduleId ? (
+            <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100 animate-in fade-in slide-in-from-top-2">
+              <div className="space-y-1">
+                <label className="block text-[10px] uppercase font-bold text-slate-400">Chương trình</label>
+                <div className="text-sm font-black text-slate-700 bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
+                  {selectedProgramName || "N/A"}
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="block text-[10px] uppercase font-bold text-slate-400">Khu vực</label>
+                <div className="text-sm font-black text-slate-700 bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
+                  {selectedLocationName || "N/A"}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="py-20 text-center border-2 border-dashed rounded-2xl border-slate-100 bg-slate-50/30">
+              <div className="text-4xl mb-4 opacity-20">📋</div>
+              <p className="text-sm text-slate-400 font-medium">Vui lòng chọn lịch trình để hiển thị nội dung đánh giá</p>
+            </div>
+          )}
+
+          {selectedScheduleId && (
+            <div className="space-y-8 animate-in fade-in duration-500">
+              {loading ? (
+                <div className="text-center py-10">
+                  <div className="animate-spin inline-block w-8 h-8 border-4 border-current border-t-transparent text-[#1e8b9b] rounded-full mb-2"></div>
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Đang tải câu hỏi...</p>
+                </div>
+              ) : templates.length === 0 ? (
+                <div className="text-center py-10 text-amber-500 bg-amber-50 rounded-xl border border-amber-100 italic text-sm">
+                  Không tìm thấy bộ câu hỏi nào được thiết lập cho Chương trình và Khu vực này.
+                </div>
+              ) : (
+                templates.map((t) => (
+                  <div key={t.id} className="border-b border-slate-100 pb-6 last:border-0 group">
+                    <div className="flex justify-between items-start mb-4">
+                      <p className="font-bold text-slate-800 flex-1 mr-4 group-hover:text-[#1e8b9b] transition-colors">{t.question_text}</p>
+                      {t.answer_type === "NUMBER" && (
+                        <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-black">Mục tiêu: ≥ {t.target_value}</span>
+                      )}
+                    </div>
+
+                    <div className="mb-4">
+                      {t.answer_type === "BOOLEAN" ? (
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => setResults({ ...results, [t.id]: "PASS" })}
+                            className={`flex-1 py-2.5 rounded-xl border-2 font-black text-xs transition-all ${
+                              results[t.id] === "PASS" ? "bg-emerald-500 border-emerald-500 text-white shadow-lg scale-[1.02]" : "bg-white border-slate-100 text-slate-400 hover:border-emerald-200"
+                            }`}
+                          >
+                            ✓ ĐẠT
+                          </button>
+                          <button
+                            onClick={() => setResults({ ...results, [t.id]: "FAIL" })}
+                            className={`flex-1 py-2.5 rounded-xl border-2 font-black text-xs transition-all ${
+                              results[t.id] === "FAIL" ? "bg-red-500 border-red-500 text-white shadow-lg scale-[1.02]" : "bg-white border-slate-100 text-slate-400 hover:border-red-200"
+                            }`}
+                          >
+                            × KHÔNG ĐẠT
+                          </button>
+                        </div>
+                      ) : (
+                        <input
+                          type="number"
+                          value={results[t.id]}
+                          onChange={(e) => setResults({ ...results, [t.id]: e.target.value })}
+                          className="w-full rounded-xl border-slate-200 shadow-sm focus:ring-[#1e8b9b] focus:border-[#1e8b9b] font-bold"
+                          placeholder="Nhập giá trị thực tế..."
+                        />
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="text-[9px] uppercase font-black text-slate-400 mb-1 block tracking-wider">Ghi chú / Quan sát</label>
+                      <textarea
+                        value={observations[t.id]}
+                        onChange={(e) => setObservations({ ...observations, [t.id]: e.target.value })}
+                        className="w-full rounded-xl border-slate-100 bg-slate-50/50 shadow-sm text-sm focus:ring-[#1e8b9b] focus:border-[#1e8b9b] focus:bg-white transition-all"
+                        placeholder="Mô tả chi tiết tình trạng quan sát được..."
+                        rows={2}
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </div>
 
         <div className="p-6 border-t flex justify-end gap-3 bg-slate-50">
-          <button onClick={onClose} className="px-4 py-2 text-slate-600 font-medium hover:text-slate-800 transition">Hủy</button>
+          <button onClick={onClose} className="px-6 py-2 text-slate-500 font-bold hover:text-slate-800 transition">Hủy bỏ</button>
           <button
             onClick={handleSubmit}
-            disabled={loading || templates.length === 0}
-            className="px-8 py-2 bg-[#1e8b9b] text-white rounded-lg font-bold hover:bg-[#166a77] disabled:opacity-50 transition shadow-lg"
+            disabled={loading || templates.length === 0 || !selectedScheduleId}
+            className="px-10 py-2 bg-[#1e8b9b] text-white rounded-xl font-black hover:bg-[#166a77] disabled:opacity-30 disabled:grayscale transition shadow-lg uppercase text-xs tracking-widest"
           >
             Nộp Báo cáo
           </button>
