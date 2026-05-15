@@ -639,6 +639,10 @@ class HaccpAssessment(Base):
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     org_id: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.organizations.id", ondelete="CASCADE"))
     haccp_plan_id: Mapped[UUID] = mapped_column(ForeignKey("sct_iso.haccp_plans.id", ondelete="CASCADE"))
+    calendar_event_id: Mapped[Optional[UUID]] = mapped_column(
+        ForeignKey("sct_iso.calendar_events.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(50), default="DRAFT")  # DRAFT, SUBMITTED, REVIEWED, CLOSED
     assessment_date: Mapped[Optional[date]] = mapped_column(Date)
