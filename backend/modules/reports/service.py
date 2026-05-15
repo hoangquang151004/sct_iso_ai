@@ -37,6 +37,13 @@ from .schemas import (
     ReportHistoryResponse,
     ReportLocationResponse,
 )
+from core.compliance import (
+    calculate_capa_ontime_rate,
+    calculate_percentage,
+    calculate_prp_average,
+    count_low_compliance_sessions,
+    estimate_capa_ontime_rate_fallback,
+)
 
 
 class ReportService:
@@ -487,9 +494,7 @@ class ReportService:
                 ),
             )
         ) or 0
-        haccp_rate: float | None = None
-        if log_total > 0:
-            haccp_rate = round(100.0 * float(log_within) / float(log_total), 2)
+        haccp_rate = calculate_percentage(float(log_within), float(log_total), decimal_places=2)
 
         capa_open = db.scalar(
             select(func.count())
@@ -532,7 +537,9 @@ class ReportService:
         ) or 0
         capa_ontime: float | None = None
         if created_in_bucket > 0:
-            capa_ontime = round(100.0 * float(closed_in_bucket) / float(created_in_bucket), 2)
+            capa_ontime = calculate_capa_ontime_rate(
+                int(closed_in_bucket), int(created_in_bucket)
+            )
 
         alert_crit = db.scalar(
             select(func.count())
@@ -724,12 +731,8 @@ class ReportService:
         audits = list(db.execute(stmt).scalars().all())
 
         rates = [float(a.compliance_rate) for a in audits if a.compliance_rate is not None]
-        prp_avg: float | None = sum(rates) / len(rates) if rates else None
-        low_sessions = sum(
-            1
-            for a in audits
-            if a.compliance_rate is not None and float(a.compliance_rate) < 70.0
-        )
+        prp_avg = calculate_prp_average(rates)
+        low_sessions = count_low_compliance_sessions(rates, 70.0)
 
         open_nc = (
             db.scalar(
@@ -1027,7 +1030,7 @@ class ReportService:
             ).scalars().all()
         )
         rates = [float(a.compliance_rate) for a in audits if a.compliance_rate is not None]
-        prp_avg = sum(rates) / len(rates) if rates else None
+        prp_avg = calculate_prp_average(rates)
         headline = f"{prp_avg:.1f}%" if prp_avg is not None else "—"
         is_low = prp_avg is not None and prp_avg < 75.0
 
@@ -1097,9 +1100,7 @@ class ReportService:
             ai.append(
                 "Nếu nhiều phiên liên tiếp dưới 70%, cân nhắc đào tạo lại và cập nhật PRP program theo rủi ro."
             )
-        low_sess = sum(
-            1 for x in audits if x.compliance_rate is not None and float(x.compliance_rate) < 70.0
-        )
+        low_sess = count_low_compliance_sessions(rates, 70.0)
         if low_sess >= 2:
             ai.append(
                 f"Có {low_sess} phiên dưới 70% trong kỳ — nên phân tích nguyên nhân gốc (RCA) và mở CAPA nếu lặp lại."
@@ -1157,14 +1158,17 @@ class ReportService:
             )
             or 0
         )
+        headline_pct: float | None = None
         if total_logs == 0:
             headline = "—"
-            rate = None
             is_low = False
         else:
-            rate = 100.0 * (total_logs - dev_logs) / total_logs
-            headline = f"{rate:.1f}%"
-            is_low = rate < 80.0 or dev_logs >= 5
+            pct = calculate_percentage(
+                float(total_logs - dev_logs), float(total_logs), decimal_places=2
+            )
+            headline_pct = float(pct) if pct is not None else None
+            headline = f"{headline_pct:.1f}%" if headline_pct is not None else "—"
+            is_low = (headline_pct is not None and headline_pct < 80.0) or dev_logs >= 5
 
         batch_key = func.coalesce(
             func.nullif(func.trim(CCPMonitoringLog.batch_number), ""),
@@ -1272,9 +1276,9 @@ class ReportService:
             )
 
         ai: list[str] = []
-        if is_low and rate is not None:
+        if is_low and headline_pct is not None:
             ai.append(
-                f"Tỷ lệ bản ghi trong giới hạn ~{rate:.1f}% — ưu tiên CCP/lô có nhiều lệch; kiểm tra hiệu chuẩn thiết bị đo."
+                f"Tỷ lệ bản ghi trong giới hạn ~{headline_pct:.1f}% — ưu tiên CCP/lô có nhiều lệch; kiểm tra hiệu chuẩn thiết bị đo."
             )
         if dev_logs > 0:
             ai.append(
@@ -1331,11 +1335,11 @@ class ReportService:
             1 for c in capas if (c.status or "").upper() in ("CLOSED", "DONE", "COMPLETED")
         )
         if closed_cnt + overdue > 0:
-            ontime_pct = 100.0 * closed_cnt / (closed_cnt + overdue)
+            ontime_pct = calculate_capa_ontime_rate(closed_cnt, closed_cnt + overdue)
         elif not capas:
             ontime_pct = None
         else:
-            ontime_pct = 100.0 if overdue == 0 else max(0.0, 100.0 - overdue * 15.0)
+            ontime_pct = estimate_capa_ontime_rate_fallback(overdue)
 
         headline = f"{ontime_pct:.1f}%" if ontime_pct is not None else "—"
         is_low = overdue > 0 or open_cnt > 8 or (ontime_pct is not None and ontime_pct < 80.0)

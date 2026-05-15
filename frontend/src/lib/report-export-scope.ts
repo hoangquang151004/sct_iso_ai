@@ -6,15 +6,11 @@ function roundRatePct(n: number): number {
   return Math.round(Math.min(100, Math.max(0, n)) * 10) / 10;
 }
 
-/** % tuân thủ HACCP ước tính từ snapshot (cho biểu đồ / báo cáo). */
+/** % HACCP từ snapshot (backend: `calculate_percentage` trên log CCP). */
 export function snapshotHaccpCompliancePct(s: KpiSnapshotDto): number | null {
   const r = s.haccp_ccp_monitored_rate;
-  if (r != null && !Number.isNaN(Number(r))) {
-    return roundRatePct(Number(r));
-  }
-  if (s.haccp_deviation_count == null) return null;
-  const dev = s.haccp_deviation_count ?? 0;
-  return roundRatePct(100 - Math.min(100, dev * 8));
+  if (r == null || Number.isNaN(Number(r))) return null;
+  return roundRatePct(Number(r));
 }
 
 /** % tuân thủ PRP từ snapshot. */
@@ -24,7 +20,7 @@ export function snapshotPrpCompliancePct(s: KpiSnapshotDto): number | null {
   return roundRatePct(Number(r));
 }
 
-/** % CAPA đóng đúng hạn (từ snapshot). */
+/** % CAPA từ snapshot (backend: `calculate_capa_ontime_rate` / dữ liệu kỳ). */
 export function snapshotCapaOntimePct(s: KpiSnapshotDto): number | null {
   const r = s.capa_ontime_closure_rate;
   if (r == null || Number.isNaN(Number(r))) return null;
@@ -40,28 +36,6 @@ function lastSnapshotWhereDesc(
     if (test(s)) return s;
   }
   return null;
-}
-
-function haccpCompliancePercent(s: KpiSnapshotDto): number {
-  const r = s.haccp_ccp_monitored_rate;
-  if (r != null && !Number.isNaN(Number(r))) {
-    return roundRatePct(Number(r));
-  }
-  const dev = s.haccp_deviation_count ?? 0;
-  return roundRatePct(100 - Math.min(100, dev * 8));
-}
-
-function capaOntimePercent(latest: KpiSnapshotDto): number | string {
-  const r = latest.capa_ontime_closure_rate;
-  if (r != null && !Number.isNaN(Number(r))) {
-    return roundRatePct(Number(r));
-  }
-  const open = latest.capa_open_count ?? 0;
-  const overdue = latest.capa_overdue_count ?? 0;
-  if (open === 0 && overdue === 0) {
-    return "—";
-  }
-  return roundRatePct(100 - Math.min(100, open * 10));
 }
 
 export type ReportKpiRow = {
@@ -112,8 +86,18 @@ export function computeReportKpiRows(sortedAsc: KpiSnapshotDto[]): ReportKpiRow[
     prpSnap != null
       ? roundRatePct(Number(prpSnap.prp_audit_compliance_rate))
       : "—";
-  const haccpVal = haccpSnap != null ? haccpCompliancePercent(haccpSnap) : "—";
-  const capaVal = capaSnap != null ? capaOntimePercent(capaSnap) : "—";
+  const haccpVal =
+    haccpSnap != null &&
+    haccpSnap.haccp_ccp_monitored_rate != null &&
+    !Number.isNaN(Number(haccpSnap.haccp_ccp_monitored_rate))
+      ? roundRatePct(Number(haccpSnap.haccp_ccp_monitored_rate))
+      : "—";
+  const capaVal =
+    capaSnap != null &&
+    capaSnap.capa_ontime_closure_rate != null &&
+    !Number.isNaN(Number(capaSnap.capa_ontime_closure_rate))
+      ? roundRatePct(Number(capaSnap.capa_ontime_closure_rate))
+      : "—";
   const rows: ReportKpiRow[] = [
     {
       label: "Tuân thủ PRP",
