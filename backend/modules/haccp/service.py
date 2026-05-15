@@ -2,8 +2,10 @@
 HACCP Module Service Layer — kết nối PostgreSQL thật qua SQLAlchemy.
 """
 from datetime import date, datetime, time, timedelta, timezone
+import json
 from uuid import UUID, uuid4
 from typing import List, Optional
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import exists, func, or_
 from sqlalchemy.orm import Session
@@ -22,6 +24,8 @@ from database.models import (
     User,
     NonConformity,
     CAPA,
+    CalendarEvent,
+    Location,
 )
 from .schemas import (
     ProductCreate, ProductUpdate, ProductResponse,
@@ -36,7 +40,83 @@ from .schemas import (
     HaccpAssessmentItemCreate, HaccpAssessmentItemUpdate, HaccpAssessmentItemResponse,
     HaccpAssessmentManualItemCreate,
     HaccpAssessmentSubmitRequest,
+    HaccpScheduleRequest,
+    HaccpScheduleFrequency,
 )
+
+
+HACCP_SCHEDULE_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
+
+
+def _haccp_calendar_event_description_meta(description: str | None) -> dict:
+    if not description:
+        return {}
+    try:
+        return json.loads(description) if isinstance(description, str) else {}
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+
+def _haccp_plan_id_from_calendar_event(ev: CalendarEvent) -> UUID | None:
+    meta = _haccp_calendar_event_description_meta(ev.description)
+    raw = meta.get("haccp_plan_id")
+    if not raw:
+        return None
+    try:
+        return UUID(str(raw))
+    except (TypeError, ValueError):
+        return None
+
+
+def _haccp_schedule_batch_id_from_calendar_event(ev: CalendarEvent) -> str | None:
+    meta = _haccp_calendar_event_description_meta(ev.description)
+    raw = meta.get("schedule_batch_id")
+    if not raw:
+        return None
+    return str(raw)
+
+
+def _schedule_effective_end(ev: CalendarEvent) -> datetime:
+    if ev.end_time is not None:
+        return ev.end_time
+    return ev.start_time + timedelta(hours=2)
+
+
+def _schedule_display_status(ev: CalendarEvent, now: datetime) -> str:
+    if ev.status == "COMPLETED":
+        return "COMPLETED"
+    if ev.status == "OVERDUE":
+        return "OVERDUE"
+    if ev.status == "SCHEDULED":
+        if now > _schedule_effective_end(ev):
+            return "OVERDUE"
+        return "SCHEDULED"
+    return ev.status
+
+
+def _is_schedule_deletable(ev: CalendarEvent, now: datetime) -> bool:
+    return _schedule_display_status(ev, now) == "SCHEDULED"
+
+
+def _ensure_assessment_fill_allowed(db: Session, assessment: HaccpAssessmentModel) -> None:
+    """Chỉ cho phép điền / gửi phiếu khi đã đến giờ bắt đầu của lịch gắn kèm."""
+    if not assessment.calendar_event_id:
+        return
+    ev = (
+        db.query(CalendarEvent)
+        .filter(
+            CalendarEvent.id == assessment.calendar_event_id,
+            CalendarEvent.org_id == assessment.org_id,
+        )
+        .first()
+    )
+    if not ev:
+        return
+    now = datetime.now(timezone.utc)
+    if ev.start_time > now:
+        raise ValueError(
+            "Chưa đến thời gian bắt đầu kiểm tra. Chỉ được điền phiếu khi đã đến giờ bắt đầu của lịch."
+        )
 
 
 # =============================================================================
@@ -953,10 +1033,43 @@ class HaccpAssessmentService:
 
     @staticmethod
     def create_assessment(db: Session, payload: HaccpAssessmentCreate) -> HaccpAssessmentResponse:
+        if not payload.org_id:
+            raise ValueError("Thiếu org_id.")
+        event_id = payload.calendar_event_id
+        ev = (
+            db.query(CalendarEvent)
+            .filter(
+                CalendarEvent.id == event_id,
+                CalendarEvent.org_id == payload.org_id,
+                CalendarEvent.event_type == "HACCP_ASSESSMENT",
+            )
+            .first()
+        )
+        if not ev:
+            raise ValueError("Lịch đánh giá không tồn tại hoặc không thuộc tổ chức của bạn.")
+        if ev.status != "SCHEDULED":
+            raise ValueError("Lịch này không còn ở trạng thái chờ thực hiện (đã hoàn thành hoặc không hợp lệ).")
+        ev_plan_id = _haccp_plan_id_from_calendar_event(ev)
+        if not ev_plan_id or ev_plan_id != payload.haccp_plan_id:
+            raise ValueError("Kế hoạch HACCP của phiếu phải trùng với kế hoạch gắn trên lịch đánh giá đã chọn.")
+        dup = (
+            db.query(HaccpAssessmentModel)
+            .filter(
+                HaccpAssessmentModel.calendar_event_id == event_id,
+                HaccpAssessmentModel.status.in_(["DRAFT", "SUBMITTED", "REVIEWED"]),
+            )
+            .first()
+        )
+        if dup:
+            raise ValueError(
+                "Đã có phiếu đánh giá liên kết với lịch này. Hoàn thành hoặc xóa phiếu nháp hiện có trước khi tạo mới."
+            )
+
         obj = HaccpAssessmentModel(
             id=uuid4(),
             org_id=payload.org_id,
             haccp_plan_id=payload.haccp_plan_id,
+            calendar_event_id=event_id,
             title=payload.title,
             assessment_date=payload.assessment_date,
             status="DRAFT",
@@ -999,10 +1112,61 @@ class HaccpAssessmentService:
         return HaccpAssessmentResponse.model_validate(obj)
 
     @staticmethod
-    def submit_assessment(db: Session, assessment_id: UUID, payload: HaccpAssessmentSubmitRequest, submitted_by: UUID) -> HaccpAssessmentResponse | None:
+    def _sync_ccp_deviations_from_assessment(
+        db: Session,
+        assessment: HaccpAssessmentModel,
+        submitted_by: UUID,
+    ) -> int:
+        """Tạo nhật ký độ lệch (is_within_limit=False) cho mỗi hạng mục CCP không đạt trên phiếu đã gửi."""
+        created = 0
+        assessment_line = f"Phiếu đánh giá: {assessment.title} (ID {assessment.id})"
+        for item in assessment.items or []:
+            if item.item_type != "CCP" or item.result != "FAIL" or not item.ref_id:
+                continue
+            ccp = db.query(CCPModel).filter(CCPModel.id == item.ref_id).first()
+            if not ccp or ccp.haccp_plan_id != assessment.haccp_plan_id:
+                continue
+
+            measured: float | None = None
+            raw = (item.actual_value or "").strip().replace(",", ".")
+            if raw:
+                try:
+                    measured = float(raw)
+                except ValueError:
+                    pass
+
+            note_parts: list[str] = []
+            if (item.note or "").strip():
+                note_parts.append(item.note.strip())
+            note_parts.append(assessment_line)
+            if item.question:
+                note_parts.append(f"Tiêu chí: {item.question}")
+
+            log = CCPMonitoringLog(
+                id=uuid4(),
+                ccp_id=item.ref_id,
+                batch_number=(item.batch_number or "").strip() or None,
+                measured_value=measured,
+                is_within_limit=False,
+                deviation_note="\n".join(note_parts),
+                recorded_by=submitted_by,
+                deviation_status="NEW",
+            )
+            db.add(log)
+            created += 1
+        return created
+
+    @staticmethod
+    def submit_assessment(
+        db: Session,
+        assessment_id: UUID,
+        payload: HaccpAssessmentSubmitRequest,
+        submitted_by: UUID,
+    ) -> tuple[HaccpAssessmentResponse | None, int]:
         obj = db.query(HaccpAssessmentModel).filter(HaccpAssessmentModel.id == assessment_id).first()
         if not obj:
-            return None
+            return None, 0
+        _ensure_assessment_fill_allowed(db, obj)
         obj.status = "SUBMITTED"
         obj.overall_result = payload.overall_result
         obj.overall_note = payload.overall_note
@@ -1040,15 +1204,37 @@ class HaccpAssessmentService:
         obj.ai_evaluation = "\n".join(eval_lines)
         # --------------------------
 
+        deviations_created = HaccpAssessmentService._sync_ccp_deviations_from_assessment(
+            db, obj, submitted_by
+        )
+
+        if getattr(obj, "calendar_event_id", None):
+            ev_done = (
+                db.query(CalendarEvent)
+                .filter(CalendarEvent.id == obj.calendar_event_id, CalendarEvent.org_id == obj.org_id)
+                .first()
+            )
+            if ev_done and ev_done.status == "SCHEDULED":
+                submit_now = datetime.now(timezone.utc)
+                deadline = _schedule_effective_end(ev_done)
+                ev_done.status = "COMPLETED" if submit_now <= deadline else "OVERDUE"
+
         db.commit()
         db.refresh(obj)
-        return HaccpAssessmentResponse.model_validate(obj)
+        return HaccpAssessmentResponse.model_validate(obj), deviations_created
 
     @staticmethod
     def update_assessment_item(db: Session, item_id: UUID, payload: HaccpAssessmentItemUpdate) -> HaccpAssessmentItemResponse | None:
         obj = db.query(HaccpAssessmentItemModel).filter(HaccpAssessmentItemModel.id == item_id).first()
         if not obj:
             return None
+        assessment = (
+            db.query(HaccpAssessmentModel)
+            .filter(HaccpAssessmentModel.id == obj.assessment_id)
+            .first()
+        )
+        if assessment:
+            _ensure_assessment_fill_allowed(db, assessment)
         for k, v in payload.model_dump(exclude_unset=True).items():
             setattr(obj, k, v)
         db.commit()
@@ -1101,6 +1287,10 @@ class HaccpAssessmentService:
             return ("not_found", None)
         if assessment.status != "DRAFT":
             return ("not_draft", None)
+        try:
+            _ensure_assessment_fill_allowed(db, assessment)
+        except ValueError:
+            return ("not_started", None)
         item = HaccpAssessmentService._insert_assessment_item_row(db, assessment_id, payload)
         return ("ok", item)
 
@@ -1135,3 +1325,231 @@ class HaccpAssessmentService:
         db.delete(obj)
         db.commit()
         return True
+
+    @staticmethod
+    def create_haccp_schedule(db: Session, req: HaccpScheduleRequest) -> int:
+        events = []
+        current_date = req.start_date
+        end_date = req.end_date or req.start_date
+        schedule_batch_id = str(uuid4())
+
+        max_end_date = req.start_date + timedelta(days=366)
+        if end_date > max_end_date:
+            end_date = max_end_date
+
+        if req.frequency == HaccpScheduleFrequency.ONCE:
+            events.append(
+                HaccpAssessmentService._build_calendar_event(
+                    db, req, req.start_date, schedule_batch_id=schedule_batch_id
+                )
+            )
+        else:
+            while current_date <= end_date:
+                should_add = False
+                if req.frequency == HaccpScheduleFrequency.DAILY:
+                    should_add = True
+                elif req.frequency == HaccpScheduleFrequency.WEEKLY:
+                    if req.day_of_week is not None and current_date.weekday() == req.day_of_week:
+                        should_add = True
+                elif req.frequency == HaccpScheduleFrequency.MONTHLY:
+                    if req.day_of_month is not None and current_date.day == req.day_of_month:
+                        should_add = True
+
+                if should_add:
+                    events.append(
+                        HaccpAssessmentService._build_calendar_event(
+                            db, req, current_date, schedule_batch_id=schedule_batch_id
+                        )
+                    )
+                current_date += timedelta(days=1)
+
+        if events:
+            db.add_all(events)
+            db.commit()
+        return len(events)
+
+    @staticmethod
+    def get_upcoming_haccp_schedules(db: Session, org_id: UUID, limit: int = 20) -> List[CalendarEvent]:
+        from sqlalchemy import select
+
+        now = datetime.now(timezone.utc)
+        stmt = (
+            select(CalendarEvent)
+            .where(
+                CalendarEvent.org_id == org_id,
+                CalendarEvent.event_type == "HACCP_ASSESSMENT",
+                CalendarEvent.status == "SCHEDULED",
+            )
+            .order_by(CalendarEvent.start_time.asc())
+            .limit(limit * 3)
+        )
+        candidates = list(db.scalars(stmt).all())
+        upcoming: List[CalendarEvent] = []
+        for ev in candidates:
+            if _schedule_display_status(ev, now) == "SCHEDULED":
+                upcoming.append(ev)
+            if len(upcoming) >= limit:
+                break
+        return upcoming
+
+    @staticmethod
+    def delete_haccp_schedule_event(db: Session, org_id: UUID, event_id: UUID) -> dict:
+        now = datetime.now(timezone.utc)
+        ev = (
+            db.query(CalendarEvent)
+            .filter(
+                CalendarEvent.id == event_id,
+                CalendarEvent.org_id == org_id,
+                CalendarEvent.event_type == "HACCP_ASSESSMENT",
+            )
+            .first()
+        )
+        if not ev:
+            raise ValueError("Không tìm thấy lịch đánh giá.")
+        if not _is_schedule_deletable(ev, now):
+            display = _schedule_display_status(ev, now)
+            if display == "COMPLETED":
+                raise ValueError("Không thể xóa lịch đã hoàn thành.")
+            raise ValueError("Không thể xóa lịch quá hạn.")
+
+        batch_id = _haccp_schedule_batch_id_from_calendar_event(ev)
+        to_delete: list[CalendarEvent] = [ev]
+        if batch_id:
+            siblings = (
+                db.query(CalendarEvent)
+                .filter(
+                    CalendarEvent.org_id == org_id,
+                    CalendarEvent.event_type == "HACCP_ASSESSMENT",
+                )
+                .all()
+            )
+            to_delete = [
+                s
+                for s in siblings
+                if _haccp_schedule_batch_id_from_calendar_event(s) == batch_id
+                and _is_schedule_deletable(s, now)
+            ]
+            if not any(s.id == ev.id for s in to_delete):
+                to_delete = [ev]
+
+        deleted_ids = {e.id for e in to_delete}
+        skipped_locked_count = 0
+        if batch_id:
+            for s in siblings if batch_id else []:
+                if _haccp_schedule_batch_id_from_calendar_event(s) == batch_id and s.id not in deleted_ids:
+                    if not _is_schedule_deletable(s, now):
+                        skipped_locked_count += 1
+
+        for item in to_delete:
+            db.delete(item)
+        db.commit()
+        return {"deleted_count": len(to_delete), "skipped_locked_count": skipped_locked_count}
+
+    @staticmethod
+    def list_haccp_schedules(db: Session, org_id: UUID, status: Optional[str] = None, limit: int = 100) -> List[dict]:
+        from sqlalchemy import select
+        stmt = (
+            select(CalendarEvent)
+            .where(CalendarEvent.org_id == org_id, CalendarEvent.event_type == "HACCP_ASSESSMENT")
+            .order_by(CalendarEvent.start_time.desc())
+            .limit(limit)
+        )
+        events = db.scalars(stmt).all()
+        now = datetime.now(timezone.utc)
+        plan_ids: set[UUID] = set()
+        for e in events:
+            pid = _haccp_plan_id_from_calendar_event(e)
+            if pid:
+                plan_ids.add(pid)
+        plan_name_by_id: dict[str, str] = {}
+        if plan_ids:
+            for p in db.query(HACCPPlan).filter(HACCPPlan.id.in_(plan_ids)).all():
+                plan_name_by_id[str(p.id)] = p.name
+
+        results: List[dict] = []
+        for e in events:
+            display_status = _schedule_display_status(e, now)
+
+            ev_plan_uuid = _haccp_plan_id_from_calendar_event(e)
+            pid_str = str(ev_plan_uuid) if ev_plan_uuid else None
+            batch_id = _haccp_schedule_batch_id_from_calendar_event(e)
+
+            e_dict = {
+                "id": str(e.id),
+                "title": e.title,
+                "description": e.description,
+                "start_time": e.start_time,
+                "end_time": e.end_time,
+                "status": display_status,
+                "assigned_to": str(e.assigned_to) if e.assigned_to else None,
+                "haccp_plan_id": pid_str,
+                "plan_name": plan_name_by_id.get(pid_str) if pid_str else None,
+                "schedule_batch_id": batch_id,
+                "can_delete": _is_schedule_deletable(e, now),
+            }
+
+            if status:
+                if status == "OVERDUE":
+                    if display_status != "OVERDUE":
+                        continue
+                elif status == "SCHEDULED":
+                    if display_status != "SCHEDULED":
+                        continue
+                elif status == "COMPLETED":
+                    if display_status != "COMPLETED":
+                        continue
+                else:
+                    continue
+
+            results.append(e_dict)
+        return results
+
+    @staticmethod
+    def _event_start_utc_from_local_date_time(event_date: date, hhmm: str) -> datetime:
+        hour = int(hhmm[:2])
+        minute = int(hhmm[3:5])
+        local_dt = datetime.combine(event_date, time(hour, minute), tzinfo=HACCP_SCHEDULE_TZ)
+        return local_dt.astimezone(timezone.utc)
+
+    @staticmethod
+    def _build_calendar_event(
+        db: Session,
+        req: HaccpScheduleRequest,
+        event_date: date,
+        *,
+        schedule_batch_id: str,
+    ) -> CalendarEvent:
+        description_data = {
+            "haccp_plan_id": str(req.haccp_plan_id),
+            "location_id": str(req.location_id),
+            "source": "HACCP_MODULE",
+            "notes": req.description,
+            "assessment_time_local": req.assessment_time_local,
+            "assessment_end_time_local": req.assessment_end_time_local,
+            "timezone": "Asia/Ho_Chi_Minh",
+            "schedule_batch_id": schedule_batch_id,
+        }
+        title = req.title
+        if not title:
+            plan = db.query(HACCPPlan).filter(HACCPPlan.id == req.haccp_plan_id).first()
+            plan_name = plan.name if plan else "Kế hoạch HACCP"
+            title = f"Đánh giá {plan_name}"
+
+        start_utc = HaccpAssessmentService._event_start_utc_from_local_date_time(
+            event_date, req.assessment_time_local
+        )
+        end_utc = HaccpAssessmentService._event_start_utc_from_local_date_time(
+            event_date, req.assessment_end_time_local
+        )
+
+        return CalendarEvent(
+            id=uuid4(),
+            org_id=req.org_id,
+            title=title,
+            description=json.dumps(description_data, ensure_ascii=False),
+            event_type="HACCP_ASSESSMENT",
+            start_time=start_utc,
+            end_time=end_utc,
+            status="SCHEDULED",
+            assigned_to=req.assigned_to,
+        )

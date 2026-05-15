@@ -595,6 +595,8 @@ export function useAllCCPs(enabled: boolean = true) {
 // ============================================================================
 export type CreateAssessmentPayload = {
   haccp_plan_id: string;
+  /** Lịch đánh giá (HACCP_ASSESSMENT); phải cùng kế hoạch với haccp_plan_id. */
+  calendar_event_id: string;
   title: string;
   assessment_date?: string;
   overall_result?: string;
@@ -615,6 +617,10 @@ export type CreateAssessmentPayload = {
 export type SubmitAssessmentPayload = {
   overall_result: "PASS" | "FAIL" | "NEEDS_IMPROVEMENT";
   overall_note?: string;
+};
+
+export type SubmitAssessmentResult = HaccpAssessment & {
+  deviations_created?: number;
 };
 
 export type AddAssessmentManualItemPayload = {
@@ -695,8 +701,8 @@ export async function createAssessment(payload: CreateAssessmentPayload): Promis
 export async function submitAssessment(
   assessmentId: string,
   payload: SubmitAssessmentPayload,
-): Promise<HaccpAssessment> {
-  return apiFetch<HaccpAssessment>(`/haccp/assessments/${assessmentId}/submit`, {
+): Promise<SubmitAssessmentResult> {
+  return apiFetch<SubmitAssessmentResult>(`/haccp/assessments/${assessmentId}/submit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -747,4 +753,117 @@ export async function updateAssessment(
 
 export async function deleteAssessment(assessmentId: string): Promise<void> {
   await apiFetch(`/haccp/assessments/${assessmentId}`, { method: "DELETE" });
+}
+
+// ============================================================================
+// HACCP SCHEDULING HOOKS
+// ============================================================================
+export interface HaccpSchedule {
+  id: string;
+  title: string;
+  description: string | null;
+  start_time: string;
+  end_time: string | null;
+  status: string;
+  assigned_to: string | null;
+  /** Kế hoạch HACCP gắn với lịch (từ API). */
+  haccp_plan_id?: string | null;
+  plan_name?: string | null;
+  schedule_batch_id?: string | null;
+  can_delete?: boolean;
+}
+
+export function isHaccpScheduleAssessmentReady(schedule: HaccpSchedule): boolean {
+  return new Date(schedule.start_time).getTime() <= Date.now();
+}
+
+export function formatHaccpScheduleWindow(schedule: HaccpSchedule): string {
+  const start = new Date(schedule.start_time).toLocaleString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  if (!schedule.end_time) return start;
+  const end = new Date(schedule.end_time).toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return `${start} – ${end}`;
+}
+
+export function useHaccpSchedules(status: string | null = null, enabled: boolean = true) {
+  const [schedules, setSchedules] = useState<HaccpSchedule[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const fetchSchedules = useCallback(async () => {
+    if (!enabled) return;
+    try {
+      setLoading(true);
+      const params = new URLSearchParams();
+      if (status) params.set("status", status);
+      params.set("limit", "250");
+      const qs = `?${params.toString()}`;
+      const data = await apiFetch<HaccpSchedule[]>(`/haccp/plans/schedules${qs}`);
+      setSchedules(data);
+      setError(null);
+    } catch (err) {
+      setError(err as Error);
+    } finally {
+      setLoading(false);
+    }
+  }, [status, enabled]);
+
+  useEffect(() => {
+    fetchSchedules();
+  }, [fetchSchedules]);
+
+  return { schedules, loading, error, refetch: fetchSchedules };
+}
+
+export function useUpcomingHaccpSchedules(enabled: boolean = true) {
+  const [upcomingSchedules, setUpcomingSchedules] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const fetchUpcoming = useCallback(async () => {
+    if (!enabled) return;
+    try {
+      setLoading(true);
+      const data = await apiFetch<any[]>("/haccp/plans/upcoming-schedules");
+      setUpcomingSchedules(data);
+      setError(null);
+    } catch (err) {
+      setError(err as Error);
+    } finally {
+      setLoading(false);
+    }
+  }, [enabled]);
+
+  useEffect(() => {
+    fetchUpcoming();
+  }, [fetchUpcoming]);
+
+  return { upcomingSchedules, loading, error, refetch: fetchUpcoming };
+}
+
+export async function createHaccpSchedule(payload: any): Promise<{ message: string; count: number }> {
+  return apiFetch<{ message: string; count: number }>("/haccp/plans/schedule", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteHaccpSchedule(
+  eventId: string,
+): Promise<{ deleted_count: number; skipped_locked_count: number }> {
+  return apiFetch<{ deleted_count: number; skipped_locked_count: number }>(
+    `/haccp/plans/schedules/${eventId}`,
+    {
+      method: "DELETE",
+    },
+  );
 }

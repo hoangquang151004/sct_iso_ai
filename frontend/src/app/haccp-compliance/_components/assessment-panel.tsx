@@ -11,10 +11,14 @@ import {
   deleteAssessment,
   addAssessmentManualItem,
   deleteAssessmentItem,
-  useAllCCPLogs,
   CreateAssessmentPayload,
+  ProcessStepWithPlan,
+  useHaccpSchedules,
+  HaccpSchedule,
+  isHaccpScheduleAssessmentReady,
+  formatHaccpScheduleWindow,
 } from "@/api/hooks/use-haccp";
-import { apiFetch } from "@/api/api-client";
+import { apiFetch, ApiClientError } from "@/api/api-client";
 
 // =============================================================================
 // ASSESSMENT PANEL - Tab Đánh giá HACCP
@@ -33,34 +37,95 @@ function matchesDateRange(value: string | undefined, from: string, to: string) {
   return true;
 }
 
+const ASSESSMENT_MONITORING_GATE_MESSAGE =
+  "Chưa thể tạo phiếu đánh giá: kế hoạch giám sát của quy trình này chưa đầy đủ.\n\n" +
+  "Yêu cầu: có ít nhất một CCP và với mỗi CCP phải nhập đủ Giới hạn tới hạn, Phương pháp giám sát và Người phụ trách " +
+  "(tab «Kế hoạch giám sát»).";
+
 /**
- * Sinh hạng mục phiếu đánh giá từ CCP hiện có (kế hoạch giám sát / danh mục CCP),
- * không dùng bộ câu hỏi GENERAL/PROCESS_STEP dựng sẵn.
- * Mỗi CCP một mục: kiểm tra giới hạn tới hạn — dùng khi gửi phiếu để ghi nhật ký giám sát.
+ * Sinh hạng mục phiếu đánh giá: lần lượt từng bước quy trình (PROCESS_STEP),
+ * ngay sau mỗi bước là các CCP gắn với bước đó; CCP không gắn bước hợp lệ được xếp cuối.
  */
-export function buildHaccpAssessmentAutoItemsFromCcps(ccps: CCP[]): CreateAssessmentPayload["items"] {
+export function buildHaccpAssessmentAutoItemsFromPlan(
+  steps: ProcessStepWithPlan[],
+  ccps: CCP[],
+): CreateAssessmentPayload["items"] {
+  const stepIds = new Set(steps.map((s) => s.id));
+  const ccpsByStep = new Map<string, CCP[]>();
+  const orphans: CCP[] = [];
+
+  for (const ccp of ccps) {
+    const sid = ccp.step_id;
+    if (sid && stepIds.has(sid)) {
+      const arr = ccpsByStep.get(sid) ?? [];
+      arr.push(ccp);
+      ccpsByStep.set(sid, arr);
+    } else {
+      orphans.push(ccp);
+    }
+  }
+  for (const arr of ccpsByStep.values()) {
+    arr.sort((a, b) => (a.ccp_code || "").localeCompare(b.ccp_code || "", "vi"));
+  }
+  orphans.sort((a, b) => (a.ccp_code || "").localeCompare(b.ccp_code || "", "vi"));
+
+  const items: CreateAssessmentPayload["items"] = [];
   let order = 0;
-  return ccps.map((ccp) => ({
-    item_type: "CCP" as const,
-    ref_id: ccp.id,
-    question: `CCP ${ccp.ccp_code}: ${ccp.name} — Giá trị giám sát có nằm trong giới hạn tới hạn (${ccp.critical_limit || "—"}) không?`,
-    expected_value: ccp.critical_limit || undefined,
-    order_index: order++,
-  }));
+
+  for (const step of steps) {
+    items.push({
+      item_type: "PROCESS_STEP",
+      ref_id: step.id,
+      question: `Bước ${step.step_order}: ${step.name} — Quy trình có được thực hiện đầy đủ và đúng như mô tả không?`,
+      order_index: order++,
+    });
+    const stepCcps = ccpsByStep.get(step.id) ?? [];
+    for (const ccp of stepCcps) {
+      items.push({
+        item_type: "CCP",
+        ref_id: ccp.id,
+        question: `CCP ${ccp.ccp_code}: ${ccp.name} — Giá trị giám sát có nằm trong giới hạn tới hạn (${ccp.critical_limit || "—"}) không?`,
+        expected_value: ccp.critical_limit || undefined,
+        order_index: order++,
+      });
+    }
+  }
+
+  for (const ccp of orphans) {
+    items.push({
+      item_type: "CCP",
+      ref_id: ccp.id,
+      question: `CCP ${ccp.ccp_code}: ${ccp.name} — Giá trị giám sát có nằm trong giới hạn tới hạn (${ccp.critical_limit || "—"}) không?`,
+      expected_value: ccp.critical_limit || undefined,
+      order_index: order++,
+    });
+  }
+
+  return items;
 }
+
+type AssessmentCreateModalIntent = { kind: "browse" } | { kind: "presetPlan"; planId: string };
 
 export default function AssessmentPanel({
   plans,
   ccpsMap,
+  stepsMap,
+  monitoringReadyByPlanId,
   pendingCreateFromPlanId = null,
   onConsumePendingCreate,
-  onLogsSyncedFromAssessment,
+  onAssessmentSubmitted,
+  onNavigateToDeviations,
 }: {
   plans: HaccpPlan[];
   ccpsMap: Record<string, CCP[]>;
+  stepsMap: Record<string, ProcessStepWithPlan[]>;
+  monitoringReadyByPlanId: Record<string, boolean>;
   pendingCreateFromPlanId?: string | null;
   onConsumePendingCreate?: () => void;
-  onLogsSyncedFromAssessment?: () => void;
+  /** Gọi sau khi gửi phiếu thành công (ví dụ làm mới độ lệch / thống kê). */
+  onAssessmentSubmitted?: () => void;
+  /** Chuyển sang tab Độ lệch CCP sau khi gửi phiếu có CCP không đạt. */
+  onNavigateToDeviations?: () => void;
 }) {
   const [viewTab, setViewTab] = useState<"draft" | "submitted">("draft");
   const [planFilter, setPlanFilter] = useState<string>("ALL");
@@ -68,7 +133,7 @@ export default function AssessmentPanel({
   const [resultFilter, setResultFilter] = useState("ALL");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [isCreating, setIsCreating] = useState(false);
+  const [createModalIntent, setCreateModalIntent] = useState<AssessmentCreateModalIntent | null>(null);
   const [isFilling, setIsFilling] = useState(false);
   const [currentAssessment, setCurrentAssessment] = useState<HaccpAssessment | null>(null);
   const [detailView, setDetailView] = useState<HaccpAssessment | null>(null);
@@ -76,46 +141,41 @@ export default function AssessmentPanel({
   const planQuery = planFilter === "ALL" ? null : planFilter;
   // Luôn fetch tất cả trạng thái để tính đúng số lượng cho cả 2 tab
   const { assessments, loading, error, refetch } = useHaccpAssessments(planQuery, null);
+  const { schedules, loading: schedulesLoading, refetch: refetchSchedules } = useHaccpSchedules(null, true);
+
+  const visiblePlanIds = useMemo(() => new Set(plans.map((p) => p.id)), [plans]);
+  const schedulesEligibleForCreate = useMemo(() => {
+    return schedules.filter((s) => {
+      if (!s.haccp_plan_id || !visiblePlanIds.has(s.haccp_plan_id)) return false;
+      if (s.status === "COMPLETED") return false;
+      return true;
+    });
+  }, [schedules, visiblePlanIds]);
+
+  const scheduleByEventId = useMemo(() => {
+    const map: Record<string, HaccpSchedule> = {};
+    for (const s of schedules) map[s.id] = s;
+    return map;
+  }, [schedules]);
 
   useEffect(() => {
     if (!pendingCreateFromPlanId || !onConsumePendingCreate) return;
     const planId = pendingCreateFromPlanId;
-    const ccps = ccpsMap[planId] ?? [];
-    const plan = plans.find((p) => p.id === planId);
+    if (!monitoringReadyByPlanId[planId]) {
+      alert(ASSESSMENT_MONITORING_GATE_MESSAGE);
+      onConsumePendingCreate();
+      return;
+    }
     let cancelled = false;
-
-    void (async () => {
-      try {
-        const items = buildHaccpAssessmentAutoItemsFromCcps(ccps);
-        const today = new Date().toISOString().split("T")[0];
-        const title = `Mẫu đánh giá sau kế hoạch giám sát — ${plan?.name || "HACCP"} — ${today}`;
-        await createAssessment({
-          haccp_plan_id: planId,
-          title,
-          assessment_date: today,
-          items,
-        });
-        if (!cancelled) {
-          alert(
-            ccps.length === 0
-              ? "Đã tạo phiếu đánh giá (chưa có CCP trên kế hoạch — chưa có hạng mục kiểm tra). Thêm CCP rồi tạo phiếu mới hoặc bổ sung hạng mục sau."
-              : `Đã tạo phiếu với ${ccps.length} hạng mục (mỗi CCP: kiểm tra giới hạn tới hạn theo dữ liệu hiện có). Điền và «Gửi phiếu» để ghi nhật ký giám sát.`,
-          );
-          await refetch();
-          onConsumePendingCreate();
-        }
-      } catch (e) {
-        if (!cancelled) {
-          alert("Không tạo được mẫu phiếu đánh giá: " + (e as Error).message);
-          onConsumePendingCreate();
-        }
-      }
-    })();
-
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      setCreateModalIntent({ kind: "presetPlan", planId });
+      onConsumePendingCreate();
+    });
     return () => {
       cancelled = true;
     };
-  }, [pendingCreateFromPlanId, onConsumePendingCreate, ccpsMap, plans, refetch]);
+  }, [pendingCreateFromPlanId, onConsumePendingCreate, monitoringReadyByPlanId]);
 
   const handleDelete = async (id: string) => {
     if (!confirm("Xác nhận xóa phiếu đánh giá này?")) return;
@@ -150,11 +210,12 @@ export default function AssessmentPanel({
         <div>
           <h3 className="text-lg font-bold text-slate-800">Phiếu Đánh giá HACCP</h3>
           <p className="text-sm text-slate-500 mt-1">
-            Hạng mục CCP tự sinh; trong «Điền form» có thể thêm câu hỏi thủ công theo quy trình
+            Có thể tạo phiếu trước giờ bắt đầu; chỉ điền và gửi khi đã đến giờ bắt đầu lịch. Gửi trong khung giờ → hoàn thành;
+            sau giờ kết thúc → quá hạn. Cần đủ kế hoạch giám sát CCP trước khi tạo phiếu.
           </p>
         </div>
         <button
-          onClick={() => setIsCreating(true)}
+          onClick={() => setCreateModalIntent({ kind: "browse" })}
           className="px-4 py-2 bg-cyan-600 text-white rounded-md hover:bg-cyan-700 text-sm font-medium transition-colors"
         >
           + Tạo phiếu đánh giá
@@ -343,14 +404,20 @@ export default function AssessmentPanel({
       )}
 
       {/* Create Modal */}
-      {isCreating && (
+      {createModalIntent && (
         <CreateAssessmentModal
+          intent={createModalIntent}
           plans={plans}
           ccpsMap={ccpsMap}
-          onClose={() => setIsCreating(false)}
+          stepsMap={stepsMap}
+          schedules={schedulesEligibleForCreate}
+          schedulesLoading={schedulesLoading}
+          monitoringReadyByPlanId={monitoringReadyByPlanId}
+          onClose={() => setCreateModalIntent(null)}
           onCreated={() => {
-            setIsCreating(false);
+            setCreateModalIntent(null);
             refetch();
+            void refetchSchedules();
           }}
         />
       )}
@@ -359,6 +426,11 @@ export default function AssessmentPanel({
       {isFilling && currentAssessment && (
         <FillAssessmentModal
           assessment={currentAssessment}
+          linkedSchedule={
+            currentAssessment.calendar_event_id
+              ? scheduleByEventId[currentAssessment.calendar_event_id]
+              : undefined
+          }
           onClose={() => {
             setIsFilling(false);
             setCurrentAssessment(null);
@@ -368,7 +440,11 @@ export default function AssessmentPanel({
             setCurrentAssessment(null);
             refetch();
           }}
-          onLogsSyncedFromAssessment={onLogsSyncedFromAssessment}
+          onAssessmentSubmitted={() => {
+            void refetchSchedules();
+            onAssessmentSubmitted?.();
+          }}
+          onNavigateToDeviations={onNavigateToDeviations}
         />
       )}
 
@@ -433,75 +509,262 @@ function ResultBadge({ result }: { result?: string }) {
 // =============================================================================
 // Create Assessment Modal
 // =============================================================================
+function scheduleOptionLabel(s: HaccpSchedule) {
+  const when = formatHaccpScheduleWindow(s);
+  const plan = s.plan_name || "Kế hoạch HACCP";
+  const st =
+    s.status === "OVERDUE"
+      ? "Quá hạn"
+      : !isHaccpScheduleAssessmentReady(s)
+        ? "Chưa đến giờ"
+        : "Trong hạn";
+  return `${plan} — ${when} (${st})`;
+}
+
 function CreateAssessmentModal({
+  intent,
   plans,
   ccpsMap,
+  stepsMap,
+  schedules,
+  schedulesLoading,
+  monitoringReadyByPlanId,
   onClose,
   onCreated,
 }: {
+  intent: AssessmentCreateModalIntent;
   plans: HaccpPlan[];
   ccpsMap: Record<string, CCP[]>;
+  stepsMap: Record<string, ProcessStepWithPlan[]>;
+  schedules: HaccpSchedule[];
+  schedulesLoading: boolean;
+  monitoringReadyByPlanId: Record<string, boolean>;
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const [selectedPlanId, setSelectedPlanId] = useState("");
+  const presetPlanId = intent.kind === "presetPlan" ? intent.planId : null;
+
+  const [schedulePlanFilter, setSchedulePlanFilter] = useState<string>("ALL");
+  const [scheduleQuery, setScheduleQuery] = useState("");
+
+  const schedulesBaseVisible = useMemo(() => {
+    let list = schedules;
+    if (presetPlanId) {
+      list = list.filter((s) => s.haccp_plan_id === presetPlanId);
+    } else if (schedulePlanFilter !== "ALL") {
+      list = list.filter((s) => s.haccp_plan_id === schedulePlanFilter);
+    }
+    const copy = [...list];
+    copy.sort((a, b) => {
+      const ao = a.status === "OVERDUE" ? 0 : 1;
+      const bo = b.status === "OVERDUE" ? 0 : 1;
+      if (ao !== bo) return ao - bo;
+      return new Date(a.start_time).getTime() - new Date(b.start_time).getTime();
+    });
+    return copy;
+  }, [schedules, presetPlanId, schedulePlanFilter]);
+
+  const schedulePool = useMemo(() => {
+    const q = scheduleQuery.trim().toLowerCase();
+    if (!q) return schedulesBaseVisible;
+    return schedulesBaseVisible.filter((s) => {
+      const hay = [
+        s.plan_name,
+        s.title,
+        scheduleOptionLabel(s),
+        new Date(s.start_time).toLocaleDateString("vi-VN"),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [schedulesBaseVisible, scheduleQuery]);
+
+  const [selectedScheduleId, setSelectedScheduleId] = useState("");
   const [title, setTitle] = useState("");
-  const [assessmentDate, setAssessmentDate] = useState(
-    new Date().toISOString().split("T")[0],
-  );
+  const [assessmentDate, setAssessmentDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [submitting, setSubmitting] = useState(false);
 
+  const selectedSchedule = useMemo(
+    () => schedulePool.find((s) => s.id === selectedScheduleId),
+    [schedulePool, selectedScheduleId],
+  );
+
+  useEffect(() => {
+    setSelectedScheduleId("");
+    setScheduleQuery("");
+    setSchedulePlanFilter("ALL");
+  }, [presetPlanId, intent.kind]);
+
+  useEffect(() => {
+    if (!selectedScheduleId) return;
+    if (!schedulePool.some((s) => s.id === selectedScheduleId)) {
+      setSelectedScheduleId("");
+    }
+  }, [schedulePool, selectedScheduleId]);
+
+  useEffect(() => {
+    if (!selectedScheduleId) return;
+    const sch = schedulePool.find((s) => s.id === selectedScheduleId);
+    if (!sch?.haccp_plan_id) return;
+    const statusTag = sch.status === "OVERDUE" ? " — Quá hạn" : "";
+    setTitle(`${sch.title || "Đánh giá HACCP"}${statusTag}`);
+    setAssessmentDate(new Date(sch.start_time).toLocaleDateString("en-CA"));
+  }, [selectedScheduleId, schedulePool]);
+
+  const planIdResolved = selectedSchedule?.haccp_plan_id ?? "";
+  const monitoringOk = Boolean(planIdResolved && monitoringReadyByPlanId[planIdResolved] === true);
+
   const handleCreate = async () => {
-    if (!selectedPlanId || !title) {
-      alert("Vui lòng chọn kế hoạch và nhập tiêu đề");
+    if (!selectedScheduleId || !selectedSchedule?.haccp_plan_id) {
+      alert("Vui lòng chọn một lịch đánh giá (lịch phải thuộc kế hoạch HACCP đang mở và chưa hoàn thành).");
       return;
     }
-    const ccps = ccpsMap[selectedPlanId] || [];
-    const items = buildHaccpAssessmentAutoItemsFromCcps(ccps);
+    const planId = selectedSchedule.haccp_plan_id;
+    if (!title.trim()) {
+      alert("Vui lòng nhập tiêu đề phiếu");
+      return;
+    }
+    if (!monitoringReadyByPlanId[planId]) {
+      alert(ASSESSMENT_MONITORING_GATE_MESSAGE);
+      return;
+    }
+    const steps = stepsMap[planId] || [];
+    const ccps = ccpsMap[planId] || [];
+    const items = buildHaccpAssessmentAutoItemsFromPlan(steps, ccps);
 
     setSubmitting(true);
     try {
       await createAssessment({
-        haccp_plan_id: selectedPlanId,
-        title,
+        haccp_plan_id: planId,
+        calendar_event_id: selectedScheduleId,
+        title: title.trim(),
         assessment_date: assessmentDate,
         items,
       });
       onCreated();
     } catch (e) {
-      alert("Lỗi khi tạo phiếu: " + (e as Error).message);
+      const msg = e instanceof ApiClientError ? e.message : (e as Error).message;
+      alert("Lỗi khi tạo phiếu: " + msg);
     } finally {
       setSubmitting(false);
     }
   };
 
+  const noSchedulesAvailable = !schedulesLoading && schedulesBaseVisible.length === 0;
+
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+      <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6">
         <h3 className="text-lg font-bold text-slate-800 mb-4">Tạo Phiếu Đánh giá HACCP</h3>
         <div className="space-y-4">
+          {presetPlanId && (
+            <p className="text-xs text-cyan-800 bg-cyan-50 border border-cyan-100 rounded-md px-3 py-2">
+              Kế hoạch:{" "}
+              <span className="font-semibold">{plans.find((p) => p.id === presetPlanId)?.name || "—"}</span>
+              . Chọn một lịch đánh giá đã lên cho quy trình này.
+            </p>
+          )}
+
+          {!presetPlanId && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Lọc theo kế hoạch</label>
+              <select
+                value={schedulePlanFilter}
+                onChange={(e) => setSchedulePlanFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm bg-white"
+              >
+                <option value="ALL">Tất cả kế hoạch đang mở</option>
+                {plans.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} (v{p.version})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Kế hoạch HACCP</label>
-            <select
-              value={selectedPlanId}
-              onChange={(e) => setSelectedPlanId(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm"
-            >
-              <option value="">-- Chọn kế hoạch --</option>
-              {plans.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} (v{p.version})
-                </option>
-              ))}
-            </select>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Tìm lịch</label>
+            <input
+              type="search"
+              value={scheduleQuery}
+              onChange={(e) => setScheduleQuery(e.target.value)}
+              placeholder="Tên kế hoạch, tiêu đề lịch, ngày giờ…"
+              disabled={schedulesLoading}
+              className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm bg-white disabled:opacity-60"
+            />
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Chọn lịch đánh giá *</label>
+            <div className="max-h-56 overflow-y-auto rounded-md border border-slate-200 bg-slate-50/60">
+              {schedulesLoading ? (
+                <div className="p-4 text-sm text-slate-500">Đang tải lịch…</div>
+              ) : schedulePool.length === 0 ? (
+                <div className="p-4 text-sm text-slate-500">
+                  {schedulesBaseVisible.length === 0
+                    ? "Không có lịch nào trong bộ lọc hiện tại."
+                    : "Không có lịch khớp từ khóa — xóa ô tìm hoặc đổi bộ lọc kế hoạch."}
+                </div>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {schedulePool.map((s) => {
+                    const active = s.id === selectedScheduleId;
+                    return (
+                      <li key={s.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedScheduleId(s.id)}
+                          className={`w-full text-left px-3 py-2.5 text-sm transition-colors ${active
+                            ? "bg-cyan-50 text-cyan-900 font-medium ring-1 ring-inset ring-cyan-200/80"
+                            : "text-slate-800 hover:bg-white"
+                            }`}
+                        >
+                          {scheduleOptionLabel(s)}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+            <p className="mt-1 text-[10px] text-slate-500">
+              Danh sách ưu tiên lịch quá hạn, sau đó sắp theo thời gian bắt đầu.
+            </p>
+            {noSchedulesAvailable && (
+              <p className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-md px-3 py-2 leading-relaxed">
+                {presetPlanId
+                  ? "Chưa có lịch khả dụng cho kế hoạch này (chưa hoàn thành). Hãy lập lịch từ màn hình chính."
+                  : "Chưa có lịch khả dụng: thuộc kế hoạch đang mở và chưa hoàn thành."}
+              </p>
+            )}
+            {planIdResolved && monitoringReadyByPlanId[planIdResolved] !== true && (
+              <p className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-md px-3 py-2 leading-relaxed">
+                Kế hoạch gắn với lịch này chưa đủ kế hoạch giám sát CCP (Giới hạn tới hạn, Phương pháp giám sát, Người
+                phụ trách cho mọi CCP) — hoàn thiện ở tab «Kế hoạch giám sát» trước.
+              </p>
+            )}
+          </div>
+
+          {selectedSchedule && (
+            <p className="text-xs text-slate-600">
+              Phiếu sẽ thuộc kế hoạch:{" "}
+              <span className="font-semibold text-slate-800">
+                {plans.find((p) => p.id === selectedSchedule.haccp_plan_id)?.name || selectedSchedule.plan_name || "—"}
+              </span>
+              . Kế hoạch trên phiếu luôn trùng với kế hoạch trên lịch đã chọn.
+            </p>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Tiêu đề phiếu</label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="VD: Đánh giá Q2/2025 - Dây chuyền sản xuất A"
+              placeholder="VD: Đánh giá theo lịch tháng 5"
               className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm"
             />
           </div>
@@ -515,20 +778,21 @@ function CreateAssessmentModal({
             />
           </div>
           <p className="text-xs text-slate-500 leading-relaxed">
-            Hạng mục CCP được tạo tự động theo danh sách CCP. Sau khi tạo phiếu, mở «Điền form» để thêm câu hỏi thủ công
-            theo quy trình (PRP, ghi chép, đào tạo…). Nếu kế hoạch chưa có CCP, phiếu sẽ không có hạng mục CCP.
+            Có thể tạo phiếu trước giờ bắt đầu; điền và gửi khi đã đến giờ bắt đầu. Gửi trong khung giờ → hoàn thành; sau giờ kết thúc → quá hạn.
           </p>
         </div>
         <div className="flex justify-end gap-2 mt-6">
           <button
+            type="button"
             onClick={onClose}
             className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800"
           >
             Hủy
           </button>
           <button
-            onClick={handleCreate}
-            disabled={submitting}
+            type="button"
+            onClick={() => void handleCreate()}
+            disabled={submitting || !selectedScheduleId || !title.trim() || !monitoringOk || noSchedulesAvailable}
             className="px-4 py-2 bg-cyan-600 text-white rounded-md text-sm hover:bg-cyan-700 disabled:opacity-50"
           >
             {submitting ? "Đang tạo..." : "Tạo phiếu"}
@@ -546,26 +810,31 @@ function sortAssessmentItems(list: HaccpAssessmentItem[]): HaccpAssessmentItem[]
 // =============================================================================
 // Fill Assessment Modal
 // =============================================================================
-function isCcpCriticalLimitAssessmentItem(item: HaccpAssessmentItem): boolean {
-  return (
-    item.item_type === "CCP" &&
-    Boolean(item.ref_id) &&
-    /giới hạn tới hạn/i.test(item.question) &&
-    /Giá trị giám sát có nằm trong/i.test(item.question)
-  );
-}
-
 function FillAssessmentModal({
   assessment,
+  linkedSchedule,
   onClose,
   onSubmitted,
-  onLogsSyncedFromAssessment,
+  onAssessmentSubmitted,
+  onNavigateToDeviations,
 }: {
   assessment: HaccpAssessment;
+  linkedSchedule?: HaccpSchedule;
   onClose: () => void;
   onSubmitted: () => void;
-  onLogsSyncedFromAssessment?: () => void;
+  onAssessmentSubmitted?: () => void;
+  onNavigateToDeviations?: () => void;
 }) {
+  const fillUnlocked = linkedSchedule ? isHaccpScheduleAssessmentReady(linkedSchedule) : true;
+  const fillOpensAt = linkedSchedule
+    ? new Date(linkedSchedule.start_time).toLocaleString("vi-VN", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
   const [items, setItems] = useState<HaccpAssessmentItem[]>(() =>
     sortAssessmentItems(assessment.items || []),
   );
@@ -575,14 +844,6 @@ function FillAssessmentModal({
   const [manualQuestion, setManualQuestion] = useState("");
   const [manualExpected, setManualExpected] = useState("");
   const [addingManual, setAddingManual] = useState(false);
-
-  // Lấy toàn bộ nhật ký để gợi ý số lô
-  const { logs: allLogs } = useAllCCPLogs(assessment.haccp_plan_id);
-  const suggestedBatches = useMemo(() => {
-    if (!allLogs) return [];
-    const unique = Array.from(new Set(allLogs.map(l => l.batch_number).filter(Boolean)));
-    return unique.slice(0, 10); // Lấy 10 lô gần nhất
-  }, [allLogs]);
 
   useEffect(() => {
     setItems(sortAssessmentItems(assessment.items || []));
@@ -594,6 +855,10 @@ function FillAssessmentModal({
   };
 
   const handleAddManualQuestion = async () => {
+    if (!fillUnlocked) {
+      alert(`Chưa đến giờ bắt đầu kiểm tra${fillOpensAt ? ` (${fillOpensAt})` : ""}.`);
+      return;
+    }
     const q = manualQuestion.trim();
     if (!q) {
       alert("Vui lòng nhập nội dung câu hỏi");
@@ -627,12 +892,14 @@ function FillAssessmentModal({
   };
 
   const updateItem = (itemId: string, updates: Partial<HaccpAssessmentItem>) => {
+    if (!fillUnlocked) return;
     setItems((prev) =>
       prev.map((it) => (it.id === itemId ? { ...it, ...updates } : it)),
     );
   };
 
   const handleSaveItem = async (itemId: string) => {
+    if (!fillUnlocked) return;
     const item = items.find((i) => i.id === itemId);
     if (!item) return;
     try {
@@ -648,6 +915,10 @@ function FillAssessmentModal({
   };
 
   const handleSubmit = async () => {
+    if (!fillUnlocked) {
+      alert(`Chưa đến giờ bắt đầu kiểm tra${fillOpensAt ? ` (${fillOpensAt})` : ""}. Chỉ được gửi phiếu sau thời điểm này.`);
+      return;
+    }
     setSaving(true);
     try {
       // Cập nhật tất cả items trước
@@ -661,47 +932,22 @@ function FillAssessmentModal({
           }),
         ),
       );
-      await submitAssessment(assessment.id, {
+      const submitResult = await submitAssessment(assessment.id, {
         overall_result: overallResult as "PASS" | "FAIL" | "NEEDS_IMPROVEMENT",
         overall_note: overallNote,
       });
 
-      const limitItems = items.filter(isCcpCriticalLimitAssessmentItem);
-      const logErrors: string[] = [];
-      for (const it of limitItems) {
-        const rid = it.ref_id;
-        if (!rid) continue;
-        if (!it.result || it.result === "NA") continue;
-        const isWithin = it.result === "PASS";
-        const raw = String(it.actual_value ?? "").trim().replace(",", ".");
-        const parsed = parseFloat(raw);
-        const body: Record<string, unknown> = {
-          ccp_id: rid,
-          is_within_limit: isWithin,
-          batch_number: it.batch_number?.trim() || undefined,
-        };
-        if (!Number.isNaN(parsed)) {
-          body.measured_value = parsed;
-        }
-        if (!isWithin) {
-          body.deviation_note =
-            (it.note || "").trim() || "Không đạt theo phiếu đánh giá HACCP";
-        }
-        try {
-          await apiFetch(`/haccp/ccps/${rid}/logs`, {
-            method: "POST",
-            body: JSON.stringify(body),
-          });
-        } catch (err) {
-          logErrors.push(`${rid}: ${(err as Error).message}`);
-        }
-      }
-      if (logErrors.length > 0) {
-        alert(
-          "Phiếu đã gửi nhưng một số nhật ký giám sát chưa ghi được:\n" + logErrors.join("\n"),
+      onAssessmentSubmitted?.();
+
+      const deviationsCreated = submitResult.deviations_created ?? 0;
+      if (deviationsCreated > 0) {
+        const goDeviations = confirm(
+          `Đã gửi phiếu đánh giá.\n\n${deviationsCreated} CCP không đạt đã được ghi vào tab «Độ lệch CCP» (trạng thái mới). Bạn có thể xử lý và bấm «Gửi CAPA» tại đó.\n\nMở tab Độ lệch CCP ngay?`,
         );
+        if (goDeviations) {
+          onNavigateToDeviations?.();
+        }
       }
-      onLogsSyncedFromAssessment?.();
 
       onSubmitted();
     } catch (e) {
@@ -717,11 +963,25 @@ function FillAssessmentModal({
         <div className="p-6 pb-2 shrink-0">
           <h3 className="text-lg font-bold text-slate-800 mb-1">{assessment.title}</h3>
           <p className="text-sm text-slate-500">
-            Điền kết quả khảo sát thực tế cho từng hạng mục
+            {fillUnlocked
+              ? "Điền kết quả khảo sát thực tế cho từng hạng mục"
+              : `Chưa đến giờ bắt đầu${fillOpensAt ? ` (${fillOpensAt})` : ""} — xem trước hạng mục, chưa điền được.`}
           </p>
         </div>
 
-        <div className="px-6 overflow-y-auto flex-1">
+        {!fillUnlocked && (
+          <div className="mx-6 mb-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            Phiếu đã tạo sẵn. Đến giờ bắt đầu lịch mới được điền và gửi báo cáo.
+            {linkedSchedule && (
+              <span className="mt-1 block text-amber-800">
+                Khung giờ: {formatHaccpScheduleWindow(linkedSchedule)}
+              </span>
+            )}
+          </div>
+        )}
+
+        <div className={`px-6 overflow-y-auto flex-1 ${!fillUnlocked ? "opacity-60" : ""}`}>
+          <fieldset disabled={!fillUnlocked} className="min-w-0 border-0 p-0 m-0">
           <div className="space-y-3">
             {items.map((item, idx) => (
               <div key={item.id} className="border border-slate-200 rounded-lg p-4 relative">
@@ -734,17 +994,23 @@ function FillAssessmentModal({
                     Xóa
                   </button>
                 )}
-                <div className="flex items-start gap-3 pr-14">
+                <div className={`flex items-start gap-3 ${item.item_type === "GENERAL" ? "pr-14" : ""}`}>
                   <span className="text-xs font-bold text-cyan-600 mt-0.5">{idx + 1}</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2 mb-1">
                       <span
                         className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded ${item.item_type === "GENERAL"
                           ? "bg-violet-100 text-violet-800"
-                          : "bg-orange-100 text-orange-800"
+                          : item.item_type === "PROCESS_STEP"
+                            ? "bg-sky-100 text-sky-800"
+                            : "bg-orange-100 text-orange-800"
                           }`}
                       >
-                        {item.item_type === "GENERAL" ? "Tự soạn" : "CCP"}
+                        {item.item_type === "GENERAL"
+                          ? "Tự soạn"
+                          : item.item_type === "PROCESS_STEP"
+                            ? "Bước QT"
+                            : "CCP"}
                       </span>
                     </div>
                     <p className="text-sm font-medium text-slate-800">{item.question}</p>
@@ -796,7 +1062,6 @@ function FillAssessmentModal({
                             <input
                               type="text"
                               placeholder="VD: LÔ2024-05-14-A"
-                              list="batch-suggestions"
                               value={item.batch_number || ""}
                               onChange={(e) => updateItem(item.id, { batch_number: e.target.value })}
                               onBlur={() => handleSaveItem(item.id)}
@@ -819,7 +1084,13 @@ function FillAssessmentModal({
 
                       {/* Ghi chú — vẫn viết tay */}
                       <textarea
-                        placeholder={item.item_type === "CCP" ? "Ghi chú/Hành động khắc phục (nếu có)..." : "Ghi chú khảo sát (nếu có)..."}
+                        placeholder={
+                          item.item_type === "CCP"
+                            ? "Ghi chú/Hành động khắc phục (nếu có)..."
+                            : item.item_type === "PROCESS_STEP"
+                              ? "Ghi chú kiểm tra bước quy trình (nếu có)..."
+                              : "Ghi chú khảo sát (nếu có)..."
+                        }
                         value={item.note || ""}
                         onChange={(e) => updateItem(item.id, { note: e.target.value })}
                         onBlur={() => handleSaveItem(item.id)}
@@ -887,6 +1158,7 @@ function FillAssessmentModal({
             </div>
           </div>
 
+          </fieldset>
         </div> {/* End Body */}
 
         <div className="p-6 pt-4 shrink-0 border-t border-slate-100 mt-auto">
@@ -899,7 +1171,7 @@ function FillAssessmentModal({
             </button>
             <button
               onClick={handleSubmit}
-              disabled={saving}
+              disabled={saving || !fillUnlocked}
               className="px-4 py-2 bg-cyan-600 text-white rounded-md text-sm hover:bg-cyan-700 disabled:opacity-50 flex items-center gap-2"
             >
               {saving && (
@@ -913,11 +1185,6 @@ function FillAssessmentModal({
           </div>
         </div>
       </div> {/* End Modal Container */}
-      <datalist id="batch-suggestions">
-        {suggestedBatches.map(b => (
-          <option key={b} value={b} />
-        ))}
-      </datalist>
     </div>
   );
 

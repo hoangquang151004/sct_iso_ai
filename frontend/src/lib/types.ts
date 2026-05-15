@@ -130,6 +130,7 @@ export type HaccpAssessment = {
   id: string;
   org_id: string;
   haccp_plan_id: string;
+  calendar_event_id?: string | null;
   title: string;
   status: "DRAFT" | "SUBMITTED" | "REVIEWED" | "CLOSED";
   assessment_date?: string;

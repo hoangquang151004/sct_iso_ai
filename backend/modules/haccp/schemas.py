@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # =============================================================================
@@ -407,6 +407,8 @@ class HaccpAssessmentBase(BaseModel):
 
 class HaccpAssessmentCreate(HaccpAssessmentBase):
     haccp_plan_id: UUID
+    """Lịch đánh giá HACCP (calendar_events, event_type=HACCP_ASSESSMENT); phải trùng kế hoạch với haccp_plan_id."""
+    calendar_event_id: UUID
     items: list[HaccpAssessmentItemCreate] | None = None
     org_id: UUID | None = None
     submitted_by: UUID | None = None
@@ -430,6 +432,7 @@ class HaccpAssessmentResponse(HaccpAssessmentBase):
     id: UUID
     org_id: UUID
     haccp_plan_id: UUID
+    calendar_event_id: UUID | None = None
     status: str
     submitted_by: UUID | None = None
     reviewed_by: UUID | None = None
@@ -438,3 +441,58 @@ class HaccpAssessmentResponse(HaccpAssessmentBase):
     items: list[HaccpAssessmentItemResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class HaccpAssessmentSubmitResponse(HaccpAssessmentResponse):
+    """Kết quả gửi phiếu, kèm số độ lệch CCP được tạo từ hạng mục không đạt."""
+
+    deviations_created: int = 0
+
+
+# =============================================================================
+# SCHEDULING SCHEMAS
+# =============================================================================
+from enum import Enum
+
+class HaccpScheduleFrequency(str, Enum):
+    ONCE = "ONCE"
+    DAILY = "DAILY"
+    WEEKLY = "WEEKLY"
+    MONTHLY = "MONTHLY"
+
+class HaccpScheduleRequest(BaseModel):
+    org_id: UUID
+    haccp_plan_id: UUID
+    location_id: UUID
+    assigned_to: UUID | None = None
+    start_date: date
+    end_date: date | None = None  # Chỉ dùng cho lặp lại
+    frequency: HaccpScheduleFrequency = HaccpScheduleFrequency.ONCE
+    day_of_week: int | None = Field(None, ge=0, le=6, description="0=Monday, 6=Sunday")
+    day_of_month: int | None = Field(None, ge=1, le=31)
+    title: str | None = None
+    description: str | None = None
+    # Giờ kiểm tra theo múi Việt Nam; dùng cùng ngày start_date (hoặc từng ngày lặp) để tính start/end UTC
+    assessment_time_local: str = Field(
+        default="09:00",
+        pattern=r"^(0\d|1\d|2[0-3]):[0-5]\d$",
+        description="Giờ bắt đầu kiểm tra trong ngày (24h, HH:MM, Asia/Ho_Chi_Minh)",
+    )
+    assessment_end_time_local: str = Field(
+        default="11:00",
+        pattern=r"^(0\d|1\d|2[0-3]):[0-5]\d$",
+        description="Giờ kết thúc khung kiểm tra trong ngày (24h, HH:MM, Asia/Ho_Chi_Minh)",
+    )
+
+    @model_validator(mode="after")
+    def end_after_start(self) -> "HaccpScheduleRequest":
+        sh, sm = (int(self.assessment_time_local[:2]), int(self.assessment_time_local[3:5]))
+        eh, em = (int(self.assessment_end_time_local[:2]), int(self.assessment_end_time_local[3:5]))
+        if (eh, em) <= (sh, sm):
+            raise ValueError("Giờ kết thúc phải sau giờ bắt đầu.")
+        return self
+
+
+class HaccpScheduleDeleteResponse(BaseModel):
+    deleted_count: int
+    skipped_locked_count: int = 0

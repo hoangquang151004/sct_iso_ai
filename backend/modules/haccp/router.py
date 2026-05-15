@@ -22,6 +22,9 @@ from .schemas import (
     HaccpAssessmentItemUpdate, HaccpAssessmentItemResponse,
     HaccpAssessmentManualItemCreate,
     HaccpAssessmentSubmitRequest,
+    HaccpAssessmentSubmitResponse,
+    HaccpScheduleRequest,
+    HaccpScheduleDeleteResponse,
 )
 from .service import (
     ProductService,
@@ -152,6 +155,88 @@ def create_haccp_plan(
     return HaccpPlanService.create_haccp_plan(db, fixed_payload)
 
 
+# =============================================================================
+# HACCP SCHEDULING (static paths MUST be before /plans/{plan_id} or UUID parse → 422)
+# =============================================================================
+@haccp_router.post(
+    "/plans/schedule",
+    status_code=status.HTTP_201_CREATED,
+    summary="Lập lịch đánh giá HACCP",
+)
+def create_haccp_schedule(
+    payload: HaccpScheduleRequest,
+    db: Session = Depends(get_db),
+    principal: AuthPrincipal = Depends(get_current_principal),
+):
+    data = payload.model_dump()
+    data["org_id"] = principal.org_id
+    from .schemas import HaccpScheduleRequest as HSR
+
+    fixed_payload = HSR(**data)
+    count = HaccpAssessmentService.create_haccp_schedule(db, fixed_payload)
+    return {"message": f"Đã tạo thành công {count} sự kiện lịch", "count": count}
+
+
+@haccp_router.get("/plans/upcoming-schedules")
+def list_upcoming_haccp_schedules(
+    db: Session = Depends(get_db),
+    principal: AuthPrincipal = Depends(get_current_principal),
+):
+    """Lấy danh sách các buổi đánh giá HACCP đã lên lịch sắp tới."""
+    return HaccpAssessmentService.get_upcoming_haccp_schedules(db, principal.org_id)
+
+
+@haccp_router.get("/plans/schedules")
+def list_all_haccp_schedules(
+    status: str | None = Query(
+        None,
+        description="SCHEDULED = sắp tới (chưa quá hạn), OVERDUE = quá hạn, COMPLETED = hoàn thành",
+    ),
+    limit: int = Query(250, ge=1, le=500, description="Số bản ghi tối đa (mặc định 250)"),
+    db: Session = Depends(get_db),
+    principal: AuthPrincipal = Depends(get_current_principal),
+):
+    """Lấy toàn bộ danh sách lịch đánh giá HACCP và tiến độ thực hiện."""
+    return HaccpAssessmentService.list_haccp_schedules(db, principal.org_id, status=status, limit=limit)
+
+
+@haccp_router.delete(
+    "/plans/schedules/{event_id}",
+    response_model=HaccpScheduleDeleteResponse,
+    summary="Xóa lịch đánh giá HACCP",
+    description=(
+        "Xóa lịch còn «Sắp tới» (chưa quá hạn, chưa hoàn thành). "
+        "Nếu lịch thuộc một lần lập lịch (lặp), xóa một mục sẽ xóa toàn bộ lịch cùng loạt "
+        "trừ các mục đã quá hạn hoặc đã hoàn thành."
+    ),
+)
+def delete_haccp_schedule_event(
+    event_id: UUID,
+    db: Session = Depends(get_db),
+    principal: AuthPrincipal = Depends(get_current_principal),
+):
+    try:
+        return HaccpAssessmentService.delete_haccp_schedule_event(db, principal.org_id, event_id)
+    except ValueError as exc:
+        msg = str(exc)
+        if "Không tìm thấy" in msg:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=msg) from exc
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=msg) from exc
+
+
+@haccp_router.get(
+    "/plans/versions/{version_id}",
+    response_model=HaccpPlanVersionResponse,
+    summary="Chi tiết phiên bản",
+    description="Lấy thông tin chi tiết của một phiên bản kế hoạch",
+)
+def get_plan_version(version_id: UUID, db: Session = Depends(get_db)):
+    result = HaccpPlanService.get_plan_version(db, version_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Plan version not found")
+    return result
+
+
 @haccp_router.get(
     "/plans/{plan_id}",
     response_model=HaccpPlanResponse,
@@ -213,19 +298,6 @@ def approve_haccp_plan(plan_id: UUID, payload: HaccpPlanApprove, db: Session = D
 )
 def list_plan_versions(plan_id: UUID, db: Session = Depends(get_db)):
     return HaccpPlanService.list_plan_versions(db, plan_id)
-
-
-@haccp_router.get(
-    "/plans/versions/{version_id}",
-    response_model=HaccpPlanVersionResponse,
-    summary="Chi tiết phiên bản",
-    description="Lấy thông tin chi tiết của một phiên bản kế hoạch",
-)
-def get_plan_version(version_id: UUID, db: Session = Depends(get_db)):
-    result = HaccpPlanService.get_plan_version(db, version_id)
-    if not result:
-        raise HTTPException(status_code=404, detail="Plan version not found")
-    return result
 
 
 @haccp_router.post(
@@ -769,7 +841,10 @@ def create_assessment(
     data["submitted_by"] = principal.user_id
     from .schemas import HaccpAssessmentCreate as HAC
     fixed_payload = HAC(**data)
-    return HaccpAssessmentService.create_assessment(db, fixed_payload)
+    try:
+        return HaccpAssessmentService.create_assessment(db, fixed_payload)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @haccp_router.get(
@@ -808,6 +883,11 @@ def add_assessment_manual_item(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Chỉ thêm hạng mục khi phiếu đang ở trạng thái nháp (DRAFT)",
         )
+    if code == "not_started":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Chưa đến thời gian bắt đầu kiểm tra. Chỉ được điền phiếu khi đã đến giờ bắt đầu của lịch.",
+        )
     if item is None:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Lỗi tạo hạng mục")
     return item
@@ -828,9 +908,9 @@ def update_assessment(assessment_id: UUID, payload: HaccpAssessmentUpdate, db: S
 
 @haccp_router.post(
     "/assessments/{assessment_id}/submit",
-    response_model=HaccpAssessmentResponse,
+    response_model=HaccpAssessmentSubmitResponse,
     summary="Gửi phiếu đánh giá",
-    description="Gửi phiếu đánh giá HACCP sau khi hoàn thành khảo sát",
+    description="Gửi phiếu đánh giá HACCP; mỗi hạng mục CCP không đạt tạo bản ghi độ lệch (tab Độ lệch CCP).",
 )
 def submit_assessment(
     assessment_id: UUID,
@@ -838,10 +918,18 @@ def submit_assessment(
     db: Session = Depends(get_db),
     principal: AuthPrincipal = Depends(get_current_principal),
 ):
-    result = HaccpAssessmentService.submit_assessment(db, assessment_id, payload, principal.user_id)
+    try:
+        result, deviations_created = HaccpAssessmentService.submit_assessment(
+            db, assessment_id, payload, principal.user_id
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     if not result:
         raise HTTPException(status_code=404, detail="Phiếu đánh giá không tồn tại")
-    return result
+    return HaccpAssessmentSubmitResponse(
+        **result.model_dump(),
+        deviations_created=deviations_created,
+    )
 
 
 @haccp_router.patch(
@@ -851,7 +939,10 @@ def submit_assessment(
     description="Cập nhật kết quả đánh giá cho một hạng mục cụ thể",
 )
 def update_assessment_item(item_id: UUID, payload: HaccpAssessmentItemUpdate, db: Session = Depends(get_db)):
-    result = HaccpAssessmentService.update_assessment_item(db, item_id, payload)
+    try:
+        result = HaccpAssessmentService.update_assessment_item(db, item_id, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     if not result:
         raise HTTPException(status_code=404, detail="Hạng mục không tồn tại")
     return result

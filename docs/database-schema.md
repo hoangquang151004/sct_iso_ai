@@ -45,7 +45,10 @@ Ngày cập nhật: 2026-04-22.
 - Audit chuẩn dùng `audit_log`; không dùng flow mới trên `user_activity_logs`.
 - JSON payload audit dùng cột `payload`.
 
-## 5) Vận hành và thay đổi schema
+## 5) HACCP — phiếu đánh giá & lịch
+- Bảng `haccp_assessments` có cột **`calendar_event_id`** (uuid, nullable, FK → `sct_iso.calendar_events.id`, ON DELETE SET NULL) để gắn phiếu với một sự kiện lịch `HACCP_ASSESSMENT` tương ứng.
+
+## 6) Vận hành và thay đổi schema
 - Chỉ thay đổi schema qua Alembic migration.
 - Không dùng `create_all()` thay migration trong môi trường shared/production.
 - Quy trình khởi tạo DB rỗng:

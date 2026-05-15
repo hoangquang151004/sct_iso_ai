@@ -200,6 +200,22 @@ Ngày cập nhật: 2026-04-20.
 
 ## 6) HACCP — phiếu đánh giá (bổ sung)
 
+### `POST /haccp/assessments`
+- Permission: bearer; `org_id` gắn từ principal.
+- Request body (`HaccpAssessmentCreate`): `haccp_plan_id`, **`calendar_event_id`** (bắt buộc), `title`, `assessment_date` (tuỳ chọn), `items` (tuỳ chọn).
+- `calendar_event_id` phải trỏ tới `calendar_events` của org, `event_type = HACCP_ASSESSMENT`, trạng thái còn `SCHEDULED`, và `haccp_plan_id` trong payload phải trùng `haccp_plan_id` lưu trong JSON `description` của sự kiện lịch.
+- Không cho tạo nếu đã tồn tại phiếu (DRAFT/SUBMITTED/REVIEWED) khác cùng `calendar_event_id`.
+- Response 201: `HaccpAssessmentResponse` (có thể có `calendar_event_id`).
+- Lỗi nghiệp vụ: `400` với `detail` là chuỗi mô tả (tiếng Việt).
+
+### `POST /haccp/assessments/{assessment_id}/submit`
+- Response: `HaccpAssessmentSubmitResponse` (phiếu đã gửi + **`deviations_created`**).
+- Mỗi hạng mục **`CCP`** có `result = FAIL` tạo một bản ghi `ccp_monitoring_logs` (`is_within_limit = false`, `deviation_status = NEW`) — hiển thị ở tab **Độ lệch CCP** để xử lý và «Gửi CAPA».
+- Khi gửi phiếu thành công, nếu phiếu có `calendar_event_id` và sự kiện lịch còn `SCHEDULED`, hệ thống cập nhật sự kiện đó sang **`COMPLETED`** (lịch «Quản lý» / «Sắp tới» phản ánh trạng thái mới sau khi refetch).
+
+### `GET /haccp/plans/schedules`
+- Response: mỗi phần tử gồm `id`, `title`, `start_time`, `status` (có thể là `OVERDUE` khi hiển thị dù DB vẫn `SCHEDULED`), **`haccp_plan_id`**, **`plan_name`** (phục vụ UI chọn lịch khi tạo phiếu).
+
 ### `POST /haccp/assessments/{assessment_id}/items`
 - Permission: bearer; phiếu thuộc `org_id` của principal.
 - Request body (`HaccpAssessmentManualItemCreate`): `question` (bắt buộc), `expected_value` (tuỳ chọn), `item_type` (`GENERAL` mặc định, hoặc `PROCESS_STEP` / `CCP`), `ref_id` (tuỳ chọn).
