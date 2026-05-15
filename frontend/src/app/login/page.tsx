@@ -2,23 +2,34 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { ApiClientError } from "@/api/api-client";
 import { useAuth } from "@/hooks";
 import { getCurrentPrincipal } from "@/services";
-import { AUTH_DEFAULT_AFTER_LOGIN } from "@/lib/auth-routes";
+import { resolvePostLoginPath } from "@/lib/auth-routes";
 import { getMessageByErrorCode } from "@/api/users-error-map";
+
+function getSafeNextPath(raw: string | null): string | null {
+  if (!raw) return null;
+  const decoded = decodeURIComponent(raw);
+  if (!decoded.startsWith("/") || decoded.startsWith("//")) return null;
+  return decoded;
+}
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { login, principal, loading } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const landingPath = useMemo(() => AUTH_DEFAULT_AFTER_LOGIN, []);
+  const nextPath = useMemo(
+    () => getSafeNextPath(searchParams.get("next")),
+    [searchParams],
+  );
 
   useEffect(() => {
     if (loading || !principal) {
@@ -28,8 +39,9 @@ export default function LoginPage() {
       router.replace("/account/change-password");
       return;
     }
-    router.replace(landingPath);
-  }, [loading, principal, router, landingPath]);
+    const destination = resolvePostLoginPath(nextPath, new Set(principal.permissions));
+    router.replace(destination);
+  }, [loading, principal, router, nextPath]);
 
   if (!loading && principal) {
     return (
@@ -49,7 +61,8 @@ export default function LoginPage() {
       if (principal.must_change_password) {
         router.replace("/account/change-password");
       } else {
-        router.replace(landingPath);
+        const destination = resolvePostLoginPath(nextPath, new Set(principal.permissions));
+        router.replace(destination);
       }
     } catch (error) {
       if (error instanceof ApiClientError) {

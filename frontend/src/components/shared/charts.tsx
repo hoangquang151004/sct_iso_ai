@@ -212,10 +212,94 @@ const anomalyOverlayPlugin = {
   },
 };
 
+const ccp1TemperatureChartData: ChartData<"line", number[], string> = {
+  labels: ["13:00", "13:15", "13:30", "13:45", "14:00", "14:15", "14:30"],
+  datasets: [
+    {
+      label: "Nhiệt độ đo (°C)",
+      data: [90, 89, 90, 88, 87, 85, 82],
+      borderColor: "#ef4444",
+      backgroundColor: "rgba(239, 68, 68, 0.12)",
+      fill: true,
+      tension: 0.35,
+      pointRadius: 3,
+      pointBackgroundColor: "#ef4444",
+    },
+    {
+      label: "Giới hạn tới thiểu (88°C)",
+      data: [88, 88, 88, 88, 88, 88, 88],
+      borderColor: "#10b981",
+      backgroundColor: "transparent",
+      borderDash: [6, 4],
+      fill: false,
+      tension: 0,
+      pointRadius: 0,
+    },
+  ],
+};
+
+export function Ccp1TemperatureChart() {
+  return (
+    <div className="h-56">
+      <Line
+        data={ccp1TemperatureChartData}
+        options={{
+          ...baseLineOptions,
+          plugins: {
+            ...baseLineOptions.plugins,
+            legend: {
+              display: true,
+              position: "bottom" as const,
+              labels: {
+                boxWidth: 10,
+                boxHeight: 10,
+                padding: 12,
+                font: { size: 10 },
+              },
+            },
+          },
+          scales: {
+            ...baseLineOptions.scales,
+            y: {
+              ...baseLineOptions.scales.y,
+              min: 78,
+              max: 94,
+              ticks: {
+                ...baseLineOptions.scales.y.ticks,
+                callback: (value: string | number) => `${value}°C`,
+              },
+            },
+          },
+        }}
+      />
+    </div>
+  );
+}
+
 export function IncidentTrendsChart() {
   return (
-    <div className="h-40">
-      <Line data={incidentTrendsChartData} options={baseLineOptions} />
+    <div className="h-56">
+      <Line
+        data={incidentTrendsChartData}
+        options={{
+          ...baseLineOptions,
+          plugins: {
+            ...baseLineOptions.plugins,
+            legend: {
+              display: true,
+              position: "bottom" as const,
+              labels: {
+                boxWidth: 10,
+                boxHeight: 10,
+                padding: 15,
+                font: {
+                  size: 11,
+                },
+              },
+            },
+          },
+        }}
+      />
     </div>
   );
 }

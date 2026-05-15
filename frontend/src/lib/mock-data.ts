@@ -138,9 +138,136 @@ export interface SecurityFeature {
   description: string;
 }
 
+/** KPI cards on the FSMS dashboard (richer than `dashboardKPIs`). */
+export interface DashboardDetailedKPI {
+  label: string;
+  icon: string;
+  value: string | number;
+  unit?: string;
+  detail: string;
+  color: "emerald" | "amber" | "red";
+  status: string;
+}
+
+export interface CcpStatusRow {
+  name: string;
+  value: string;
+  status: string;
+  color: "emerald" | "red";
+}
+
+export interface DetailedNC {
+  code: string;
+  name: string;
+  date: string;
+  type: "Major" | "Minor";
+}
+
+export interface ActiveCapaRow {
+  code: string;
+  deadline: string;
+  color: "red" | "amber";
+}
+
+export interface PrpComplianceRow {
+  label: string;
+  value: number;
+  color: "emerald" | "amber";
+}
+
+export interface UpcomingEvent {
+  day: string;
+  month: string;
+  title: string;
+  owner: string;
+}
+
+export interface RecentActivity {
+  initials: string;
+  color: string;
+  name: string;
+  action: string;
+  time: string;
+}
+
 // ============================================================================
 // DASHBOARD DATA
 // ============================================================================
+
+export const dashboardDetailedKPIs: DashboardDetailedKPI[] = [
+  {
+    label: "Tuân thủ PRP",
+    icon: "✓",
+    value: 98,
+    unit: "%",
+    detail: "So với tháng trước +1%",
+    color: "emerald",
+    status: "Tốt",
+  },
+  {
+    label: "Tuân thủ HACCP",
+    icon: "🛡️",
+    value: 96,
+    unit: "%",
+    detail: "2 CCP cần theo dõi thêm",
+    color: "amber",
+    status: "Cảnh báo",
+  },
+  {
+    label: "CAPA đúng hạn",
+    icon: "📋",
+    value: 92,
+    unit: "%",
+    detail: "3 CAPA sắp quá hạn",
+    color: "amber",
+    status: "Theo dõi",
+  },
+  {
+    label: "Điểm kiểm tra nội bộ",
+    icon: "⭐",
+    value: 4.2,
+    unit: "/5",
+    detail: "Đợt Q4/2025",
+    color: "emerald",
+    status: "Đạt",
+  },
+];
+
+export const ccpStatusList: CcpStatusRow[] = [
+  { name: "CCP-1 — Tiệt trùng", value: "82.0°C (≥88°C)", status: "Lệch ngưỡng", color: "red" },
+  { name: "CCP-2 — Kim loại", value: "Fe 1.2 mm / SUS 2.0 mm", status: "OK", color: "emerald" },
+  { name: "CCP-3 — pH cuối dây", value: "4.1 (3.8–4.3)", status: "OK", color: "emerald" },
+];
+
+export const detailedNCs: DetailedNC[] = [
+  { code: "NC-2023-085", name: "Sai lệch nhiệt độ tiệt trùng CCP-1", date: "15/05/2025", type: "Major" },
+  { code: "NC-2023-072", name: "Ghi nhận PRP vệ sinh khu đóng gói", date: "10/05/2025", type: "Minor" },
+  { code: "NC-2023-061", name: "Thiếu chữ ký phiếu giám sát ca đêm", date: "02/05/2025", type: "Minor" },
+];
+
+export const activeCapas: ActiveCapaRow[] = [
+  { code: "CAPA-2025-014", deadline: "Quá hạn 2 ngày", color: "red" },
+  { code: "CAPA-2025-011", deadline: "Còn 5 ngày", color: "amber" },
+  { code: "CAPA-2025-009", deadline: "Còn 12 ngày", color: "amber" },
+];
+
+export const prpComplianceProgress: PrpComplianceRow[] = [
+  { label: "Vệ sinh cá nhân & PPE", value: 100, color: "emerald" },
+  { label: "Vệ sinh thiết bị & mặt bằng", value: 94, color: "amber" },
+  { label: "Kiểm soát dịch hại & GMP", value: 88, color: "amber" },
+];
+
+export const upcomingEvents: UpcomingEvent[] = [
+  { day: "18", month: "Thg 5", title: "Đánh giá nội bộ ISO 22000", owner: "P. QA — Lê Thị H." },
+  { day: "22", month: "Thg 5", title: "Hiệu chuẩn cảm biến CCP-1", owner: "Kỹ thuật — Nguyễn V.A." },
+  { day: "01", month: "Thg 6", title: "Rà soát HACCP định kỳ", owner: "An toàn thực phẩm" },
+];
+
+export const recentActivities: RecentActivity[] = [
+  { initials: "NV", color: "bg-blue-600", name: "Nguyễn V.A.", action: "đã ghi nhận đo CCP-1 (Ca sáng).", time: "14:32" },
+  { initials: "LT", color: "bg-emerald-600", name: "Lê Thị H.", action: "đã phê duyệt PRP kho nguyên liệu.", time: "11:05" },
+  { initials: "PT", color: "bg-amber-600", name: "Phạm T.D.", action: "đã mở NC-2023-085 từ cảnh báo IoT.", time: "Hôm qua" },
+];
 
 export const dashboardKPIs: KPIMetric[] = [
   { label: "Tuân thủ PRP", value: 98, unit: "%", color: "slate" },
@@ -196,11 +323,27 @@ export const incidentTrendsChartData = {
   ],
   datasets: [
     {
-      label: "Sự cố",
+      label: "Kỹ thuật",
       data: [5, 8, 6, 9, 7, 12, 10, 14, 11, 15, 18, 22],
       borderColor: "#f97316",
       backgroundColor: "rgba(249, 115, 22, 0.1)",
-      fill: true,
+      fill: false,
+      tension: 0.4,
+    },
+    {
+      label: "Vệ sinh",
+      data: [3, 5, 4, 7, 5, 8, 6, 9, 7, 10, 12, 15],
+      borderColor: "#06b6d4",
+      backgroundColor: "rgba(6, 182, 212, 0.1)",
+      fill: false,
+      tension: 0.4,
+    },
+    {
+      label: "Vận hành",
+      data: [2, 4, 3, 5, 4, 6, 5, 7, 6, 8, 9, 11],
+      borderColor: "#10b981",
+      backgroundColor: "rgba(16, 185, 129, 0.1)",
+      fill: false,
       tension: 0.4,
     },
   ],

@@ -1,14 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import AppShell from "@/components/layout/app-shell";
 import { getMySessions, revokeAllOtherSessions, revokeMySession } from "@/services";
 import type { SessionSummary } from "@/types";
 import { ApiClientError } from "@/api/api-client";
 import { getMessageByErrorCode } from "@/api/users-error-map";
+import { useAuth } from "@/hooks";
+import { AUTH_LOGIN_PATH } from "@/lib/auth-routes";
 
 export default function AccountSessionsPage() {
+  const router = useRouter();
+  const { logout } = useAuth();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
@@ -35,9 +40,18 @@ export default function AccountSessionsPage() {
     void loadSessions();
   }, []);
 
-  const onRevokeOne = async (sessionId: string) => {
+  const onRevokeOne = async (sessionId: string, isCurrent: boolean) => {
     setErrorMessage("");
     setStatusMessage("");
+    if (isCurrent) {
+      try {
+        await logout();
+        router.replace(AUTH_LOGIN_PATH);
+      } catch {
+        setErrorMessage("Không thể đăng xuất. Vui lòng thử lại.");
+      }
+      return;
+    }
     try {
       await revokeMySession(sessionId);
       setStatusMessage("Đã đăng xuất phiên đã chọn.");
@@ -128,11 +142,14 @@ export default function AccountSessionsPage() {
                   <td className="py-2">
                     <button
                       type="button"
-                      disabled={session.is_current}
-                      className="rounded border border-slate-300 px-2 py-1 disabled:opacity-50"
-                      onClick={() => void onRevokeOne(session.id)}
+                      className={`rounded border px-2 py-1 text-sm transition ${
+                        session.is_current
+                          ? "border-rose-300 text-rose-600 hover:bg-rose-50"
+                          : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                      }`}
+                      onClick={() => void onRevokeOne(session.id, session.is_current)}
                     >
-                      Đăng xuất
+                      {session.is_current ? "Đăng xuất tài khoản" : "Đăng xuất"}
                     </button>
                   </td>
                 </tr>

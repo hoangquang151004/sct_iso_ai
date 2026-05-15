@@ -119,9 +119,13 @@ export async function apiRequest<T>(
       const refreshed = (await refreshResponse.json()) as { access_token?: string };
       accessToken = refreshed.access_token || null;
       response = await makeRequest(accessToken);
-    } else if (refreshResponse.status === 401) {
-      clearAccessToken();
       if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("auth:token-refreshed"));
+      }
+    } else if (refreshResponse.status === 401) {
+      const hadAccessToken = accessToken !== null;
+      clearAccessToken();
+      if (typeof window !== "undefined" && hadAccessToken) {
         window.dispatchEvent(new CustomEvent("auth:session-expired"));
       }
     }

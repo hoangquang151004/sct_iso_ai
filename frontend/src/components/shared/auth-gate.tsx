@@ -4,8 +4,8 @@ import React, { useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import {
-  AUTH_DEFAULT_AFTER_LOGIN,
   AUTH_LOGIN_PATH,
+  getFirstAccessibleRoute,
   hasRoutePermissions,
   isAuthPublicPath,
 } from "@/lib/auth-routes";
@@ -34,7 +34,7 @@ export default function AuthGate({ children }: AuthGateProps) {
     }
 
     if (!principal) {
-      const next = encodeURIComponent(pathWithQuery || AUTH_DEFAULT_AFTER_LOGIN);
+      const next = encodeURIComponent(pathWithQuery);
       router.replace(`${AUTH_LOGIN_PATH}?next=${next}`);
       return;
     }
@@ -42,7 +42,10 @@ export default function AuthGate({ children }: AuthGateProps) {
     const permSet = new Set(principal.permissions || []);
     const access = hasRoutePermissions(pathname, permSet);
     if (!access.ok) {
-      router.replace(AUTH_DEFAULT_AFTER_LOGIN);
+      const fallback = getFirstAccessibleRoute(permSet);
+      const fallbackPath = fallback.split("?")[0]?.split("#")[0] ?? fallback;
+      const destination = fallbackPath === pathname ? "/account/sessions" : fallback;
+      router.replace(destination);
     }
   }, [loading, pathname, pathWithQuery, principal, router]);
 
@@ -70,7 +73,7 @@ export default function AuthGate({ children }: AuthGateProps) {
   if (!hasRoutePermissions(pathname, permSet).ok) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-600">
-        Bạn không có quyền truy cập trang này. Đang chuyển về bảng điều khiển…
+        Bạn không có quyền truy cập trang này. Đang tìm trang phù hợp…
       </div>
     );
   }

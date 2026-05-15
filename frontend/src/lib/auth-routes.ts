@@ -59,6 +59,32 @@ export function filterNavItemsForPermissions(
   });
 }
 
+export function getFirstAccessibleRoute(permissions: Set<string>): string {
+  for (const item of APP_NAV_ITEMS) {
+    const codes = item.codes;
+    if (!codes?.length || codes.every((c) => permissions.has(c))) {
+      return item.href;
+    }
+  }
+  return "/account/sessions";
+}
+
+/** Chỉ dùng `?next=` sau đăng nhập khi user có quyền vào pathname của URL đó. */
+export function resolvePostLoginPath(next: string | null, permissions: Set<string>): string {
+  const trimmed = next?.trim();
+  if (!trimmed) {
+    return getFirstAccessibleRoute(permissions);
+  }
+  const pathOnly = trimmed.split("?")[0]?.split("#")[0] ?? trimmed;
+  if (!pathOnly.startsWith("/") || pathOnly.startsWith("//")) {
+    return getFirstAccessibleRoute(permissions);
+  }
+  if (hasRoutePermissions(pathOnly, permissions).ok) {
+    return trimmed;
+  }
+  return getFirstAccessibleRoute(permissions);
+}
+
 export function isAuthPublicPath(pathname: string): boolean {
   if (PUBLIC_PATH_EXACT.has(pathname)) {
     return true;

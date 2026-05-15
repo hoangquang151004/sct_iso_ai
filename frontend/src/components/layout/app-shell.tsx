@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/hooks";
-import { APP_NAV_ITEMS, filterNavItemsForPermissions } from "@/lib/auth-routes";
+import { APP_NAV_ITEMS, AUTH_LOGIN_PATH, filterNavItemsForPermissions } from "@/lib/auth-routes";
 
 type AppShellProps = {
   activePath: string;
@@ -12,7 +13,10 @@ type AppShellProps = {
 };
 
 export default function AppShell({ activePath, children }: AppShellProps) {
-  const { principal } = useAuth();
+  const { principal, logout } = useAuth();
+  const router = useRouter();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const permissionSet = useMemo(
     () => new Set(principal?.permissions ?? []),
@@ -25,6 +29,17 @@ export default function AppShell({ activePath, children }: AppShellProps) {
   );
 
   const profileHref = permissionSet.has("users.read") ? "/user-management" : "/account/sessions";
+
+  const handleLogout = useCallback(async () => {
+    setLoggingOut(true);
+    setMenuOpen(false);
+    try {
+      await logout();
+    } finally {
+      setLoggingOut(false);
+      router.replace(AUTH_LOGIN_PATH);
+    }
+  }, [logout, router]);
 
   return (
     <div className="app-shell-bg min-h-screen p-3 md:p-4">
@@ -55,13 +70,54 @@ export default function AppShell({ activePath, children }: AppShellProps) {
                 </Link>
               ))}
             </nav>
-            <Link
-              href={profileHref}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-white/35 bg-white/15 text-lg"
-              aria-label="Tài khoản và phiên đăng nhập"
-            >
-              <span aria-hidden="true">U</span>
-            </Link>
+
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setMenuOpen((o) => !o)}
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/35 bg-white/15 text-lg hover:bg-white/25 transition"
+                aria-label="Tài khoản"
+                aria-expanded={menuOpen}
+              >
+                <span aria-hidden="true">U</span>
+              </button>
+
+              {menuOpen ? (
+                <>
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setMenuOpen(false)}
+                    aria-hidden="true"
+                  />
+                  <div className="absolute right-0 z-20 mt-2 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+                    {principal ? (
+                      <div className="border-b border-slate-100 px-4 py-3">
+                        <p className="truncate text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                          {principal.username}
+                        </p>
+                      </div>
+                    ) : null}
+                    <Link
+                      href="/account/change-password"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition"
+                    >
+                      Đổi mật khẩu
+                    </Link>
+                    <div className="border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => void handleLogout()}
+                        disabled={loggingOut}
+                        className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-semibold text-rose-600 hover:bg-rose-50 transition disabled:opacity-60"
+                      >
+                        {loggingOut ? "Đang đăng xuất…" : "Đăng xuất"}
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : null}
+            </div>
           </div>
         </header>
 

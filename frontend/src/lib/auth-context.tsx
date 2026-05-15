@@ -34,6 +34,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const bootstrap = useCallback(async () => {
     try {
+      try {
+        await refreshSession();
+      } catch {
+        // No refresh cookie or invalid session; /auth/me will still run refresh-on-401 if applicable.
+      }
       const me = await getCurrentPrincipal();
       setPrincipal(me);
     } catch {
@@ -41,7 +46,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [getCurrentPrincipal, refreshSession]);
 
   useEffect(() => {
     void bootstrap();
@@ -52,8 +57,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setPrincipal(null);
       setSessionExpired(true);
     };
+    const handleRefreshed = () => {
+      getCurrentPrincipal()
+        .then(setPrincipal)
+        .catch(() => {});
+    };
     window.addEventListener("auth:session-expired", handleExpired);
-    return () => window.removeEventListener("auth:session-expired", handleExpired);
+    window.addEventListener("auth:token-refreshed", handleRefreshed);
+    return () => {
+      window.removeEventListener("auth:session-expired", handleExpired);
+      window.removeEventListener("auth:token-refreshed", handleRefreshed);
+    };
   }, []);
 
   const login = useCallback(
