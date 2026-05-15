@@ -425,6 +425,10 @@ class PRPAudit(Base):
     compliance_rate: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
     overall_result: Mapped[Optional[str]] = mapped_column(String(50))
     auditor_id: Mapped[Optional[UUID]] = mapped_column(ForeignKey("sct_iso.users.id"))
+    calendar_event_id: Mapped[Optional[UUID]] = mapped_column(
+        ForeignKey("sct_iso.calendar_events.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     prp_program: Mapped[Optional["PRPProgram"]] = relationship()
@@ -482,6 +486,10 @@ class CAPA(Base):
     status: Mapped[str] = mapped_column(String(50), default="OPEN")
     due_date: Mapped[Optional[date]] = mapped_column(Date)
     assigned_to: Mapped[Optional[UUID]] = mapped_column(ForeignKey("sct_iso.users.id"))
+    calendar_event_id: Mapped[Optional[UUID]] = mapped_column(
+        ForeignKey("sct_iso.calendar_events.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
