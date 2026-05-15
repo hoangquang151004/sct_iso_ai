@@ -65,6 +65,41 @@ const getNCStatusBadge = (nc: any) => {
 const isOpenPRPNc = (nc: NonConformity) =>
   nc.status !== "CLOSED" && nc.capa_status !== "CLOSED";
 
+const getScheduleStatusBadge = (status: string) => {
+  switch (status) {
+    case "COMPLETED":
+      return (
+        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
+          Đúng hạn
+        </span>
+      );
+    case "OVERDUE":
+      return (
+        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-rose-100 text-rose-700 border border-rose-200 animate-pulse">
+          Quá hạn
+        </span>
+      );
+    case "IN_PROGRESS":
+      return (
+        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-700 border border-amber-200 animate-pulse">
+          Đang diễn ra
+        </span>
+      );
+    case "SCHEDULED":
+      return (
+        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-sky-100 text-sky-700 border border-sky-200">
+          Sắp tới
+        </span>
+      );
+    default:
+      return (
+        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-slate-100 text-slate-700">
+          {status}
+        </span>
+      );
+  }
+};
+
 export default function PrpAuditPage() {
   const toast = useToast();
   const { principal } = useAuth();
@@ -480,18 +515,10 @@ export default function PrpAuditPage() {
                             {s.title}
                           </h3>
                           <div className="mt-1 flex items-center gap-1.5 text-[10px] font-medium">
-                            <div className="flex items-center gap-1 text-slate-400">
-                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                              {new Date(s.start_time).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
-                            </div>
-                            {s.status === "OVERDUE" && (
-                              <span className="text-rose-500 font-bold ml-auto">[Quá hạn]</span>
-                            )}
+                            {getScheduleStatusBadge(s.status)}
                           </div>
                         </div>
-                        {s.status === "SCHEDULED" && (
+                        {(s.status === "SCHEDULED" || s.status === "IN_PROGRESS") && (
                           <button
                             onClick={() => {
                               setSelectedScheduleId(s.id);
@@ -757,7 +784,7 @@ function ScheduleManagementModal({ onClose, onStartAudit }: { onClose: () => voi
   const orgId = principal?.org_id;
   const [schedules, setSchedules] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<string>(""); // "" = All, "SCHEDULED", "COMPLETED", "OVERDUE"
+  const [filter, setFilter] = useState<string>(""); // "" = All, "SCHEDULED", "COMPLETED", "OVERDUE", "IN_PROGRESS"
 
   const fetchSchedules = async () => {
     if (!orgId) return;
@@ -776,19 +803,6 @@ function ScheduleManagementModal({ onClose, onStartAudit }: { onClose: () => voi
     fetchSchedules();
   }, [orgId, filter]);
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "COMPLETED":
-        return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">Đúng hạn</span>;
-      case "OVERDUE":
-        return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-200 animate-pulse">Quá hạn</span>;
-      case "SCHEDULED":
-        return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-700 border border-sky-200">Sắp tới</span>;
-      default:
-        return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">{status}</span>;
-    }
-  };
-
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl">
@@ -804,6 +818,7 @@ function ScheduleManagementModal({ onClose, onStartAudit }: { onClose: () => voi
           {[
             { label: "Tất cả", value: "" },
             { label: "Sắp tới", value: "SCHEDULED" },
+            { label: "Đang diễn ra", value: "IN_PROGRESS" },
             { label: "Quá hạn", value: "OVERDUE" },
             { label: "Đúng hạn", value: "COMPLETED" },
           ].map((tab) => (
@@ -833,17 +848,23 @@ function ScheduleManagementModal({ onClose, onStartAudit }: { onClose: () => voi
               {schedules.map((s) => (
                 <div key={s.id} className="flex gap-4 p-4 border border-slate-100 rounded-xl bg-white hover:shadow-md transition-all group items-center">
                   <div className={`flex flex-col items-center justify-center border rounded-lg px-4 py-2 min-w-[90px] shadow-sm ${
-                    s.status === "OVERDUE" ? "bg-rose-50 border-rose-100" : "bg-slate-50 border-slate-100"
+                    s.status === "OVERDUE" ? "bg-rose-50 border-rose-100" : 
+                    s.status === "IN_PROGRESS" ? "bg-amber-50 border-amber-100" :
+                    "bg-slate-50 border-slate-100"
                   }`}>
                     <span className="text-[10px] uppercase font-bold text-slate-400">Ngày</span>
-                    <span className={`text-2xl font-black ${s.status === "OVERDUE" ? "text-rose-600" : "text-slate-700"}`}>
+                    <span className={`text-2xl font-black ${
+                      s.status === "OVERDUE" ? "text-rose-600" : 
+                      s.status === "IN_PROGRESS" ? "text-amber-600" :
+                      "text-slate-700"
+                    }`}>
                       {new Date(s.start_time).getDate()}
                     </span>
                     <span className="text-[10px] text-slate-400 font-medium">T{new Date(s.start_time).getMonth() + 1}</span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      {getStatusBadge(s.status)}
+                      {getScheduleStatusBadge(s.status)}
                       <span className="text-[10px] text-slate-400 font-bold">{new Date(s.start_time).getFullYear()}</span>
                     </div>
                     <h3 className="font-bold text-slate-800 group-hover:text-[#1e8b9b] transition-colors truncate">
@@ -855,21 +876,18 @@ function ScheduleManagementModal({ onClose, onStartAudit }: { onClose: () => voi
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                         {new Date(s.start_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        {" - "}
+                        {new Date(s.end_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       </div>
                     </div>
                   </div>
-                  {s.status === "SCHEDULED" && (
+                  {(s.status === "SCHEDULED" || s.status === "IN_PROGRESS") && (
                     <button
                       onClick={() => onStartAudit(s.id)}
                       className="px-4 py-2 bg-[#1e8b9b] text-white rounded-lg text-xs font-bold hover:bg-[#166a77] transition shadow-sm shrink-0"
                     >
                       ✓ Thực hiện
                     </button>
-                  )}
-                  {s.status === "OVERDUE" && (
-                    <span className="px-3 py-2 bg-slate-100 text-slate-400 rounded-lg text-[10px] font-bold italic border border-slate-200">
-                      Đã quá hạn
-                    </span>
                   )}
                 </div>
               ))}
@@ -890,18 +908,40 @@ function ScheduleModal({ locations, programs, onClose, onSuccess }: any) {
   const { principal } = useAuth();
   const orgId = principal?.org_id;
 
-  const [selectedLocation, setSelectedLocation] = useState(locations[0]?.id || "");
   const [selectedProgram, setSelectedProgram] = useState(programs[0]?.id || "");
+  const [allowedLocations, setAllowedLocations] = useState<Location[]>([]);
+  const [selectedLocation, setSelectedLocation] = useState("");
+  
   const [startDate, setStartDate] = useState(new Date().toISOString().split("T")[0]);
+  const [startTime, setStartTime] = useState("08:00");
+  const [durationMinutes, setDurationMinutes] = useState(60);
   const [endDate, setEndDate] = useState("");
   const [frequency, setFrequency] = useState("ONCE");
   const [dayOfWeek, setDayOfWeek] = useState(0); // Thứ 2
   const [dayOfMonth, setDayOfMonth] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [fetchingLocations, setFetchingLocations] = useState(false);
+
+  // Khi chọn chương trình, lấy danh sách các khu vực ĐÃ CÓ FORM
+  useEffect(() => {
+    if (selectedProgram) {
+      setFetchingLocations(true);
+      prpService.listAllowedLocations(selectedProgram)
+        .then((locs) => {
+          setAllowedLocations(locs);
+          setSelectedLocation(locs[0]?.id || "");
+        })
+        .finally(() => setFetchingLocations(false));
+    }
+  }, [selectedProgram]);
 
   const handleSubmit = async () => {
     if (!orgId) {
       toast.error("Không tìm thấy thông tin tổ chức. Vui lòng đăng nhập lại.");
+      return;
+    }
+    if (!selectedLocation) {
+      toast.warning("Vui lòng chọn khu vực để lập lịch.");
       return;
     }
     try {
@@ -911,6 +951,8 @@ function ScheduleModal({ locations, programs, onClose, onSuccess }: any) {
         prp_program_id: selectedProgram,
         location_id: selectedLocation,
         start_date: startDate,
+        start_time: startTime,
+        duration_minutes: durationMinutes,
         end_date: endDate || null,
         frequency,
         day_of_week: frequency === "WEEKLY" ? dayOfWeek : null,
@@ -946,7 +988,7 @@ function ScheduleModal({ locations, programs, onClose, onSuccess }: any) {
                 className="w-full rounded-lg border-slate-300 text-sm focus:ring-amber-500"
               >
                 {programs.map((p: any) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
+                  <option key={p.id} value={p.id}>{p.code || p.name}</option>
                 ))}
               </select>
             </div>
@@ -955,14 +997,30 @@ function ScheduleModal({ locations, programs, onClose, onSuccess }: any) {
               <select
                 value={selectedLocation}
                 onChange={(e) => setSelectedLocation(e.target.value)}
-                className="w-full rounded-lg border-slate-300 text-sm focus:ring-amber-500"
+                className="w-full rounded-lg border-slate-300 text-sm focus:ring-amber-500 disabled:bg-slate-50 disabled:text-slate-400"
+                disabled={fetchingLocations || allowedLocations.length === 0}
               >
-                {locations.map((loc: any) => (
-                  <option key={loc.id} value={loc.id}>{loc.name}</option>
-                ))}
+                {fetchingLocations ? (
+                  <option>Đang tải...</option>
+                ) : allowedLocations.length === 0 ? (
+                  <option value="">-- Chưa có Form thiết lập --</option>
+                ) : (
+                  allowedLocations.map((loc: any) => (
+                    <option key={loc.id} value={loc.id}>{loc.name}</option>
+                  ))
+                )}
               </select>
             </div>
           </div>
+
+          {allowedLocations.length === 0 && !fetchingLocations && (
+            <div className="p-3 bg-rose-50 border border-rose-100 rounded-lg">
+              <p className="text-[10px] text-rose-600 font-bold leading-relaxed">
+                ⚠️ Chương trình này chưa được thiết kế Form (Checklist) cho bất kỳ khu vực nào. 
+                Vui lòng vào mục <span className="underline italic">"Thiết kế Form"</span> để thiết lập nội dung kiểm tra trước khi lập lịch.
+              </p>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
@@ -989,18 +1047,35 @@ function ScheduleModal({ locations, programs, onClose, onSuccess }: any) {
             </div>
           </div>
 
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-500 uppercase">Giờ bắt đầu</label>
+              <input
+                type="time"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                className="w-full rounded-lg border-slate-300 text-sm focus:ring-amber-500"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-500 uppercase">Thời lượng (phút)</label>
+              <select
+                value={durationMinutes}
+                onChange={(e) => setDurationMinutes(parseInt(e.target.value))}
+                className="w-full rounded-lg border-slate-300 text-sm focus:ring-amber-500"
+              >
+                <option value={15}>15 phút</option>
+                <option value={30}>30 phút</option>
+                <option value={60}>1 giờ</option>
+                <option value={120}>2 giờ</option>
+                <option value={240}>4 giờ</option>
+                <option value={480}>8 giờ</option>
+              </select>
+            </div>
+          </div>
+
           {frequency !== "ONCE" && (
             <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-500 uppercase">Kết thúc vào</label>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full rounded-lg border-slate-300 text-sm focus:ring-amber-500"
-                />
-              </div>
-              
               {frequency === "WEEKLY" && (
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">Lặp lại vào thứ</label>
@@ -1737,6 +1812,8 @@ function AuditFormModal({ locations, programs, onClose, onSuccess, initialSchedu
   const [results, setResults] = useState<Record<string, string>>({});
   const [observations, setObservations] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [isNotYetDue, setIsNotYetDue] = useState(false);
+  const [isExpired, setIsExpired] = useState(false);
 
   // Fetch upcoming schedules for the dropdown
   useEffect(() => {
@@ -1745,9 +1822,9 @@ function AuditFormModal({ locations, programs, onClose, onSuccess, initialSchedu
     }
   }, [orgId]);
 
-  // Lọc danh sách lịch trình dựa trên bộ lọc và CHỈ LẤY LỊCH TRÌNH CHƯA QUÁ HẠN
+  // Lọc danh sách lịch trình dựa trên bộ lọc và CHỈ LẤY LỊCH TRÌNH CHƯA HOÀN THÀNH
   const filteredSchedules = upcomingSchedules
-    .filter(s => s.status === "SCHEDULED") // Chỉ lấy lịch còn hạn
+    .filter(s => ["SCHEDULED", "IN_PROGRESS"].includes(s.status))
     .filter(s => {
       if (!s.description) return true;
       try {
@@ -1764,18 +1841,28 @@ function AuditFormModal({ locations, programs, onClose, onSuccess, initialSchedu
   useEffect(() => {
     if (selectedScheduleId && upcomingSchedules.length > 0) {
       const schedule = upcomingSchedules.find(s => s.id === selectedScheduleId);
-      if (schedule && schedule.description) {
-        try {
-          const desc = JSON.parse(schedule.description);
-          if (desc.location_id) setSelectedLocation(desc.location_id);
-          if (desc.prp_program_id) setSelectedProgram(desc.prp_program_id);
-        } catch (e) {
-          console.error("Failed to parse schedule description", e);
+      if (schedule) {
+        // Kiểm tra xem đã tới giờ đánh giá chưa
+        const now = new Date();
+        const startTime = new Date(schedule.start_time);
+        // Nếu status đã là IN_PROGRESS thì chắc chắn không phải NotYetDue
+        setIsNotYetDue(schedule.status === "SCHEDULED" && startTime > now);
+        setIsExpired(schedule.status === "OVERDUE");
+
+        if (schedule.description) {
+          try {
+            const desc = JSON.parse(schedule.description);
+            if (desc.location_id) setSelectedLocation(desc.location_id);
+            if (desc.prp_program_id) setSelectedProgram(desc.prp_program_id);
+          } catch (e) {
+            console.error("Failed to parse schedule description", e);
+          }
         }
       }
     } else {
       setSelectedLocation("");
       setSelectedProgram("");
+      setIsNotYetDue(false);
     }
   }, [selectedScheduleId, upcomingSchedules]);
 
@@ -1864,9 +1951,9 @@ function AuditFormModal({ locations, programs, onClose, onSuccess, initialSchedu
 
       toast.success("Báo cáo đánh giá đã được gửi thành công!");
       onSuccess();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to submit audit:", error);
-      toast.error("Lỗi khi gửi báo cáo.");
+      toast.error(error.message || "Lỗi khi gửi báo cáo.");
     } finally {
       setLoading(false);
     }
@@ -1874,6 +1961,15 @@ function AuditFormModal({ locations, programs, onClose, onSuccess, initialSchedu
 
   const selectedProgramName = programs.find((p: any) => p.id === selectedProgram)?.name;
   const selectedLocationName = locations.find((l: any) => l.id === selectedLocation)?.name;
+
+  const getStatusText = (status: string) => {
+    switch(status) {
+      case "SCHEDULED": return "Sắp tới";
+      case "IN_PROGRESS": return "Đang diễn ra";
+      case "OVERDUE": return "Quá hạn";
+      default: return "";
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -1919,10 +2015,22 @@ function AuditFormModal({ locations, programs, onClose, onSuccess, initialSchedu
               <option value="">-- Vui lòng chọn lịch đánh giá --</option>
               {filteredSchedules.map((s) => (
                 <option key={s.id} value={s.id}>
-                  [{new Date(s.start_time).toLocaleDateString()}] {s.title}
+                  [{getStatusText(s.status)}] {new Date(s.start_time).toLocaleDateString()} {new Date(s.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {s.title}
                 </option>
               ))}
             </select>
+            {isNotYetDue && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 animate-pulse mt-2">
+                <span className="text-lg">⚠️</span>
+                <p className="text-xs font-bold text-amber-700">Lịch đánh giá này chưa tới hạn thực hiện. Vui lòng quay lại sau.</p>
+              </div>
+            )}
+            {isExpired && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg flex items-center gap-2 mt-2">
+                <span className="text-lg">⚠️</span>
+                <p className="text-xs font-bold text-rose-700">Lịch đánh giá này đã quá hạn. Bạn không thể thực hiện đánh giá cho lịch đã quá hạn.</p>
+              </div>
+            )}
             {filteredSchedules.length === 0 && upcomingSchedules.length > 0 && (
               <p className="text-[10px] text-amber-600 mt-2 font-bold italic">
                 ⚠️ Không tìm thấy lịch phù hợp với bộ lọc hiện tại.
@@ -1936,7 +2044,7 @@ function AuditFormModal({ locations, programs, onClose, onSuccess, initialSchedu
           </div>
 
           {selectedScheduleId ? (
-            <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100 animate-in fade-in slide-in-from-top-2">
+            <div className={`grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100 animate-in fade-in slide-in-from-top-2 ${isNotYetDue ? "opacity-50 grayscale pointer-events-none" : ""}`}>
               <div className="space-y-1">
                 <label className="block text-[10px] uppercase font-bold text-slate-400">Chương trình</label>
                 <div className="text-sm font-black text-slate-700 bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
@@ -2030,7 +2138,7 @@ function AuditFormModal({ locations, programs, onClose, onSuccess, initialSchedu
           <button onClick={onClose} className="px-6 py-2 text-slate-500 font-bold hover:text-slate-800 transition">Hủy bỏ</button>
           <button
             onClick={handleSubmit}
-            disabled={loading || templates.length === 0 || !selectedScheduleId}
+            disabled={loading || templates.length === 0 || !selectedScheduleId || isNotYetDue || isExpired}
             className="px-10 py-2 bg-[#1e8b9b] text-white rounded-xl font-black hover:bg-[#166a77] disabled:opacity-30 disabled:grayscale transition shadow-lg uppercase text-xs tracking-widest"
           >
             Nộp Báo cáo

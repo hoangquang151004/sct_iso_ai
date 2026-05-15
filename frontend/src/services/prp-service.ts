@@ -19,6 +19,10 @@ export async function listLocations(): Promise<Location[]> {
   return apiRequest<Location[]>("/prp/locations");
 }
 
+export async function listAllowedLocations(programId: string): Promise<Location[]> {
+  return apiRequest<Location[]>(`/prp/programs/${programId}/allowed-locations`);
+}
+
 export async function getTemplatesByLocation(locationId: string, onlyActive: boolean = true): Promise<PRPChecklistTemplate[]> {
   return apiRequest<PRPChecklistTemplate[]>(`/prp/templates/location/${locationId}?only_active=${onlyActive}`);
 }

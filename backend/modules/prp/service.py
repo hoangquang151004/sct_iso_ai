@@ -2,6 +2,7 @@ from typing import List, Optional
 from uuid import UUID
 from datetime import date, datetime, timedelta
 import json
+from fastapi import HTTPException, status
 from sqlalchemy import select, extract
 from sqlalchemy.orm import Session, joinedload
 
@@ -39,6 +40,20 @@ class PRPAuditService:
 
     def get_program_by_id(self, program_id: UUID) -> Optional[PRPProgram]:
         return self.db.get(PRPProgram, program_id)
+
+    def get_locations_with_templates(self, program_id: UUID) -> List[Location]:
+        """Lấy danh sách các khu vực đã được thiết kế form cho một chương trình cụ thể."""
+        stmt = (
+            select(Location)
+            .join(PRPChecklistTemplate, PRPChecklistTemplate.location_id == Location.id)
+            .where(
+                PRPChecklistTemplate.prp_program_id == program_id,
+                PRPChecklistTemplate.is_active == True,
+                Location.is_active == True,
+            )
+            .distinct()
+        )
+        return list(self.db.scalars(stmt).all())
 
     def create_program(self, payload: PRPProgramCreate) -> PRPProgram:
         """Tạo mới một chương trình PRP/SSOP/GHP."""
@@ -189,6 +204,34 @@ class PRPAuditService:
     def create_full_audit(self, payload: PRPAuditFullCreate) -> PRPAudit:
         audit_data = payload.audit_data.model_dump()
         
+        linked_event = None
+        # Kiểm tra nếu lịch đã quá hạn thì không cho thực hiện
+        if audit_data.get("calendar_event_id"):
+            linked_event = self.db.get(CalendarEvent, audit_data["calendar_event_id"])
+            if linked_event:
+                if linked_event.status == "COMPLETED":
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Lịch đánh giá này đã hoàn thành, không thể thực hiện lại."
+                    )
+                
+                # Logic kiểm tra quá hạn (tương tự get_all_audit_schedules)
+                now = datetime.now().astimezone()
+                is_overdue = False
+                if linked_event.status == "SCHEDULED":
+                    # Nếu đã qua thời gian kết thúc
+                    if linked_event.end_time and now > linked_event.end_time:
+                        is_overdue = True
+                    # Nếu không có end_time mà đã qua start_time
+                    elif not linked_event.end_time and now > linked_event.start_time:
+                        is_overdue = True
+                
+                if is_overdue:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Lịch đánh giá đã quá hạn, không thể thực hiện."
+                    )
+
         # Tự động tính tỷ lệ tuân thủ nếu chưa có (backend tự tính lại cho chuẩn)
         if not audit_data.get("compliance_rate"):
             pass_count = sum(1 for d in payload.details if d.result.upper() == "PASS")
@@ -200,10 +243,8 @@ class PRPAuditService:
         self.db.flush()
 
         # Cập nhật trạng thái lịch nếu có liên kết
-        if db_audit.calendar_event_id:
-            event = self.db.get(CalendarEvent, db_audit.calendar_event_id)
-            if event:
-                event.status = "COMPLETED"
+        if linked_event:
+            linked_event.status = "COMPLETED"
 
         for detail_in in payload.details:
             detail_data = detail_in.model_dump()
@@ -310,22 +351,43 @@ class PRPAuditService:
 
         return len(events)
 
-    def get_upcoming_schedules(
-        self, org_id: UUID, limit: int = 20
-    ) -> List[CalendarEvent]:
-        """Lấy danh sách các lịch đánh giá PRP sắp tới."""
+    def get_upcoming_schedules(self, org_id: UUID, limit: int = 10) -> List[dict]:
+        """Lấy danh sách các lịch đánh giá PRP sắp tới và đang diễn ra."""
         stmt = (
             select(CalendarEvent)
             .where(
                 CalendarEvent.org_id == org_id,
                 CalendarEvent.event_type == "PRP_AUDIT",
-                CalendarEvent.start_time >= datetime.now().astimezone(),
                 CalendarEvent.status == "SCHEDULED",
             )
             .order_by(CalendarEvent.start_time.asc())
             .limit(limit)
         )
-        return list(self.db.scalars(stmt).all())
+        events = self.db.scalars(stmt).all()
+        now = datetime.now().astimezone()
+
+        results = []
+        for e in events:
+            display_status = e.status
+            if e.status == "SCHEDULED":
+                if now < e.start_time:
+                    display_status = "SCHEDULED"
+                elif e.end_time and e.start_time <= now <= e.end_time:
+                    display_status = "IN_PROGRESS"
+                else:
+                    display_status = "OVERDUE"
+
+            # Chỉ trả về các lịch Sắp tới hoặc Đang diễn ra
+            if display_status in ["SCHEDULED", "IN_PROGRESS"]:
+                results.append({
+                    "id": e.id,
+                    "title": e.title,
+                    "start_time": e.start_time,
+                    "end_time": e.end_time,
+                    "status": display_status,
+                    "description": e.description,
+                })
+        return results
 
     def get_all_audit_schedules(
         self, org_id: UUID, status: Optional[str] = None, limit: int = 100
@@ -344,25 +406,36 @@ class PRPAuditService:
 
         results = []
         for e in events:
+            display_status = e.status
+            
+            # Logic tính toán trạng thái hiển thị linh hoạt
+            if e.status == "SCHEDULED":
+                if now < e.start_time:
+                    display_status = "SCHEDULED" # Sắp tới
+                elif e.end_time and e.start_time <= now <= e.end_time:
+                    display_status = "IN_PROGRESS" # Đang diễn ra
+                else:
+                    display_status = "OVERDUE" # Đã quá hạn
+
             e_dict = {
                 "id": e.id,
                 "title": e.title,
                 "description": e.description,
                 "start_time": e.start_time,
                 "end_time": e.end_time,
-                "status": e.status,
+                "status": display_status,
                 "assigned_to": e.assigned_to,
             }
 
-            if e.status == "SCHEDULED" and e.start_time < now:
-                e_dict["status"] = "OVERDUE"
-
             if status:
                 if status == "OVERDUE":
-                    if e_dict["status"] != "OVERDUE":
+                    if display_status != "OVERDUE":
                         continue
                 elif status == "SCHEDULED":
-                    if e_dict["status"] != "SCHEDULED":
+                    if display_status != "SCHEDULED":
+                        continue
+                elif status == "IN_PROGRESS":
+                    if display_status != "IN_PROGRESS":
                         continue
                 elif e.status != status:
                     continue
@@ -379,6 +452,7 @@ class PRPAuditService:
             "location_id": str(req.location_id),
             "source": "PRP_MODULE",
             "notes": req.description,
+            "duration_minutes": req.duration_minutes,
         }
 
         title = req.title
@@ -387,13 +461,26 @@ class PRPAuditService:
             prog_name = program.name if program else "Chương trình PRP"
             title = f"Đánh giá {prog_name}"
 
+        # Xử lý giờ bắt đầu nếu có
+        start_dt = datetime.combine(event_date, datetime.min.time())
+        if req.start_time:
+            try:
+                time_parts = datetime.strptime(req.start_time, "%H:%M").time()
+                start_dt = datetime.combine(event_date, time_parts)
+            except ValueError:
+                pass # Giữ mặc định 00:00 nếu sai định dạng
+
+        # Tính toán end_time dựa trên duration_minutes
+        duration = req.duration_minutes or 60
+        end_dt = start_dt + timedelta(minutes=duration)
+
         return CalendarEvent(
             org_id=req.org_id,
             title=title,
             description=json.dumps(description_data, ensure_ascii=False),
             event_type="PRP_AUDIT",
-            start_time=datetime.combine(event_date, datetime.min.time()),
-            end_time=datetime.combine(event_date, datetime.max.time()),
+            start_time=start_dt,
+            end_time=end_dt,
             status="SCHEDULED",
             assigned_to=req.assigned_to,
         )

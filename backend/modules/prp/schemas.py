@@ -185,6 +185,8 @@ class PRPScheduleRequest(BaseModel):
     location_id: UUID
     assigned_to: Optional[UUID] = None
     start_date: date
+    start_time: Optional[str] = Field(None, description="Giờ bắt đầu (HH:mm)")
+    duration_minutes: int = Field(60, description="Thời gian thực hiện dự kiến (phút)")
     end_date: Optional[date] = None # Chỉ dùng cho lặp lại
     frequency: PRPScheduleFrequency = PRPScheduleFrequency.ONCE
     day_of_week: Optional[int] = Field(None, ge=0, le=6, description="0=Monday, 6=Sunday")

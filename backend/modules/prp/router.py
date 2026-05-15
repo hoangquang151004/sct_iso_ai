@@ -63,6 +63,19 @@ def get_prp_program(
     return prog
 
 
+@prp_router.get(
+    "/programs/{program_id}/allowed-locations",
+    response_model=List[LocationResponse],
+    summary="Lấy danh sách khu vực được phép lập lịch",
+    description="Lấy danh sách các khu vực đã được thiết kế form cho chương trình này.",
+)
+def get_allowed_locations(
+    program_id: UUID,
+    service: PRPAuditService = Depends(get_prp_audit_service),
+):
+    return service.get_locations_with_templates(program_id)
+
+
 @prp_router.patch(
     "/programs/{program_id}",
     response_model=PRPProgramResponse,
