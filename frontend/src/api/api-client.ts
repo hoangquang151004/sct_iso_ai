@@ -95,13 +95,13 @@ export async function apiRequest<T>(
     try {
       return await fetch(`${apiPublicBaseUrl()}${path}`, {
       credentials: "include",
+      signal: controller.signal,
+      ...init,
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(init?.headers || {}),
       },
-      signal: controller.signal,
-      ...init,
     });
     } finally {
       clearTimeout(timeoutId);

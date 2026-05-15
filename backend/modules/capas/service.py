@@ -108,18 +108,20 @@ class CAPAService:
 
     # --- 3. CAPA MANAGEMENT ---
     def create_capa(self, payload: CAPACreate) -> CAPA:
-        data = payload.model_dump()
+        data = payload.model_dump(exclude={"severity"})
         if not data.get("capa_code"):
             data["capa_code"] = self._generate_capa_code(payload.org_id)
 
         db_capa = CAPA(**data)
         self.db.add(db_capa)
 
-        # Chuyển trạng thái NC sang OPEN khi bắt đầu tạo CAPA
+        # Chuyển trạng thái NC sang OPEN và cập nhật mức độ nếu có
         if db_capa.nc_id:
             db_nc = self.db.get(NonConformity, db_capa.nc_id)
             if db_nc:
                 db_nc.status = "OPEN"
+                if payload.severity:
+                    db_nc.severity = payload.severity
 
         self.db.commit()
         self.db.refresh(db_capa)
@@ -180,11 +182,27 @@ class CAPAService:
             "source_distribution": source_dist,
         }
 
-    def get_kanban_board(self, org_id: UUID) -> Dict[str, List[Any]]:
-        capas = self.db.scalars(select(CAPA).where(CAPA.org_id == org_id)).all()
+    def get_kanban_board(self, org_id: UUID) -> Dict[str, List[Dict[str, Any]]]:
+        stmt = (
+            select(CAPA, NonConformity.severity)
+            .outerjoin(NonConformity, CAPA.nc_id == NonConformity.id)
+            .where(CAPA.org_id == org_id)
+        )
+        results = self.db.execute(stmt).all()
+        
         board = {"OPEN": [], "IN_PROGRESS": [], "VERIFYING": [], "CLOSED": []}
-        for c in capas:
-            status_val = c.status
+        for row in results:
+            capa = row.CAPA
+            severity = row.severity
+            
+            # Map to dict to include severity
+            capa_dict = {
+                c.name: getattr(capa, c.name)
+                for c in capa.__table__.columns
+            }
+            capa_dict["severity"] = severity
+            
+            status_val = capa.status
             if status_val in board:
-                board[status_val].append(c)
+                board[status_val].append(capa_dict)
         return board

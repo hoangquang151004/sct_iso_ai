@@ -18,8 +18,25 @@ export default function CapaManagementPage() {
   const [selectedNC, setSelectedNC] = useState<NonConformity | null>(null);
   const [selectedCAPA, setSelectedCAPA] = useState<CAPA | null>(null);
   const [sourceFilter, setSourceFilter] = useState<string>("");
+  
+  // Date filtering states (HACCP style)
+  const [dateFilterMode, setDateFilterMode] = useState<"day" | "month" | "year">("month");
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
+  const [selectedMonth, setSelectedMonth] = useState((new Date().getMonth() + 1).toString().padStart(2, "0"));
+  const [selectedMonthYear, setSelectedMonthYear] = useState(new Date().getFullYear().toString());
+  const [selectedYear, setSelectedYear] = useState("");
+
   const [boardColumns, setBoardColumns] = useState<Record<string, CAPA[]>>({});
+  const [filteredBoardColumns, setFilteredBoardColumns] = useState<Record<string, CAPA[]>>({});
   const [sourceChartData, setSourceChartData] = useState<any>(null);
+  const [showFullBoard, setShowFullBoard] = useState(false);
+
+  const currentYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 5 }, (_, index) => (currentYear - index).toString());
+  const monthOptions = Array.from({ length: 12 }, (_, index) => {
+    const month = (index + 1).toString().padStart(2, "0");
+    return { value: month, label: `Tháng ${index + 1}` };
+  });
 
   const fetchData = async () => {
     if (!orgId) return;
@@ -61,10 +78,34 @@ export default function CapaManagementPage() {
       
     } catch (error) {
       console.error("Failed to fetch CAPA data:", error);
+      toast.error("Không thể tải dữ liệu CAPA. Vui lòng thử lại sau.");
     } finally {
       setLoading(false);
     }
   };
+
+  // Client-side filtering for board (HACCP style)
+  useEffect(() => {
+    const newFiltered: Record<string, CAPA[]> = {};
+    Object.keys(boardColumns).forEach(status => {
+      newFiltered[status] = boardColumns[status].filter(capa => {
+        const capaDate = new Date(capa.created_at);
+        const cYear = capaDate.getFullYear().toString();
+        const cMonth = (capaDate.getMonth() + 1).toString().padStart(2, "0");
+        const cDay = capaDate.toISOString().split("T")[0];
+
+        if (dateFilterMode === "day") {
+          return !selectedDate || cDay === selectedDate;
+        } else if (dateFilterMode === "month") {
+          return (!selectedMonth || cMonth === selectedMonth) && (!selectedMonthYear || cYear === selectedMonthYear);
+        } else if (dateFilterMode === "year") {
+          return !selectedYear || cYear === selectedYear;
+        }
+        return true;
+      });
+    });
+    setFilteredBoardColumns(newFiltered);
+  }, [boardColumns, dateFilterMode, selectedDate, selectedMonth, selectedMonthYear, selectedYear]);
 
   useEffect(() => {
     fetchData();
@@ -174,7 +215,6 @@ export default function CapaManagementPage() {
                   <th className="px-6 py-3 font-bold uppercase text-[10px]">Ngày</th>
                   <th className="px-6 py-3 font-bold uppercase text-[10px]">Nguồn</th>
                   <th className="px-6 py-3 font-bold uppercase text-[10px]">Nội dung lỗi</th>
-                  <th className="px-6 py-3 font-bold uppercase text-[10px] text-center">Mức độ</th>
                   <th className="px-6 py-3 font-bold uppercase text-[10px] text-right">Thao tác</th>
                 </tr>
               </thead>
@@ -197,13 +237,6 @@ export default function CapaManagementPage() {
                         </div>
                       )}
                     </td>
-                    <td className="px-6 py-4 text-center">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        nc.severity === "HIGH" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"
-                      }`}>
-                        {nc.severity}
-                      </span>
-                    </td>
                     <td className="px-6 py-4 text-right">
                       <button 
                         onClick={() => setSelectedNC(nc)}
@@ -222,73 +255,152 @@ export default function CapaManagementPage() {
       </div>
 
       {/* Kanban Board Section */}
-      <div className="mb-6 flex justify-between items-center">
-        <h2 className="font-bold text-slate-800 text-lg">Bảng công việc</h2>
-        <button className="px-4 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-50 transition shadow-sm">
-          Xuất báo cáo
-        </button>
+      <div className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <h2 className="font-bold text-slate-800 text-lg shrink-0">Bảng công việc</h2>
+        
+        {/* Advanced Date Filter (HACCP Pattern) */}
+        <div className="flex flex-wrap items-center gap-3 bg-cyan-50/50 p-2 rounded-xl border border-cyan-100 w-full md:w-auto">
+          <div className="flex bg-white rounded-lg border border-cyan-100 p-1 shrink-0">
+            {[
+              { id: "day", label: "Ngày" },
+              { id: "month", label: "Tháng" },
+              { id: "year", label: "Năm" }
+            ].map((mode) => (
+              <button
+                key={mode.id}
+                onClick={() => {
+                  setDateFilterMode(mode.id as any);
+                  const now = new Date();
+                  if (mode.id === "day") {
+                    setSelectedDate(now.toISOString().split("T")[0]);
+                  } else if (mode.id === "month") {
+                    setSelectedMonth((now.getMonth() + 1).toString().padStart(2, "0"));
+                    setSelectedMonthYear(now.getFullYear().toString());
+                  } else if (mode.id === "year") {
+                    setSelectedYear(now.getFullYear().toString());
+                  }
+                }}
+                className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${
+                  dateFilterMode === mode.id 
+                  ? "bg-cyan-600 text-white shadow-sm" 
+                  : "text-slate-500 hover:bg-cyan-50"
+                }`}
+              >
+                {mode.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2 flex-1 md:flex-none">
+            {dateFilterMode === "day" && (
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="px-3 py-1.5 text-xs border border-cyan-100 rounded-lg outline-none bg-white focus:ring-2 focus:ring-cyan-500/20 w-full"
+              />
+            )}
+
+            {dateFilterMode === "month" && (
+              <div className="flex gap-2 w-full">
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="px-3 py-1.5 text-xs border border-cyan-100 rounded-lg outline-none bg-white focus:ring-2 focus:ring-cyan-500/20 flex-1"
+                >
+                  <option value="">Tất cả các tháng</option>
+                  {monthOptions.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                </select>
+                <select
+                  value={selectedMonthYear}
+                  onChange={(e) => setSelectedMonthYear(e.target.value)}
+                  className="px-3 py-1.5 text-xs border border-cyan-100 rounded-lg outline-none bg-white focus:ring-2 focus:ring-cyan-500/20 flex-1"
+                >
+                  {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
+            )}
+
+            {dateFilterMode === "year" && (
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(e.target.value)}
+                className="px-3 py-1.5 text-xs border border-cyan-100 rounded-lg outline-none bg-white focus:ring-2 focus:ring-cyan-500/20 w-full"
+              >
+                <option value="">Tất cả các năm</option>
+                {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            )}
+          </div>
+        </div>
+
+        <div className="flex gap-2 shrink-0">
+          <button 
+            onClick={() => setShowFullBoard(true)}
+            className="px-4 py-1.5 bg-slate-800 text-white rounded-lg text-xs font-bold hover:bg-slate-900 transition shadow-sm"
+          >
+            Mở bảng đầy đủ
+          </button>
+          {/* <button className="px-4 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-50 transition shadow-sm">
+            Xuất báo cáo
+          </button> */}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-start mb-8">
+      <div className="flex flex-wrap gap-4 items-start mb-8 justify-start">
         {["OPEN", "IN_PROGRESS", "VERIFYING", "CLOSED"].map((colStatus) => {
-          const colCapas = boardColumns[colStatus] || [];
+          const colCapas = filteredBoardColumns[colStatus] || [];
+          const displayCapas = colCapas.slice(0, 3);
+          const hasMore = colCapas.length > 3;
+
           return (
-            <div key={colStatus} className="bg-slate-100 rounded-xl p-3 flex flex-col gap-3 min-h-[300px]">
+            <div key={colStatus} className="bg-slate-100/50 rounded-xl p-3 flex flex-col gap-3 min-h-[200px] w-[300px] shrink-0 border border-slate-200/50">
               <div className="flex justify-between items-center px-1">
                 <h3 className="font-bold text-sm text-slate-700">{statusText(colStatus)}</h3>
-                <span className="text-xs font-bold text-slate-400 bg-slate-200 px-2 py-0.5 rounded-full">{colCapas.length}</span>
+                <span className="text-xs font-bold text-slate-400 bg-white border border-slate-200 px-2 py-0.5 rounded-full">{colCapas.length}</span>
               </div>
               
               {colCapas.length === 0 ? (
-                <div className="flex-1 flex items-center justify-center border-2 border-dashed border-slate-200 rounded-lg p-4">
+                <div className="flex-1 flex items-center justify-center border-2 border-dashed border-slate-200 rounded-lg p-4 bg-white/50">
                   <span className="text-xs font-medium text-slate-400 italic">Trống</span>
                 </div>
               ) : (
-                <div className="flex flex-col gap-3">
-                  {colCapas.map((capa) => (
-                    <div 
+                <div className="flex flex-col gap-2">
+                  {displayCapas.map((capa) => (
+                    <CompactCAPACard 
                       key={capa.id} 
-                      onClick={() => setSelectedCAPA(capa)}
-                      className="bg-white p-4 rounded-lg shadow-sm border border-slate-100 cursor-pointer hover:shadow-md hover:border-slate-300 transition-all flex flex-col gap-3"
-                    >
-                      <div className="flex justify-between items-start gap-2">
-                        <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded">
-                          {capa.capa_code || "Mới"}
-                        </span>
-                        <div className={`w-2 h-2 rounded-full ${statusClass(capa.status)}`} />
-                      </div>
-                      
-                      <p className="text-sm font-bold text-slate-800 leading-snug line-clamp-2">
-                        {capa.title}
-                      </p>
-                      
-                      <div className="flex justify-between items-center pt-3 border-t border-slate-50 mt-auto">
-                        <div className="flex items-center gap-1.5 text-slate-400">
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                          <span className="text-[10px] font-medium">
-                            {capa.due_date ? new Date(capa.due_date).toLocaleDateString() : "--/--"}
-                          </span>
-                        </div>
-                        {capa.assigned_to ? (
-                          <div className="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center text-[8px] font-bold text-slate-600" title={capa.assigned_to}>
-                            {capa.assigned_to.charAt(0).toUpperCase()}
-                          </div>
-                        ) : (
-                          <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center text-[8px] font-bold text-slate-400 border border-dashed border-slate-300">
-                            +
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                      capa={capa} 
+                      statusClass={statusClass} 
+                      onClick={() => setSelectedCAPA(capa)} 
+                    />
                   ))}
+                  
+                  {hasMore && (
+                    <button 
+                      onClick={() => setShowFullBoard(true)}
+                      className="mt-1 w-full py-2 border border-dashed border-slate-300 rounded-lg text-[10px] font-bold text-slate-500 hover:bg-white hover:text-slate-800 transition-colors"
+                    >
+                      Xem tất cả ({colCapas.length})
+                    </button>
+                  )}
                 </div>
               )}
             </div>
           );
         })}
       </div>
+
+      {showFullBoard && (
+        <FullKanbanModal 
+          boardColumns={filteredBoardColumns}
+          statusText={statusText}
+          statusClass={statusClass}
+          onClose={() => setShowFullBoard(false)}
+          onSelectCAPA={(capa) => {
+            setSelectedCAPA(capa);
+          }}
+        />
+      )}
 
       {selectedNC && (
         <CAPAFormModal 
@@ -335,9 +447,9 @@ function CAPADetailModal({ capa, onClose, onSuccess }: { capa: CAPA, onClose: ()
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col">
-        <div className="p-6 border-b flex justify-between items-center bg-slate-800 text-white">
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[80] p-4">
+      <div className="bg-white rounded-2xl w-fit max-w-[98vw] max-h-[95vh] shadow-2xl overflow-hidden flex flex-col">
+        <div className="p-6 border-b flex justify-between items-center bg-slate-800 text-white shrink-0">
           <div>
             <h2 className="text-xl font-bold">{capa.capa_code || "Chi tiết CAPA"}</h2>
             <p className="text-xs text-slate-300">Khởi tạo ngày: {new Date(capa.created_at).toLocaleDateString()}</p>
@@ -345,71 +457,203 @@ function CAPADetailModal({ capa, onClose, onSuccess }: { capa: CAPA, onClose: ()
           <button onClick={onClose} className="text-white/60 hover:text-white text-2xl">&times;</button>
         </div>
 
-        <div className="p-8 space-y-6 flex-1 overflow-auto">
-          <div>
-            <label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block">Tiêu đề hành động</label>
-            <p className="text-lg font-bold text-slate-800">{capa.title}</p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-6">
+        <div className="p-8 space-y-6 flex-1 overflow-auto scrollbar-hide">
+          <div className="w-[600px] max-w-full space-y-6">
             <div>
-              <label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block">Trạng thái hiện tại</label>
-              <span className={`${
-                capa.status === "OPEN" ? "bg-rose-500" : 
-                capa.status === "IN_PROGRESS" ? "bg-blue-500" : 
-                capa.status === "VERIFYING" ? "bg-amber-500" : "bg-emerald-500"
-              } rounded-full px-4 py-1 text-xs font-bold text-white shadow-sm`}>
-                {capa.status}
-              </span>
+              <label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block">Tiêu đề hành động</label>
+              <p className="text-lg font-bold text-slate-800 leading-tight">{capa.title}</p>
             </div>
-            <div>
-              <label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block">Hạn hoàn thành</label>
-              <p className="font-bold text-slate-700">{capa.due_date ? new Date(capa.due_date).toLocaleDateString() : "Chưa thiết lập"}</p>
-            </div>
-          </div>
 
-          <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-            <label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block">Nguyên nhân gốc rễ (Từ Quản lý)</label>
-            <p className="text-sm text-slate-600 italic leading-relaxed">
-              {capa.root_cause || "Chưa có phân tích nguyên nhân."}
-            </p>
-          </div>
-
-          {capa.status !== "CLOSED" && (
-            <div className="pt-4 border-t space-y-4">
-              <label className="text-xs font-bold text-slate-800 uppercase block">Cập nhật tiến độ xử lý</label>
-              <div className="flex flex-wrap gap-3">
-                {capa.status === "OPEN" && (
-                  <button 
-                    onClick={() => handleUpdateStatus("IN_PROGRESS")}
-                    className="px-6 py-2 bg-blue-100 text-blue-700 rounded-lg font-bold text-sm hover:bg-blue-200 transition"
-                  >
-                    Bắt đầu thực hiện
-                  </button>
-                )}
-                {capa.status === "IN_PROGRESS" && (
-                  <button 
-                    onClick={() => handleUpdateStatus("VERIFYING")}
-                    className="px-6 py-2 bg-amber-100 text-amber-700 rounded-lg font-bold text-sm hover:bg-amber-200 transition"
-                  >
-                    Gửi yêu cầu Thẩm tra
-                  </button>
-                )}
-                {(capa.status === "VERIFYING" || capa.status === "IN_PROGRESS") && (
-                  <button 
-                    onClick={() => handleUpdateStatus("CLOSED")}
-                    className="px-6 py-2 bg-emerald-500 text-white rounded-lg font-bold text-sm hover:bg-emerald-600 transition shadow-md"
-                  >
-                    Đóng CAPA (Hoàn tất)
-                  </button>
-                )}
+            <div className="flex gap-8">
+              <div className="flex-1">
+                <label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block">Trạng thái hiện tại</label>
+                <span className={`${
+                  capa.status === "OPEN" ? "bg-rose-500" : 
+                  capa.status === "IN_PROGRESS" ? "bg-blue-500" : 
+                  capa.status === "VERIFYING" ? "bg-amber-500" : "bg-emerald-500"
+                } rounded-full px-4 py-1 text-xs font-bold text-white shadow-sm inline-block`}>
+                  {capa.status}
+                </span>
+              </div>
+              <div className="flex-1">
+                <label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block">Hạn hoàn thành</label>
+                <p className="font-bold text-slate-700">{capa.due_date ? new Date(capa.due_date).toLocaleDateString() : "Chưa thiết lập"}</p>
               </div>
             </div>
-          )}
+
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+              <label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block">Nguyên nhân gốc rễ (Từ Quản lý)</label>
+              <p className="text-sm text-slate-600 italic leading-relaxed">
+                {capa.root_cause || "Chưa có phân tích nguyên nhân."}
+              </p>
+            </div>
+
+            {capa.status !== "CLOSED" && (
+              <div className="pt-4 border-t space-y-4">
+                <label className="text-xs font-bold text-slate-800 uppercase block">Cập nhật tiến độ xử lý</label>
+                <div className="flex flex-wrap gap-3">
+                  {capa.status === "OPEN" && (
+                    <button 
+                      onClick={() => handleUpdateStatus("IN_PROGRESS")}
+                      className="px-6 py-2 bg-blue-100 text-blue-700 rounded-lg font-bold text-sm hover:bg-blue-200 transition"
+                    >
+                      Bắt đầu thực hiện
+                    </button>
+                  )}
+                  {capa.status === "IN_PROGRESS" && (
+                    <button 
+                      onClick={() => handleUpdateStatus("VERIFYING")}
+                      className="px-6 py-2 bg-amber-100 text-amber-700 rounded-lg font-bold text-sm hover:bg-amber-200 transition"
+                    >
+                      Gửi yêu cầu Thẩm tra
+                    </button>
+                  )}
+                  {(capa.status === "VERIFYING" || capa.status === "IN_PROGRESS") && (
+                    <button 
+                      onClick={() => handleUpdateStatus("CLOSED")}
+                      className="px-6 py-2 bg-emerald-500 text-white rounded-lg font-bold text-sm hover:bg-emerald-600 transition shadow-md"
+                    >
+                      Đóng CAPA (Hoàn tất)
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="p-6 border-t bg-slate-50 flex justify-end">
+        <div className="p-6 border-t bg-slate-50 flex justify-end shrink-0">
           <button onClick={onClose} className="px-8 py-2 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-900 transition">Đóng</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CompactCAPACard({ capa, onClick, statusClass }: { capa: any, onClick: () => void, statusClass: (s: string) => string }) {
+  const severityColor = (sev: string) => {
+    switch (sev) {
+      case "CRITICAL": return "text-red-700 bg-red-100";
+      case "HIGH": return "text-orange-700 bg-orange-100";
+      case "MEDIUM": return "text-blue-700 bg-blue-100";
+      case "LOW": return "text-slate-600 bg-slate-100";
+      default: return "text-slate-500 bg-slate-50";
+    }
+  };
+
+  return (
+    <div 
+      onClick={onClick}
+      className="bg-white p-3 rounded-lg shadow-sm border border-slate-100 cursor-pointer hover:shadow-md hover:border-slate-300 transition-all flex flex-col gap-2"
+    >
+      <div className="flex justify-between items-center">
+        <div className="flex gap-2 items-center">
+          <span className="text-[9px] font-black text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded uppercase tracking-wider">
+            {capa.capa_code || "Mới"}
+          </span>
+          {capa.severity && (
+            <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase ${severityColor(capa.severity)}`}>
+              {capa.severity}
+            </span>
+          )}
+        </div>
+        <div className={`w-1.5 h-1.5 rounded-full ${statusClass(capa.status)}`} />
+      </div>
+      
+      <p className="text-xs font-bold text-slate-800 leading-tight line-clamp-2 min-h-[2rem]">
+        {capa.title}
+      </p>
+      
+      <div className="flex justify-between items-center pt-2 border-t border-slate-50 mt-auto">
+        <div className="flex items-center gap-1 text-slate-400">
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <span className="text-[9px] font-bold">
+            {capa.due_date ? new Date(capa.due_date).toLocaleDateString() : "--/--"}
+          </span>
+        </div>
+        {capa.assigned_to ? (
+          <div className="w-4 h-4 rounded-full bg-slate-200 flex items-center justify-center text-[7px] font-bold text-slate-600" title={capa.assigned_to}>
+            {capa.assigned_to.charAt(0).toUpperCase()}
+          </div>
+        ) : (
+          <div className="w-4 h-4 rounded-full bg-slate-100 flex items-center justify-center text-[7px] font-bold text-slate-400 border border-dashed border-slate-300">
+            +
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FullKanbanModal({ 
+  boardColumns, 
+  statusText, 
+  statusClass, 
+  onClose, 
+  onSelectCAPA 
+}: { 
+  boardColumns: Record<string, CAPA[]>, 
+  statusText: (s: string) => string,
+  statusClass: (s: string) => string,
+  onClose: () => void,
+  onSelectCAPA: (capa: CAPA) => void
+}) {
+  return (
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
+      <div className="bg-slate-50 rounded-2xl w-fit max-w-[98vw] h-[90vh] shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
+        <div className="p-6 border-b bg-white flex justify-between items-center shrink-0">
+          <div>
+            <h2 className="text-xl font-bold text-slate-800">Bảng công việc CAPA đầy đủ</h2>
+            <p className="text-sm text-slate-500">Tổng quan trạng thái các hành động khắc phục</p>
+          </div>
+          <button 
+            onClick={onClose} 
+            className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-800 transition-all text-2xl"
+          >
+            &times;
+          </button>
+        </div>
+
+        <div className="flex-1 p-6 overflow-y-auto scrollbar-hide">
+          <div className="flex flex-wrap gap-6 justify-center pb-4">
+            {["OPEN", "IN_PROGRESS", "VERIFYING", "CLOSED"].map((colStatus) => {
+              const colCapas = boardColumns[colStatus] || [];
+              return (
+                <div key={colStatus} className="flex flex-col h-[600px] w-[300px] shrink-0 bg-slate-100/80 rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="p-4 flex justify-between items-center bg-slate-100/80 backdrop-blur-sm border-b border-slate-200">
+                    <h3 className="font-bold text-slate-700 flex items-center gap-2">
+                      <div className={`w-2 h-2 rounded-full ${statusClass(colStatus)}`} />
+                      {statusText(colStatus)}
+                    </h3>
+                    <span className="text-xs font-bold text-slate-400 bg-white border border-slate-200 px-2.5 py-1 rounded-full">
+                      {colCapas.length}
+                    </span>
+                  </div>
+                  
+                  <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
+                    {colCapas.length === 0 ? (
+                      <div className="flex-1 flex items-center justify-center border-2 border-dashed border-slate-200 rounded-lg p-8">
+                        <span className="text-sm font-medium text-slate-400 italic text-center">
+                          Chưa có công việc
+                        </span>
+                      </div>
+                    ) : (
+                      colCapas.map((capa) => (
+                        <CompactCAPACard 
+                          key={capa.id} 
+                          capa={capa} 
+                          statusClass={statusClass} 
+                          onClick={() => onSelectCAPA(capa)} 
+                        />
+                      ))
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
@@ -424,6 +668,7 @@ function CAPAFormModal({ nc, onClose, onSuccess }: { nc: NonConformity, onClose:
   const [title, setTitle] = useState("");
   const [rootCause, setRootCause] = useState(nc.title || ""); // Đã sửa: Lấy nội dung phân tích của Quản lý
   const [dueDate, setDueDate] = useState("");
+  const [severity, setSeverity] = useState("MEDIUM");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
@@ -436,7 +681,8 @@ function CAPAFormModal({ nc, onClose, onSuccess }: { nc: NonConformity, onClose:
         title,
         root_cause: rootCause,
         due_date: dueDate || undefined,
-        status: "OPEN"
+        status: "OPEN",
+        severity: severity
       });
 
       toast.success("Đã khởi tạo CAPA thành công!");
@@ -473,6 +719,31 @@ function CAPAFormModal({ nc, onClose, onSuccess }: { nc: NonConformity, onClose:
             />
           </div>
 
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-500 uppercase">Hạn hoàn thành</label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="w-full rounded-lg border-slate-300 text-sm focus:ring-slate-800"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-500 uppercase">Mức độ ưu tiên</label>
+              <select
+                value={severity}
+                onChange={(e) => setSeverity(e.target.value)}
+                className="w-full rounded-lg border-slate-300 text-sm focus:ring-slate-800"
+              >
+                <option value="LOW">THẤP</option>
+                <option value="MEDIUM">TRUNG BÌNH</option>
+                <option value="HIGH">CAO</option>
+                <option value="CRITICAL">NGHIÊM TRỌNG</option>
+              </select>
+            </div>
+          </div>
+
           <div className="space-y-1">
             <label className="text-xs font-bold text-slate-500 uppercase">Phân tích nguyên nhân (Từ Quản lý)</label>
             <textarea
@@ -480,16 +751,6 @@ function CAPAFormModal({ nc, onClose, onSuccess }: { nc: NonConformity, onClose:
               readOnly
               className="w-full rounded-lg border-slate-100 bg-slate-50 text-slate-500 text-sm focus:ring-0 cursor-not-allowed"
               rows={3}
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-500 uppercase">Hạn hoàn thành</label>
-            <input
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-              className="w-full rounded-lg border-slate-300 text-sm focus:ring-slate-800"
             />
           </div>
 
