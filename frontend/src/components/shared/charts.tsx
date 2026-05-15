@@ -3,6 +3,7 @@
 import {
   Chart as ChartJS,
   type ChartData,
+  type ChartOptions,
   CategoryScale,
   LinearScale,
   PointElement,
@@ -111,6 +112,58 @@ const baseBarOptions = {
         color: "#94a3b8",
         font: { size: 10 },
       },
+    },
+  },
+};
+
+const reportsKpiSnapshotBarOptions: ChartOptions<"bar"> = {
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: { mode: "index", intersect: false },
+  plugins: {
+    legend: {
+      display: true,
+      position: "bottom",
+      labels: {
+        boxWidth: 10,
+        boxHeight: 10,
+        font: { size: 10 },
+        color: "#64748b",
+      },
+    },
+    tooltip: { mode: "index", intersect: false },
+  },
+  scales: {
+    x: {
+      grid: { display: false },
+      ticks: { color: "#94a3b8", font: { size: 10 } },
+    },
+    y: {
+      type: "linear",
+      position: "left",
+      title: {
+        display: true,
+        text: "Số CAPA quá hạn",
+        color: "#64748b",
+        font: { size: 10 },
+      },
+      min: 0,
+      grid: { color: "#e2e8f0" },
+      ticks: { color: "#94a3b8", font: { size: 10 } },
+    },
+    y1: {
+      type: "linear",
+      position: "right",
+      title: {
+        display: true,
+        text: "% (PRP, HACCP, CAPA đúng hạn)",
+        color: "#64748b",
+        font: { size: 10 },
+      },
+      min: 0,
+      max: 100,
+      grid: { drawOnChartArea: false },
+      ticks: { color: "#94a3b8", font: { size: 10 } },
     },
   },
 };
@@ -348,6 +401,26 @@ export function OeeQualityYieldChart({ chartData }: OeeQualityYieldChartProps) {
           },
         }}
       />
+    </div>
+  );
+}
+
+type ReportsKpiSnapshotBarChartProps = {
+  chartData?: ChartData<"bar", (number | null)[], string>;
+};
+
+/** Biểu đồ cột nhóm KPI snapshot: CAPA (trục trái) + % PRP/HACCP/CAPA đúng hạn (trục phải). */
+export function ReportsKpiSnapshotBarChart({ chartData }: ReportsKpiSnapshotBarChartProps) {
+  if (!chartData?.labels?.length) {
+    return (
+      <div className="flex h-56 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-500">
+        Chưa có dữ liệu snapshot trong phạm vi này.
+      </div>
+    );
+  }
+  return (
+    <div className="h-80 min-h-[20rem]">
+      <Bar data={chartData} options={reportsKpiSnapshotBarOptions} />
     </div>
   );
 }

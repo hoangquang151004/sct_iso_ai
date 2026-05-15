@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/layout/app-shell";
 import {
-  InternalAuditChart,
+  ReportsKpiSnapshotBarChart,
 } from "@/components/shared/charts";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -16,6 +16,9 @@ import {
   type CsvExportScope,
   computeReportKpiRows,
   loadSnapshotsForCsvExport,
+  snapshotCapaOntimePct,
+  snapshotHaccpCompliancePct,
+  snapshotPrpCompliancePct,
 } from "@/lib/report-export-scope";
 import {
   type InternalAuditSummaryDto,
@@ -37,6 +40,15 @@ function signalPanelClass(level: string): string {
   return "border-slate-200 bg-slate-50 text-slate-800";
 }
 
+/** Tín hiệu “chưa có phiên PRP / chưa nhập biên bản” — ẩn trên UI, không ẩn thanh tóm tắt số liệu. */
+function isPrpEmptySessionInfoSignal(message: string): boolean {
+  const m = message.trim();
+  return (
+    m.includes("Chưa có phiên PRP trong phạm vi") &&
+    m.includes("chưa nhập biên bản")
+  );
+}
+
 function localIsoDate(d = new Date()): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -49,9 +61,6 @@ function localIsoMonth(d = new Date()): string {
 }
 
 export type ReportPeriodType = "daily" | "weekly" | "monthly" | "yearly";
-
-/** Nhãn cột / tooltip biểu đồ lệch CCP (khớp dữ liệu haccp_deviation_count). */
-const HACCP_DEVIATION_CHART_LABEL = "Số lệch CCP trong kỳ";
 
 function formatSnapshotAxisLabel(
   isoDate: string,
@@ -316,7 +325,7 @@ export default function ReportsPage() {
     [sortedAsc],
   );
 
-  const auditChartData = useMemo(():
+  const reportsOverviewChartData = useMemo(():
     | ChartData<"bar", (number | null)[], string>
     | undefined => {
     if (sortedAsc.length === 0) return undefined;
@@ -326,10 +335,32 @@ export default function ReportsPage() {
       ),
       datasets: [
         {
-          label: HACCP_DEVIATION_CHART_LABEL,
-          data: sortedAsc.map((s) => s.haccp_deviation_count ?? 0),
-          backgroundColor: "#06b6d4",
-          borderRadius: 6,
+          label: "CAPA quá hạn (số)",
+          data: sortedAsc.map((s) => s.capa_overdue_count ?? 0),
+          backgroundColor: "#e11d48",
+          borderRadius: 4,
+          yAxisID: "y",
+        },
+        {
+          label: "CAPA đúng hạn (%)",
+          data: sortedAsc.map((s) => snapshotCapaOntimePct(s)),
+          backgroundColor: "#22c55e",
+          borderRadius: 4,
+          yAxisID: "y1",
+        },
+        {
+          label: "Tuân thủ PRP (%)",
+          data: sortedAsc.map((s) => snapshotPrpCompliancePct(s)),
+          backgroundColor: "#6366f1",
+          borderRadius: 4,
+          yAxisID: "y1",
+        },
+        {
+          label: "Tuân thủ HACCP (%)",
+          data: sortedAsc.map((s) => snapshotHaccpCompliancePct(s)),
+          backgroundColor: "#0ea5e9",
+          borderRadius: 4,
+          yAxisID: "y1",
         },
       ],
     };
@@ -670,45 +701,39 @@ export default function ReportsPage() {
                 <span className="mx-2 text-slate-300">|</span>
                 <span>Lệch CCP (toàn TC): {internalSummary.haccp_deviation_org_count}</span>
               </div>
-              <ul className="space-y-2">
-                {internalSummary.signals.map((s, idx) => (
-                  <li
-                    key={`${s.level}-${idx}`}
-                    className={`rounded-lg border px-3 py-2.5 text-sm leading-snug ${signalPanelClass(s.level)}`}
-                  >
-                    {s.message}
-                  </li>
-                ))}
-              </ul>
+              {(() => {
+                const rows = internalSummary.signals.filter(
+                  (s) => !isPrpEmptySessionInfoSignal(s.message),
+                );
+                if (rows.length === 0) return null;
+                return (
+                  <ul className="space-y-2">
+                    {rows.map((s, idx) => (
+                      <li
+                        key={`${s.level}-${idx}`}
+                        className={`rounded-lg border px-3 py-2.5 text-sm leading-snug ${signalPanelClass(s.level)}`}
+                      >
+                        {s.message}
+                      </li>
+                    ))}
+                  </ul>
+                );
+              })()}
             </div>
           ) : null}
 
           <div className="mt-6">
             <h3 className="text-base font-bold text-slate-900">
-              Biểu đồ: số lệch HACCP (CCP) theo kỳ snapshot
+              Biểu đồ KPI theo kỳ snapshot
             </h3>
             <p className="mt-1 text-xs text-slate-600">
-              Mỗi cột là tổng số lần lệch giới hạn CCP trong một kỳ (theo chu kỳ và phạm vi bạn chọn ở trên).
+              Mỗi cột là một kỳ trong phạm vi bạn chọn ở trên: cột màu đỏ là{" "}
+              <strong>số CAPA quá hạn</strong> (trục trái); ba chuỗi còn lại là{" "}
+              <strong>% CAPA đóng đúng hạn</strong>, <strong>% tuân thủ PRP</strong> và{" "}
+              <strong>% tuân thủ HACCP (CCP)</strong> — thể hiện mức &quot;đạt&quot; theo snapshot (trục phải 0–100%).
             </p>
             <div className="mt-3 rounded-lg bg-slate-50 p-3">
-              <InternalAuditChart
-                chartData={
-                  auditChartData ??
-                  (!loading
-                    ? {
-                        labels: ["—"],
-                        datasets: [
-                          {
-                            label: HACCP_DEVIATION_CHART_LABEL,
-                            data: [0],
-                            backgroundColor: "#06b6d4",
-                            borderRadius: 6,
-                          },
-                        ],
-                      }
-                    : undefined)
-                }
-              />
+              <ReportsKpiSnapshotBarChart chartData={reportsOverviewChartData} />
             </div>
           </div>
         </section>

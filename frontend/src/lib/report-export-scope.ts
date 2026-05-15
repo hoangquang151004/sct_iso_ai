@@ -6,6 +6,31 @@ function roundRatePct(n: number): number {
   return Math.round(Math.min(100, Math.max(0, n)) * 10) / 10;
 }
 
+/** % tuân thủ HACCP ước tính từ snapshot (cho biểu đồ / báo cáo). */
+export function snapshotHaccpCompliancePct(s: KpiSnapshotDto): number | null {
+  const r = s.haccp_ccp_monitored_rate;
+  if (r != null && !Number.isNaN(Number(r))) {
+    return roundRatePct(Number(r));
+  }
+  if (s.haccp_deviation_count == null) return null;
+  const dev = s.haccp_deviation_count ?? 0;
+  return roundRatePct(100 - Math.min(100, dev * 8));
+}
+
+/** % tuân thủ PRP từ snapshot. */
+export function snapshotPrpCompliancePct(s: KpiSnapshotDto): number | null {
+  const r = s.prp_audit_compliance_rate;
+  if (r == null || Number.isNaN(Number(r))) return null;
+  return roundRatePct(Number(r));
+}
+
+/** % CAPA đóng đúng hạn (từ snapshot). */
+export function snapshotCapaOntimePct(s: KpiSnapshotDto): number | null {
+  const r = s.capa_ontime_closure_rate;
+  if (r == null || Number.isNaN(Number(r))) return null;
+  return roundRatePct(Number(r));
+}
+
 function lastSnapshotWhereDesc(
   snaps: KpiSnapshotDto[],
   test: (s: KpiSnapshotDto) => boolean,
