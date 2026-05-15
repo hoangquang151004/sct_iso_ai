@@ -45,14 +45,21 @@ export type ReportKpiRow = {
   unit: string;
 };
 
+/** Chỉ dùng để quyết định hiển thị thẻ KPI (không coi "—" là có dữ liệu). */
+export function reportKpiRowHasValue(row: ReportKpiRow): boolean {
+  if (typeof row.value === "number" && !Number.isNaN(row.value)) {
+    return true;
+  }
+  const s = String(row.value).trim();
+  if (!s) return false;
+  if (s === "—" || s === "-" || s === "–") return false;
+  return true;
+}
+
 /** KPI tóm tắt từ danh sách snapshot đã sắp xếp (cùng quy tắc với dashboard). */
 export function computeReportKpiRows(sortedAsc: KpiSnapshotDto[]): ReportKpiRow[] {
   if (sortedAsc.length === 0) {
-    return [
-      { label: "Tuân thủ PRP", value: "—", unit: "" },
-      { label: "Tuân thủ HACCP", value: "—", unit: "" },
-      { label: "CAPA đúng hạn", value: "—", unit: "" },
-    ];
+    return [];
   }
   const prpSnap = lastSnapshotWhereDesc(
     sortedAsc,
@@ -82,7 +89,7 @@ export function computeReportKpiRows(sortedAsc: KpiSnapshotDto[]): ReportKpiRow[
       : "—";
   const haccpVal = haccpSnap != null ? haccpCompliancePercent(haccpSnap) : "—";
   const capaVal = capaSnap != null ? capaOntimePercent(capaSnap) : "—";
-  return [
+  const rows: ReportKpiRow[] = [
     {
       label: "Tuân thủ PRP",
       value: prpVal,
@@ -99,6 +106,7 @@ export function computeReportKpiRows(sortedAsc: KpiSnapshotDto[]): ReportKpiRow[
       unit: typeof capaVal === "number" ? "%" : "",
     },
   ];
+  return rows.filter(reportKpiRowHasValue);
 }
 
 function emptySnapshot(snapshotDate: string, periodType: string): KpiSnapshotDto {

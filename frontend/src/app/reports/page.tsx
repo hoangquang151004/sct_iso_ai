@@ -8,7 +8,6 @@ import {
   InternalAuditChart,
 } from "@/components/shared/charts";
 import { useAuth } from "@/hooks/use-auth";
-import { internalAuditChartData } from "@/lib/mock-data";
 import {
   buildReportsExportCsv,
   downloadCsvToMachine,
@@ -25,6 +24,7 @@ import {
   listKpiSnapshots,
   listReportLocations,
 } from "@/api/reports-api";
+import { buildKpiDrillQueryFromReports } from "@/lib/report-kpi-drill-period";
 import { slugFromReportKpiLabel } from "@/lib/report-kpi-slugs";
 
 function signalPanelClass(level: string): string {
@@ -50,6 +50,9 @@ function localIsoMonth(d = new Date()): string {
 
 export type ReportPeriodType = "daily" | "weekly" | "monthly" | "yearly";
 
+/** Nhãn cột / tooltip biểu đồ lệch CCP (khớp dữ liệu haccp_deviation_count). */
+const HACCP_DEVIATION_CHART_LABEL = "Số lệch CCP trong kỳ";
+
 function formatSnapshotAxisLabel(
   isoDate: string,
   periodType: string,
@@ -69,9 +72,83 @@ function formatSnapshotAxisLabel(
   }
   return `${Number(m)}/${String(y).slice(2)}`;
 }
+
+/** Thứ Hai của tuần ISO (năm tuần ISO `isoWeekYear`, số tuần `week` 1..53). */
+function dateFromIsoWeek(isoWeekYear: number, week: number): Date {
+  const jan4 = new Date(isoWeekYear, 0, 4);
+  const dayOfWeek = jan4.getDay() === 0 ? 7 : jan4.getDay();
+  const mondayWeek1 = new Date(jan4);
+  mondayWeek1.setDate(jan4.getDate() - (dayOfWeek - 1));
+  const out = new Date(mondayWeek1);
+  out.setDate(mondayWeek1.getDate() + (week - 1) * 7);
+  return out;
+}
+
+/** Giá trị `yyyy-Www` cho `<input type="week" />` chứa ngày `d` (local). */
+function dateToHtmlWeekValue(d: Date): string {
+  const y = d.getFullYear();
+  const t = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  for (let wy = y - 1; wy <= y + 1; wy++) {
+    for (let w = 1; w <= 53; w++) {
+      const mon = dateFromIsoWeek(wy, w);
+      const sun = new Date(mon);
+      sun.setDate(mon.getDate() + 6);
+      const t0 = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate()).getTime();
+      const t1 = new Date(sun.getFullYear(), sun.getMonth(), sun.getDate()).getTime();
+      if (t >= t0 && t <= t1) {
+        return `${wy}-W${String(w).padStart(2, "0")}`;
+      }
+    }
+  }
+  return `${y}-W01`;
+}
+
+/** `YYYY-MM-DD` thứ Hai của tuần từ giá trị week input. */
+function mondayIsoFromHtmlWeekValue(weekVal: string): string | null {
+  const m = /^(\d{4})-W(\d{2})$/.exec(weekVal.trim());
+  if (!m) return null;
+  const isoY = Number.parseInt(m[1], 10);
+  const w = Number.parseInt(m[2], 10);
+  if (!Number.isFinite(isoY) || !Number.isFinite(w) || w < 1 || w > 53) return null;
+  return localIsoDate(dateFromIsoWeek(isoY, w));
+}
+
+function filterSnapshotsByPeriod(
+  rows: KpiSnapshotDto[],
+  periodType: ReportPeriodType,
+  cursorDay: string,
+  cursorWeek: string,
+  cursorMonth: string,
+  cursorYear: number,
+): KpiSnapshotDto[] {
+  if (rows.length === 0) return [];
+  if (periodType === "daily") {
+    return rows.filter((s) => s.snapshot_date === cursorDay);
+  }
+  if (periodType === "weekly") {
+    const monday = mondayIsoFromHtmlWeekValue(cursorWeek);
+    if (!monday) return [];
+    return rows.filter((s) => s.snapshot_date === monday);
+  }
+  if (periodType === "monthly") {
+    return rows.filter((s) => s.snapshot_date.slice(0, 7) === cursorMonth);
+  }
+  if (periodType === "yearly") {
+    return rows.filter((s) => s.snapshot_date.startsWith(`${cursorYear}-`));
+  }
+  return rows;
+}
 export default function ReportsPage() {
   const { principal } = useAuth();
   const [periodType, setPeriodType] = useState<ReportPeriodType>("monthly");
+  /** Chỉ dùng khi chu kỳ = theo ngày. */
+  const [reportCursorDay, setReportCursorDay] = useState(() => localIsoDate());
+  /** Giá trị `yyyy-Www` từ `<input type="week" />` khi chu kỳ = theo tuần. */
+  const [reportCursorWeek, setReportCursorWeek] = useState(() =>
+    dateToHtmlWeekValue(new Date()),
+  );
+  const [reportCursorMonth, setReportCursorMonth] = useState(() => localIsoMonth());
+  const [reportCursorYear, setReportCursorYear] = useState(() => new Date().getFullYear());
   const [snapshots, setSnapshots] = useState<KpiSnapshotDto[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -184,13 +261,55 @@ export default function ReportsPage() {
     };
   }, [principal?.org_id, internalLocationId, internalPeriodDays]);
 
+  useEffect(() => {
+    const t = new Date();
+    setReportCursorDay(localIsoDate(t));
+    setReportCursorWeek(dateToHtmlWeekValue(t));
+    setReportCursorMonth(localIsoMonth(t));
+    setReportCursorYear(t.getFullYear());
+  }, [periodType]);
+
+  const displaySnapshots = useMemo(
+    () =>
+      filterSnapshotsByPeriod(
+        snapshots,
+        periodType,
+        reportCursorDay,
+        reportCursorWeek,
+        reportCursorMonth,
+        reportCursorYear,
+      ),
+    [
+      snapshots,
+      periodType,
+      reportCursorDay,
+      reportCursorWeek,
+      reportCursorMonth,
+      reportCursorYear,
+    ],
+  );
+
   const sortedAsc = useMemo(
     () =>
-      [...snapshots].sort((a, b) =>
+      [...displaySnapshots].sort((a, b) =>
         a.snapshot_date.localeCompare(b.snapshot_date),
       ),
-    [snapshots],
+    [displaySnapshots],
   );
+
+  const periodFilterHint = useMemo(() => {
+    if (periodType === "daily") {
+      return `Ngày ${reportCursorDay}`;
+    }
+    if (periodType === "weekly") {
+      const mon = mondayIsoFromHtmlWeekValue(reportCursorWeek);
+      return mon ? `Tuần ${reportCursorWeek} (từ ${mon})` : `Tuần ${reportCursorWeek}`;
+    }
+    if (periodType === "monthly") {
+      return `Tháng ${reportCursorMonth}`;
+    }
+    return `Năm ${reportCursorYear}`;
+  }, [periodType, reportCursorDay, reportCursorWeek, reportCursorMonth, reportCursorYear]);
 
   const reportsKPIs = useMemo(
     () => computeReportKpiRows(sortedAsc),
@@ -207,7 +326,7 @@ export default function ReportsPage() {
       ),
       datasets: [
         {
-          label: internalAuditChartData.datasets[0].label,
+          label: HACCP_DEVIATION_CHART_LABEL,
           data: sortedAsc.map((s) => s.haccp_deviation_count ?? 0),
           backgroundColor: "#06b6d4",
           borderRadius: 6,
@@ -305,6 +424,68 @@ export default function ReportsPage() {
             <option value="yearly">Theo năm</option>
           </select>
         </label>
+        {periodType === "daily" ? (
+          <label className="flex items-center gap-2 font-medium text-slate-700">
+            <span className="whitespace-nowrap">Ngày:</span>
+            <input
+              type="date"
+              value={reportCursorDay}
+              onChange={(e) => setReportCursorDay(e.target.value)}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900 shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+            />
+          </label>
+        ) : null}
+        {periodType === "weekly" ? (
+          <label className="flex items-center gap-2 font-medium text-slate-700">
+            <span className="whitespace-nowrap">Tuần:</span>
+            <input
+              type="week"
+              value={reportCursorWeek}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v) setReportCursorWeek(v);
+              }}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900 shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+            />
+          </label>
+        ) : null}
+        {periodType === "monthly" ? (
+          <label className="flex items-center gap-2 font-medium text-slate-700">
+            <span className="whitespace-nowrap">Tháng:</span>
+            <input
+              type="month"
+              value={reportCursorMonth}
+              onChange={(e) => setReportCursorMonth(e.target.value)}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900 shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+            />
+          </label>
+        ) : null}
+        {periodType === "yearly" ? (
+          <label className="flex items-center gap-2 font-medium text-slate-700">
+            <span className="whitespace-nowrap">Năm:</span>
+            <input
+              type="number"
+              min={2000}
+              max={2100}
+              value={reportCursorYear}
+              onChange={(e) => {
+                const n = Number.parseInt(e.target.value, 10);
+                if (Number.isFinite(n)) setReportCursorYear(n);
+              }}
+              className="w-24 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900 shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+            />
+          </label>
+        ) : null}
+        {!loading ? (
+          <span className="text-xs text-slate-500">
+            Đang xem: <span className="font-semibold text-slate-700">{periodFilterHint}</span>
+            {snapshots.length === 0 ? (
+              <span className="text-slate-600"> — chưa có snapshot KPI trong hệ thống</span>
+            ) : displaySnapshots.length === 0 ? (
+              <span className="text-amber-700"> — không có snapshot trong phạm vi này</span>
+            ) : null}
+          </span>
+        ) : null}
         <span className="hidden h-4 w-px bg-slate-200 sm:inline" aria-hidden />
         <span className="font-semibold text-slate-800">KPI tổng hợp từ:</span>
         <Link
@@ -345,6 +526,14 @@ export default function ReportsPage() {
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {!loading && reportsKPIs.length === 0 ? (
+          <div className="rounded-xl border border-slate-200 bg-slate-50/90 p-8 text-center shadow-sm sm:col-span-2 xl:col-span-3">
+            <p className="font-medium text-slate-800">Không có dữ liệu KPI trong kỳ này</p>
+            <p className="mt-2 text-sm text-slate-600">
+              Không có snapshot trong phạm vi đang chọn, hoặc chưa có chỉ số nào đủ dữ liệu để hiển thị.
+            </p>
+          </div>
+        ) : null}
         {reportsKPIs.map((kpi) => {
           const slug = slugFromReportKpiLabel(kpi.label);
           const inner = (
@@ -367,7 +556,13 @@ export default function ReportsPage() {
             return (
               <Link
                 key={kpi.label}
-                href={`/reports/kpi/${slug}?periodDays=${internalPeriodDays}`}
+                href={`/reports/kpi/${slug}?${buildKpiDrillQueryFromReports(
+                  periodType,
+                  reportCursorDay,
+                  reportCursorWeek,
+                  reportCursorMonth,
+                  reportCursorYear,
+                )}`}
                 className={`${cardClass} block cursor-pointer border border-transparent outline-none ring-cyan-500/0 focus-visible:border-cyan-400 focus-visible:ring-2`}
               >
                 {inner}
@@ -402,7 +597,7 @@ export default function ReportsPage() {
             }}
             className="mt-5 w-full rounded-lg bg-cyan-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-cyan-600/25 transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Chọn phạm vi rồi xuất
+            Xuất Báo cáo
           </button>
         </div>
       </div>
@@ -488,25 +683,33 @@ export default function ReportsPage() {
             </div>
           ) : null}
 
-          <div className="mt-6 rounded-lg bg-slate-50 p-3">
-            <InternalAuditChart
-              chartData={
-                auditChartData ??
-                (!loading
-                  ? {
-                      labels: ["—"],
-                      datasets: [
-                        {
-                          label: internalAuditChartData.datasets[0].label,
-                          data: [0],
-                          backgroundColor: "#06b6d4",
-                          borderRadius: 6,
-                        },
-                      ],
-                    }
-                  : undefined)
-              }
-            />
+          <div className="mt-6">
+            <h3 className="text-base font-bold text-slate-900">
+              Biểu đồ: số lệch HACCP (CCP) theo kỳ snapshot
+            </h3>
+            <p className="mt-1 text-xs text-slate-600">
+              Mỗi cột là tổng số lần lệch giới hạn CCP trong một kỳ (theo chu kỳ và phạm vi bạn chọn ở trên).
+            </p>
+            <div className="mt-3 rounded-lg bg-slate-50 p-3">
+              <InternalAuditChart
+                chartData={
+                  auditChartData ??
+                  (!loading
+                    ? {
+                        labels: ["—"],
+                        datasets: [
+                          {
+                            label: HACCP_DEVIATION_CHART_LABEL,
+                            data: [0],
+                            backgroundColor: "#06b6d4",
+                            borderRadius: 6,
+                          },
+                        ],
+                      }
+                    : undefined)
+                }
+              />
+            </div>
           </div>
         </section>
       </div>

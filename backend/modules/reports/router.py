@@ -167,7 +167,22 @@ def get_internal_audit_summary(
 def get_kpi_drilldown(
     org_id: UUID,
     kpi_type: str = Query(..., description="prp | haccp | capa"),
-    period_days: int = Query(default=120, ge=7, le=730),
+    period_days: int = Query(default=120, ge=1, le=730),
+    period_type: str | None = Query(
+        default=None,
+        description="daily | weekly | monthly | yearly — dùng cùng để khớp chu kỳ /reports",
+    ),
+    cursor: str | None = Query(
+        default=None,
+        description="Ngày YYYY-MM-DD, tuần YYYY-Www, tháng YYYY-MM, hoặc năm YYYY",
+    ),
     db: Session = Depends(get_db),
 ) -> KpiDrilldownResponse:
-    return report_service.kpi_drilldown(db, org_id, kpi_type.strip().lower(), period_days)
+    return report_service.kpi_drilldown(
+        db,
+        org_id,
+        kpi_type.strip().lower(),
+        period_days,
+        (period_type or "").strip() or None,
+        (cursor or "").strip() or None,
+    )

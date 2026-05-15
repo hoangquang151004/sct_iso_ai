@@ -1,4 +1,5 @@
-
+import re
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from uuid import UUID, uuid4
 from fastapi import HTTPException, status
@@ -865,16 +866,118 @@ class ReportService:
             CCPMonitoringLog.deviation_severity.isnot(None),
         )
 
+    @staticmethod
+    def _parse_drill_snapshot(period_type: str, cursor: str) -> tuple[date, date] | None:
+        """Trả về (start_date inclusive, end_date exclusive) theo chu kỳ báo cáo."""
+        pt = (period_type or "").strip().lower()
+        cur = (cursor or "").strip()
+        if pt == "daily":
+            m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", cur)
+            if not m:
+                return None
+            try:
+                start_d = date(int(m[1]), int(m[2]), int(m[3]))
+            except ValueError:
+                return None
+            return start_d, start_d + timedelta(days=1)
+        if pt == "weekly":
+            m = re.fullmatch(r"(\d{4})-W(\d{2})", cur)
+            if not m:
+                return None
+            y, w = int(m[1]), int(m[2])
+            try:
+                mon = date.fromisocalendar(y, w, 1)
+            except ValueError:
+                return None
+            return mon, mon + timedelta(days=7)
+        if pt == "monthly":
+            m = re.fullmatch(r"(\d{4})-(\d{2})", cur)
+            if not m:
+                return None
+            y, mo = int(m[1]), int(m[2])
+            if mo < 1 or mo > 12:
+                return None
+            start_d = date(y, mo, 1)
+            if mo == 12:
+                end_exc = date(y + 1, 1, 1)
+            else:
+                end_exc = date(y, mo + 1, 1)
+            return start_d, end_exc
+        if pt == "yearly":
+            m = re.fullmatch(r"(\d{4})", cur)
+            if not m:
+                return None
+            y = int(m[1])
+            return date(y, 1, 1), date(y + 1, 1, 1)
+        return None
+
+    @dataclass(frozen=True)
+    class _DrillTimeWindow:
+        start_date: date
+        end_date_exclusive: date
+        start_dt_utc: datetime
+        end_dt_exclusive_utc: datetime
+        span_days: int
+        as_of_date: date
+
+    def _resolve_kpi_drill_window(
+        self,
+        period_type: str | None,
+        cursor: str | None,
+        period_days: int,
+    ) -> "_DrillTimeWindow":
+        today = date.today()
+        pd = max(1, min(730, period_days))
+        pt = (period_type or "").strip().lower() or None
+        cur = (cursor or "").strip() or None
+
+        if pt or cur:
+            if not pt or not cur:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Khi dùng chu kỳ báo cáo, cần cả period_type và cursor.",
+                )
+            allowed = {"daily", "weekly", "monthly", "yearly"}
+            if pt not in allowed:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="period_type phải là daily, weekly, monthly hoặc yearly.",
+                )
+            bounds = self._parse_drill_snapshot(pt, cur)
+            if bounds is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="cursor không khớp định dạng cho period_type đã chọn.",
+                )
+            start_d, end_exc = bounds
+        else:
+            start_d = today - timedelta(days=pd)
+            end_exc = today + timedelta(days=1)
+
+        start_dt = datetime.combine(start_d, datetime.min.time(), tzinfo=timezone.utc)
+        end_dt = datetime.combine(end_exc, datetime.min.time(), tzinfo=timezone.utc)
+        span_days = max(1, (end_exc - start_d).days)
+        last_day_in_window = end_exc - timedelta(days=1)
+        as_of = min(today, last_day_in_window)
+        return ReportService._DrillTimeWindow(
+            start_date=start_d,
+            end_date_exclusive=end_exc,
+            start_dt_utc=start_dt,
+            end_dt_exclusive_utc=end_dt,
+            span_days=span_days,
+            as_of_date=as_of,
+        )
+
     def kpi_drilldown(
         self,
         db: Session,
         org_id: UUID,
         kpi_type: str,
         period_days: int,
+        period_type: str | None = None,
+        cursor: str | None = None,
     ) -> KpiDrilldownResponse:
-        period_days = max(7, min(730, period_days))
-        since = date.today() - timedelta(days=period_days)
-        start_dt = datetime.combine(since, datetime.min.time(), tzinfo=timezone.utc)
+        win = self._resolve_kpi_drill_window(period_type, cursor, period_days)
         kt = (kpi_type or "").strip().lower()
         if kt not in ("prp", "haccp", "capa"):
             raise HTTPException(
@@ -882,23 +985,44 @@ class ReportService:
                 detail="kpi_type phải là prp, haccp hoặc capa",
             )
         if kt == "prp":
-            return self._drilldown_prp(db, org_id, since, period_days)
+            return self._drilldown_prp(
+                db,
+                org_id,
+                win.start_date,
+                win.end_date_exclusive,
+                win.span_days,
+            )
         if kt == "haccp":
-            return self._drilldown_haccp(db, org_id, start_dt, period_days)
-        return self._drilldown_capa(db, org_id, start_dt, period_days)
+            return self._drilldown_haccp(
+                db,
+                org_id,
+                win.start_dt_utc,
+                win.end_dt_exclusive_utc,
+                win.span_days,
+            )
+        return self._drilldown_capa(
+            db,
+            org_id,
+            win.start_dt_utc,
+            win.end_dt_exclusive_utc,
+            win.span_days,
+            win.as_of_date,
+        )
 
     def _drilldown_prp(
         self,
         db: Session,
         org_id: UUID,
-        since: date,
-        period_days: int,
+        start_d: date,
+        end_exc_d: date,
+        span_days: int,
     ) -> KpiDrilldownResponse:
         audits = list(
             db.execute(
                 select(PRPAudit).where(
                     PRPAudit.org_id == org_id,
-                    PRPAudit.audit_date >= since,
+                    PRPAudit.audit_date >= start_d,
+                    PRPAudit.audit_date < end_exc_d,
                 )
             ).scalars().all()
         )
@@ -916,7 +1040,11 @@ class ReportService:
             )
             .select_from(PRPAudit)
             .outerjoin(Location, PRPAudit.area_id == Location.id)
-            .where(PRPAudit.org_id == org_id, PRPAudit.audit_date >= since)
+            .where(
+                PRPAudit.org_id == org_id,
+                PRPAudit.audit_date >= start_d,
+                PRPAudit.audit_date < end_exc_d,
+            )
             .group_by(loc_label)
             .order_by(func.avg(PRPAudit.compliance_rate).asc().nulls_last())
         ).all()
@@ -983,7 +1111,7 @@ class ReportService:
             kpi_type="prp",
             headline_label="Tuân thủ PRP (TB trong kỳ)",
             headline_value=headline,
-            period_days=period_days,
+            period_days=span_days,
             is_low_signal=is_low,
             ai_insights=ai,
             blocks=[
@@ -997,16 +1125,21 @@ class ReportService:
         db: Session,
         org_id: UUID,
         start_dt: datetime,
-        period_days: int,
+        end_dt_exclusive: datetime,
+        span_days: int,
     ) -> KpiDrilldownResponse:
         dev_pred = self._ccp_deviation_predicate()
+        time_bounds = and_(
+            CCPMonitoringLog.recorded_at >= start_dt,
+            CCPMonitoringLog.recorded_at < end_dt_exclusive,
+        )
         total_logs = int(
             db.scalar(
                 select(func.count())
                 .select_from(CCPMonitoringLog)
                 .join(CCP, CCPMonitoringLog.ccp_id == CCP.id)
                 .join(HACCPPlan, CCP.haccp_plan_id == HACCPPlan.id)
-                .where(HACCPPlan.org_id == org_id, CCPMonitoringLog.recorded_at >= start_dt),
+                .where(HACCPPlan.org_id == org_id, time_bounds),
             )
             or 0
         )
@@ -1018,7 +1151,7 @@ class ReportService:
                 .join(HACCPPlan, CCP.haccp_plan_id == HACCPPlan.id)
                 .where(
                     HACCPPlan.org_id == org_id,
-                    CCPMonitoringLog.recorded_at >= start_dt,
+                    time_bounds,
                     dev_pred,
                 )
             )
@@ -1046,7 +1179,7 @@ class ReportService:
             .select_from(CCPMonitoringLog)
             .join(CCP, CCPMonitoringLog.ccp_id == CCP.id)
             .join(HACCPPlan, CCP.haccp_plan_id == HACCPPlan.id)
-            .where(HACCPPlan.org_id == org_id, CCPMonitoringLog.recorded_at >= start_dt)
+            .where(HACCPPlan.org_id == org_id, time_bounds)
             .group_by(batch_key)
             .order_by(func.sum(case((dev_pred, 1), else_=0)).desc())
             .limit(30)
@@ -1085,7 +1218,7 @@ class ReportService:
             .join(CCP, CCPMonitoringLog.ccp_id == CCP.id)
             .join(HACCPPlan, CCP.haccp_plan_id == HACCPPlan.id)
             .outerjoin(IoTDevice, dev_on)
-            .where(HACCPPlan.org_id == org_id, CCPMonitoringLog.recorded_at >= start_dt)
+            .where(HACCPPlan.org_id == org_id, time_bounds)
             .group_by(device_label)
             .order_by(func.sum(case((dev_pred, 1), else_=0)).desc())
             .limit(25)
@@ -1117,7 +1250,7 @@ class ReportService:
             .join(CCP, CCPMonitoringLog.ccp_id == CCP.id)
             .join(HACCPPlan, CCP.haccp_plan_id == HACCPPlan.id)
             .outerjoin(IoTDevice, dev_on)
-            .where(HACCPPlan.org_id == org_id, CCPMonitoringLog.recorded_at >= start_dt)
+            .where(HACCPPlan.org_id == org_id, time_bounds)
             .group_by(area_key)
             .order_by(func.sum(case((dev_pred, 1), else_=0)).desc())
             .limit(20)
@@ -1145,7 +1278,7 @@ class ReportService:
             )
         if dev_logs > 0:
             ai.append(
-                f"{dev_logs} bản ghi lệch trong {period_days} ngày — xử lý theo lô và thiết bị đứng đầu bảng; mở CAPA nếu lặp lại."
+                f"{dev_logs} bản ghi lệch trong {span_days} ngày — xử lý theo lô và thiết bị đứng đầu bảng; mở CAPA nếu lặp lại."
             )
         if not ai:
             ai.append("Ghi log đầy đủ số lô và thiết bị để drill-down chính xác hơn.")
@@ -1154,7 +1287,7 @@ class ReportService:
             kpi_type="haccp",
             headline_label="Tuân thủ HACCP (ước tính từ log CCP)",
             headline_value=headline,
-            period_days=period_days,
+            period_days=span_days,
             is_low_signal=is_low,
             ai_insights=ai,
             blocks=[
@@ -1169,24 +1302,29 @@ class ReportService:
         db: Session,
         org_id: UUID,
         start_dt: datetime,
-        period_days: int,
+        end_dt_exclusive: datetime,
+        span_days: int,
+        as_of_date: date,
     ) -> KpiDrilldownResponse:
         open_statuses = ("OPEN", "IN_PROGRESS", "WAITING", "PENDING")
+        time_bounds_capa = and_(
+            CAPA.created_at >= start_dt,
+            CAPA.created_at < end_dt_exclusive,
+        )
         capas = list(
             db.execute(
                 select(CAPA).where(
                     CAPA.org_id == org_id,
-                    CAPA.created_at >= start_dt,
+                    time_bounds_capa,
                 )
             ).scalars().all()
         )
         open_cnt = sum(1 for c in capas if (c.status or "").upper() in open_statuses)
-        today = date.today()
         overdue = sum(
             1
             for c in capas
             if c.due_date is not None
-            and c.due_date < today
+            and c.due_date < as_of_date
             and (c.status or "").upper() in open_statuses
         )
         closed_cnt = sum(
@@ -1205,7 +1343,7 @@ class ReportService:
         status_expr = func.upper(CAPA.status)
         st_rows = db.execute(
             select(status_expr, func.count(CAPA.id))
-            .where(CAPA.org_id == org_id, CAPA.created_at >= start_dt)
+            .where(CAPA.org_id == org_id, time_bounds_capa)
             .group_by(status_expr)
             .order_by(func.count(CAPA.id).desc())
         ).all()
@@ -1223,8 +1361,12 @@ class ReportService:
             )
 
         overdue_rows = sorted(
-            [c for c in capas if c.due_date and c.due_date < today and (c.status or "").upper() in open_statuses],
-            key=lambda c: c.due_date or today,
+            [
+                c
+                for c in capas
+                if c.due_date and c.due_date < as_of_date and (c.status or "").upper() in open_statuses
+            ],
+            key=lambda c: c.due_date or as_of_date,
         )[:20]
         by_capa: list[KpiDrilldownRow] = []
         for c in overdue_rows:
@@ -1254,7 +1396,7 @@ class ReportService:
             kpi_type="capa",
             headline_label="CAPA đúng hạn (ước tính trong kỳ)",
             headline_value=headline,
-            period_days=period_days,
+            period_days=span_days,
             is_low_signal=is_low,
             ai_insights=ai,
             blocks=[

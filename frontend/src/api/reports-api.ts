@@ -148,16 +148,26 @@ export async function getInternalAuditSummary(
   return res.json() as Promise<InternalAuditSummaryDto>;
 }
 
+export type KpiDrillRequest =
+  | { mode: "snapshot"; periodType: string; cursor: string }
+  | { mode: "rolling"; periodDays: number };
+
 export async function getKpiDrilldown(
   orgId: string,
   kpiType: "prp" | "haccp" | "capa",
-  periodDays = 120,
+  req: KpiDrillRequest,
 ): Promise<KpiDrilldownDto> {
   const qs = new URLSearchParams({
     org_id: orgId,
     kpi_type: kpiType,
-    period_days: String(periodDays),
   });
+  if (req.mode === "snapshot") {
+    qs.set("period_type", req.periodType);
+    qs.set("cursor", req.cursor);
+    qs.set("period_days", "120");
+  } else {
+    qs.set("period_days", String(req.periodDays));
+  }
   const res = await fetch(`${apiPath("/reports/kpi-drilldown")}?${qs}`, {
     cache: "no-store",
   });
