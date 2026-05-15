@@ -17,6 +17,7 @@ from .schemas import (
     PRPProgramUpdate,
     PRPScheduleRequest,
     PRPNCRequest,
+    ISO22000_CLAUSES,
 )
 
 
@@ -28,6 +29,12 @@ def get_prp_audit_service(db: Session = Depends(db_manager.get_db)):
 
 
 # --- MASTER DATA ENDPOINTS ---
+
+
+@prp_router.get("/clauses", response_model=dict)
+def get_iso_clauses():
+    """Lấy danh sách các điều khoản ISO 22000 cho PRP."""
+    return ISO22000_CLAUSES
 
 
 @prp_router.get(

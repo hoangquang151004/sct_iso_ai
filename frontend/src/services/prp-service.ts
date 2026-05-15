@@ -11,6 +11,10 @@ export async function listPrograms(): Promise<PRPProgram[]> {
   return apiRequest<PRPProgram[]>("/prp/programs");
 }
 
+export async function listClauses(): Promise<Record<string, string>> {
+  return apiRequest<Record<string, string>>("/prp/clauses");
+}
+
 export async function listLocations(): Promise<Location[]> {
   return apiRequest<Location[]>("/prp/locations");
 }

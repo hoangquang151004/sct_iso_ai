@@ -15,6 +15,22 @@ class PRPCategory(str, Enum):
     PERSONNEL_HYGIENE_TRAINING = "Personnel Hygiene & Training"
 
 
+# Danh mục các điều khoản ISO 22000:2018 liên quan đến PRP
+ISO22000_CLAUSES = {
+    "8.2.4 (a)": "Xây dựng và bố trí nhà xưởng, các tiện ích liên quan",
+    "8.2.4 (b)": "Bố trí mặt bằng khu vực làm việc và cơ sở vật chất",
+    "8.2.4 (c)": "Cung cấp không khí, nước, năng lượng và các tiện ích khác",
+    "8.2.4 (d)": "Kiểm soát sinh vật gây hại, xử lý chất thải",
+    "8.2.4 (e)": "Sự phù hợp của thiết bị, vệ sinh và bảo trì",
+    "8.2.4 (f)": "Quản lý vật tư đầu vào",
+    "8.2.4 (g)": "Biện pháp ngăn ngừa nhiễm chéo",
+    "8.2.4 (h)": "Vệ sinh và khử trùng",
+    "8.2.4 (i)": "Vệ sinh cá nhân",
+    "8.2.4 (j)": "Thông tin sản phẩm/nhận thức người tiêu dùng",
+    "8.2.4 (k)": "Các vấn đề khác (Thu hồi sản phẩm, lưu kho...)",
+}
+
+
 class PRPProgramData(BaseModel):
     org_id: UUID
     name: str = Field(..., max_length=255)

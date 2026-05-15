@@ -1259,13 +1259,30 @@ function ProgramManagerModal({ programs, onClose, onSuccess }: any) {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [category, setCategory] = useState("GHP/SSOP");
+  const [description, setDescription] = useState("");
+  const [standardRef, setStandardRef] = useState("");
+  const [clauses, setClauses] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    async function fetchClauses() {
+      try {
+        const data = await prpService.listClauses();
+        setClauses(data);
+      } catch (error) {
+        console.error("Failed to fetch clauses:", error);
+      }
+    }
+    fetchClauses();
+  }, []);
 
   const selectProgram = (p: any) => {
     setSelectedId(p.id);
     setName(p.name);
     setCode(p.code || "");
     setCategory(p.category || "GHP/SSOP");
+    setDescription(p.description || "");
+    setStandardRef(p.standard_ref || "");
   };
 
   const resetForm = () => {
@@ -1273,6 +1290,8 @@ function ProgramManagerModal({ programs, onClose, onSuccess }: any) {
     setName("");
     setCode("");
     setCategory("GHP/SSOP");
+    setDescription("");
+    setStandardRef("");
   };
 
   const handleSave = async () => {
@@ -1282,7 +1301,14 @@ function ProgramManagerModal({ programs, onClose, onSuccess }: any) {
     }
     try {
       setLoading(true);
-      const payload = { name, code, category, org_id: orgId };
+      const payload = { 
+        name, 
+        code, 
+        category, 
+        org_id: orgId,
+        description,
+        standard_ref: standardRef
+      };
       
       if (selectedId) {
         // Cập nhật dùng service
@@ -1305,22 +1331,22 @@ function ProgramManagerModal({ programs, onClose, onSuccess }: any) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] shadow-2xl overflow-hidden flex flex-col">
         <div className="p-6 border-b flex justify-between items-center bg-slate-50">
           <h2 className="text-xl font-bold text-slate-800">
             {selectedId ? "Chỉnh sửa Chương trình" : "Quản lý Chương trình PRP"}
           </h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
         </div>
-        <div className="p-6 space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-bold text-slate-700">Tên chương trình (GHP, SSOP...)</label>
-            <input 
-              value={name} onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border-slate-300 focus:ring-[#1e8b9b]" placeholder="Ví dụ: Vệ sinh cá nhân"
-            />
-          </div>
+        <div className="p-6 space-y-4 overflow-y-auto">
           <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-slate-700">Tên chương trình</label>
+              <input 
+                value={name} onChange={(e) => setName(e.target.value)}
+                className="w-full rounded-lg border-slate-300 focus:ring-[#1e8b9b]" placeholder="Ví dụ: Vệ sinh cá nhân"
+              />
+            </div>
             <div className="space-y-2">
               <label className="text-sm font-bold text-slate-700">Mã (Code)</label>
               <input 
@@ -1328,6 +1354,9 @@ function ProgramManagerModal({ programs, onClose, onSuccess }: any) {
                 className="w-full rounded-lg border-slate-300 focus:ring-[#1e8b9b]" placeholder="SSOP-01"
               />
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-bold text-slate-700">Phân loại</label>
               <select 
@@ -1341,6 +1370,28 @@ function ProgramManagerModal({ programs, onClose, onSuccess }: any) {
                 <option value="Personnel Hygiene & Training">Personnel Hygiene & Training</option>
               </select>
             </div>
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-slate-700">Tham chiếu ISO 22000</label>
+              <select 
+                value={standardRef} onChange={(e) => setStandardRef(e.target.value)}
+                className="w-full rounded-lg border-slate-300 focus:ring-[#1e8b9b]"
+              >
+                <option value="">-- Chọn điều khoản --</option>
+                {Object.entries(clauses).map(([key, value]) => (
+                  <option key={key} value={key}>{key} {value}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-bold text-slate-700">Mô tả chương trình</label>
+            <textarea 
+              value={description} onChange={(e) => setDescription(e.target.value)}
+              className="w-full rounded-lg border-slate-300 focus:ring-[#1e8b9b]" 
+              placeholder="Nhập mô tả chi tiết về phạm vi và mục đích của chương trình..."
+              rows={3}
+            />
           </div>
           
           <div className="flex gap-2">
@@ -1371,11 +1422,16 @@ function ProgramManagerModal({ programs, onClose, onSuccess }: any) {
                     selectedId === p.id ? "bg-blue-50 border border-blue-200 shadow-sm" : "bg-slate-50 hover:bg-slate-100 border border-transparent"
                   }`}
                 >
-                  <div>
-                    <p className="font-bold text-slate-700 text-sm">{p.name}</p>
-                    <p className="text-[10px] text-slate-400">{p.code || "No Code"}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-slate-700 text-sm truncate">{p.name}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] bg-white border px-2 py-0.5 rounded font-bold text-slate-500 shrink-0">{p.code || "N/A"}</span>
+                      {p.standard_ref && (
+                        <span className="text-[10px] text-blue-500 font-bold truncate">{p.standard_ref}</span>
+                      )}
+                    </div>
                   </div>
-                  <span className="text-[10px] bg-white border px-2 py-0.5 rounded font-bold text-slate-500">{p.category}</span>
+                  <span className="text-[10px] bg-slate-200 px-2 py-0.5 rounded font-bold text-slate-600 ml-2 shrink-0">{p.category}</span>
                 </div>
               ))}
             </div>
